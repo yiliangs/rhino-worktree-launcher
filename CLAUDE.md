@@ -8,7 +8,7 @@ Independent native .NET 8 WPF utility for launching Rhino plug-in repositories f
 - `ProjectCatalog` stores only local manifest paths under `%LOCALAPPDATA%\RhinoWorktreeLauncher\projects.json`.
 - `GitWorktreeScanner` discovers non-prunable worktrees, local diff and divergence metadata, and optional authenticated GitHub PR state.
 - `MainWindow` owns the native WPF interface, live Windows theme response, refresh coordination, dialogs, and backend execution.
-- `TrackingTextBlock` supplies the letter spacing that WPF text controls do not expose; `InlineIdentityPanel` keeps identity badges adjacent to a branch name without sacrificing trimming.
+- `TrackingTextBlock` supplies the letter spacing that WPF text controls do not expose; `InlineIdentityPanel` keeps identity badges adjacent to a branch name without sacrificing trimming; `InsetHighlightBorder` renders the restrained inner highlight on raised controls and chips.
 - `WorktreeLaunchService` launches normal Rhino for the primary checkout or the repository-owned worktree entry point for linked worktrees.
 - The application never edits Rhino registration and never infers a plug-in's build or verification protocol.
 
@@ -23,7 +23,7 @@ The installer publishes non-destructive versioned releases under `%LOCALAPPDATA%
 
 ## UI
 
-Use `src/RhinoWorktreeLauncher/Assets/rhino-launcher.png` in the header and `rhino-launcher.ico` for the executable. The fixed 720 × 1000 interface follows the Windows app theme live, uses bundled IBM Plex Sans and Geist Mono, and keeps local status, tracked-line diff, PR state, activity, and default-branch divergence in one two-line worktree row. Refresh presents independent LOCAL and GIT progress in its fixed 148 × 50 control.
+Use `src/RhinoWorktreeLauncher/Assets/rhino-launcher.png` in the header and `rhino-launcher.ico` for the executable. The fixed 720 × 1000 interface follows the Windows app theme live, uses bundled IBM Plex Sans and Geist Mono, and keeps local status, tracked-line diff, PR state, activity, and default-branch divergence in one two-line worktree row. Treat 720 × 1000 as the DWM-visible frame rather than WPF's larger window rectangle with invisible resize borders; crop captures to `DWMWA_EXTENDED_FRAME_BOUNDS`. Refresh presents independent LOCAL and GIT progress in its fixed 148 × 50 control.
 
 Published releases are self-contained and multifile to avoid single-file extraction and mapping overhead. Use `<ApplicationIcon>` for the taskbar icon and WPF `Resource` items for bundled images and fonts. Do not set `Window.Icon` to a linked external path; published startup fails with `XamlParseException`.
 
