@@ -17,6 +17,10 @@ namespace RhinoWorktreeLauncher;
 
 public partial class MainWindow : Window
 {
+    private const double DesignWindowWidth = 720;
+    private const double DesignWindowHeight = 1000;
+    private const int DwmExtendedFrameBounds = 9;
+
     private static readonly IReadOnlyDictionary<string, string> DarkTheme =
         new Dictionary<string, string>
         {
@@ -33,7 +37,6 @@ public partial class MainWindow : Window
             ["RowActiveBrush"] = "#262B31",
             ["TrackBrush"] = "#1C1F23",
             ["TrackCenterBrush"] = "#3A4048",
-            ["LogoPlateBrush"] = "#F4F6F8",
             ["PanelBorderBrush"] = "#26292E",
             ["DividerBrush"] = "#232629",
             ["ControlBorderBrush"] = "#2E3238",
@@ -63,7 +66,9 @@ public partial class MainWindow : Window
             ["PrimaryBrush"] = "#F0F2F5",
             ["PrimaryHoverBrush"] = "#FFFFFF",
             ["PrimaryTextBrush"] = "#16181B",
-            ["ScrollThumbBrush"] = "#343840"
+            ["ScrollThumbBrush"] = "#343840",
+            ["ControlHighlightBrush"] = "#08FFFFFF",
+            ["ChipHighlightBrush"] = "#05FFFFFF"
         };
 
     private static readonly IReadOnlyDictionary<string, string> LightTheme =
@@ -82,7 +87,6 @@ public partial class MainWindow : Window
             ["RowActiveBrush"] = "#E7EBF1",
             ["TrackBrush"] = "#EDEFF2",
             ["TrackCenterBrush"] = "#C9CED6",
-            ["LogoPlateBrush"] = "#1B1E23",
             ["PanelBorderBrush"] = "#DFE2E7",
             ["DividerBrush"] = "#E0E3E7",
             ["ControlBorderBrush"] = "#D5D9DF",
@@ -112,7 +116,9 @@ public partial class MainWindow : Window
             ["PrimaryBrush"] = "#1B1E23",
             ["PrimaryHoverBrush"] = "#000000",
             ["PrimaryTextBrush"] = "#F4F6F8",
-            ["ScrollThumbBrush"] = "#C3C8D0"
+            ["ScrollThumbBrush"] = "#C3C8D0",
+            ["ControlHighlightBrush"] = "#99FFFFFF",
+            ["ChipHighlightBrush"] = "#B3FFFFFF"
         };
 
     private readonly ObservableCollection<ProjectManifest> _projects =
@@ -604,19 +610,6 @@ public partial class MainWindow : Window
             ? CreateShadow(10, 2, 0.14, Color.FromRgb(24, 30, 40))
             : CreateShadow(10, 2, 0.18, Color.FromRgb(200, 210, 225));
 
-        WorktreePanel.Effect = isLight
-            ? new DropShadowEffect
-            {
-                BlurRadius = 20,
-                Direction = 270,
-                ShadowDepth = 2,
-                Opacity = 0.12,
-                Color = Color.FromRgb(24, 30, 40)
-            }
-            : null;
-        LogoShadow.BlurRadius = isLight ? 16 : 20;
-        LogoShadow.ShadowDepth = isLight ? 1 : 2;
-        LogoShadow.Opacity = isLight ? 0.28 : 0.36;
         ApplyWindowChrome();
     }
 
@@ -640,8 +633,34 @@ public partial class MainWindow : Window
         return key?.GetValue("AppsUseLightTheme") is int value && value != 0;
     }
 
-    private void OnSourceInitialized(object? sender, EventArgs e) =>
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        FitVisibleFrameToDesignSize();
         ApplyWindowChrome();
+    }
+
+    private void FitVisibleFrameToDesignSize()
+    {
+        IntPtr handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero ||
+            DwmGetWindowAttribute(
+                handle,
+                DwmExtendedFrameBounds,
+                out NativeRect frame,
+                Marshal.SizeOf<NativeRect>()) != 0)
+        {
+            return;
+        }
+
+        double scale = GetDpiForWindow(handle) / 96d;
+        if (scale <= 0)
+            return;
+
+        double visibleWidth = (frame.Right - frame.Left) / scale;
+        double visibleHeight = (frame.Bottom - frame.Top) / scale;
+        Width += DesignWindowWidth - visibleWidth;
+        Height += DesignWindowHeight - visibleHeight;
+    }
 
     private void ApplyWindowChrome()
     {
@@ -659,6 +678,25 @@ public partial class MainWindow : Window
         int attribute,
         ref int value,
         int size);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(
+        IntPtr window,
+        int attribute,
+        out NativeRect value,
+        int size);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr window);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
 
     private sealed record GitSyncResult(
         bool FetchSucceeded,

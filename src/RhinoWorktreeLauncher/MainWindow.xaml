@@ -32,7 +32,6 @@
         <SolidColorBrush x:Key="RowActiveBrush" Color="#262B31" />
         <SolidColorBrush x:Key="TrackBrush" Color="#1C1F23" />
         <SolidColorBrush x:Key="TrackCenterBrush" Color="#3A4048" />
-        <SolidColorBrush x:Key="LogoPlateBrush" Color="#F4F6F8" />
         <SolidColorBrush x:Key="PanelBorderBrush" Color="#26292E" />
         <SolidColorBrush x:Key="DividerBrush" Color="#232629" />
         <SolidColorBrush x:Key="ControlBorderBrush" Color="#2E3238" />
@@ -63,6 +62,8 @@
         <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#FFFFFF" />
         <SolidColorBrush x:Key="PrimaryTextBrush" Color="#16181B" />
         <SolidColorBrush x:Key="ScrollThumbBrush" Color="#343840" />
+        <SolidColorBrush x:Key="ControlHighlightBrush" Color="#08FFFFFF" />
+        <SolidColorBrush x:Key="ChipHighlightBrush" Color="#05FFFFFF" />
 
         <DropShadowEffect x:Key="RowActiveShadowEffect"
                           BlurRadius="8"
@@ -144,15 +145,16 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Chrome"
+                        <local:InsetHighlightBorder x:Name="Chrome"
                                 Padding="{TemplateBinding Padding}"
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="{TemplateBinding Tag}"
-                                Effect="{TemplateBinding Effect}">
+                                Effect="{TemplateBinding Effect}"
+                                HighlightBrush="{DynamicResource ControlHighlightBrush}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
+                        </local:InsetHighlightBorder>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
@@ -347,22 +349,14 @@
                     <ColumnDefinition Width="148" />
                 </Grid.ColumnDefinitions>
 
-                <Border x:Name="LogoPlate"
-                        Grid.Column="0"
+                <Border Grid.Column="0"
                         Width="50"
                         Height="50"
-                        Background="{DynamicResource LogoPlateBrush}"
                         CornerRadius="12">
-                    <Border.Effect>
-                        <DropShadowEffect x:Name="LogoShadow"
-                                          BlurRadius="20"
-                                          Direction="270"
-                                          ShadowDepth="2"
-                                          Opacity="0.36"
-                                          Color="#000000" />
-                    </Border.Effect>
-                    <Image Source="/RhinoWorktreeLauncher;component/Assets/rhino-launcher.png"
-                           Stretch="Uniform" />
+                    <Border.Background>
+                        <ImageBrush ImageSource="/RhinoWorktreeLauncher;component/Assets/rhino-launcher.png"
+                                    Stretch="Uniform" />
+                    </Border.Background>
                 </Border>
 
                 <local:TrackingTextBlock Grid.Column="2"
@@ -379,6 +373,7 @@
                         Width="148"
                         Height="50"
                         Padding="0"
+                        BorderThickness="0.67"
                         Style="{StaticResource ControlButton}"
                         automation:AutomationProperties.Name="Refresh"
                         Click="Refresh_Click">
@@ -611,47 +606,49 @@
                                                        LineHeight="16.8"
                                                        LineStackingStrategy="BlockLineHeight"
                                                        FontWeight="Normal" />
-                                            <Border Padding="6,3"
-                                                        VerticalAlignment="Center"
-                                                        Background="{DynamicResource BadgeBrush}"
-                                                        BorderBrush="{DynamicResource BadgeBorderBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="4"
-                                                        Effect="{DynamicResource ChipShadowEffect}"
-                                                        Visibility="{Binding IsPrimary, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <local:TrackingTextBlock Text="DEFAULT"
-                                                               Tracking="0.1"
-                                                               LineHeight="9"
-                                                               Foreground="{DynamicResource TextBadgeBrush}"
-                                                               FontSize="9"
+                                            <local:InsetHighlightBorder Padding="6,3"
+                                                                        VerticalAlignment="Center"
+                                                                        Background="{DynamicResource BadgeBrush}"
+                                                                        BorderBrush="{DynamicResource BadgeBorderBrush}"
+                                                                        BorderThickness="1"
+                                                                        CornerRadius="4"
+                                                                        Effect="{DynamicResource ChipShadowEffect}"
+                                                                        HighlightBrush="{DynamicResource ChipHighlightBrush}"
+                                                                        Visibility="{Binding IsPrimary, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <local:TrackingTextBlock Text="DEFAULT"
+                                                                         Tracking="0.1"
+                                                                         LineHeight="9"
+                                                                         Foreground="{DynamicResource TextBadgeBrush}"
+                                                                         FontSize="9"
+                                                                         FontWeight="Medium" />
+                                            </local:InsetHighlightBorder>
+                                            <local:InsetHighlightBorder x:Name="PullRequestBadge"
+                                                                        Padding="7,3"
+                                                                        VerticalAlignment="Center"
+                                                                        Background="{DynamicResource FreshBackgroundBrush}"
+                                                                        BorderBrush="{DynamicResource FreshBorderBrush}"
+                                                                        BorderThickness="1"
+                                                                        CornerRadius="4"
+                                                                        Effect="{DynamicResource ChipShadowEffect}"
+                                                                        HighlightBrush="{DynamicResource ChipHighlightBrush}"
+                                                                        Visibility="{Binding HasPullRequest, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse x:Name="PullRequestDot"
+                                                             Width="5"
+                                                             Height="5"
+                                                             Margin="0,0,5,0"
+                                                             VerticalAlignment="Center"
+                                                             Fill="{DynamicResource AheadFillBrush}" />
+                                                    <TextBlock x:Name="PullRequestText"
+                                                               Text="{Binding PullRequestLabel}"
+                                                               Foreground="{DynamicResource FreshTextBrush}"
+                                                               FontFamily="{StaticResource MonoFont}"
+                                                               FontSize="10"
+                                                               LineHeight="10"
+                                                               LineStackingStrategy="BlockLineHeight"
                                                                FontWeight="Medium" />
-                                            </Border>
-                                            <Border x:Name="PullRequestBadge"
-                                                        Padding="7,3"
-                                                        VerticalAlignment="Center"
-                                                        Background="{DynamicResource FreshBackgroundBrush}"
-                                                        BorderBrush="{DynamicResource FreshBorderBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="4"
-                                                        Effect="{DynamicResource ChipShadowEffect}"
-                                                        Visibility="{Binding HasPullRequest, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <Ellipse x:Name="PullRequestDot"
-                                                                 Width="5"
-                                                                 Height="5"
-                                                                 Margin="0,0,5,0"
-                                                                 VerticalAlignment="Center"
-                                                                 Fill="{DynamicResource AheadFillBrush}" />
-                                                        <TextBlock x:Name="PullRequestText"
-                                                                   Text="{Binding PullRequestLabel}"
-                                                                   Foreground="{DynamicResource FreshTextBrush}"
-                                                                   FontFamily="{StaticResource MonoFont}"
-                                                                   FontSize="10"
-                                                                   LineHeight="10"
-                                                                   LineStackingStrategy="BlockLineHeight"
-                                                                   FontWeight="Medium" />
-                                                    </StackPanel>
-                                            </Border>
+                                                </StackPanel>
+                                            </local:InsetHighlightBorder>
                                         </local:InlineIdentityPanel>
 
                                         <Grid Grid.Row="2">
@@ -669,14 +666,15 @@
                                                     <ColumnDefinition Width="9" />
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
-                                                <Border x:Name="FreshnessBadge"
-                                                        Grid.Column="0"
-                                                        Padding="6,3"
-                                                        Background="{DynamicResource FreshBackgroundBrush}"
-                                                        BorderBrush="{DynamicResource FreshBorderBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="4"
-                                                        Effect="{DynamicResource ChipShadowEffect}">
+                                                <local:InsetHighlightBorder x:Name="FreshnessBadge"
+                                                                            Grid.Column="0"
+                                                                            Padding="6,3"
+                                                                            Background="{DynamicResource FreshBackgroundBrush}"
+                                                                            BorderBrush="{DynamicResource FreshBorderBrush}"
+                                                                            BorderThickness="1"
+                                                                            CornerRadius="4"
+                                                                            Effect="{DynamicResource ChipShadowEffect}"
+                                                                            HighlightBrush="{DynamicResource ChipHighlightBrush}">
                                                     <local:TrackingTextBlock x:Name="FreshnessText"
                                                                Text="{Binding FreshnessLabel}"
                                                                Tracking="0.1"
@@ -684,16 +682,19 @@
                                                                Foreground="{DynamicResource FreshTextBrush}"
                                                                FontSize="9"
                                                                FontWeight="Medium" />
-                                                </Border>
-                                                <Border Grid.Column="2"
-                                                        Padding="7,3"
-                                                        Background="{DynamicResource DiffBoxBrush}"
-                                                        BorderBrush="{DynamicResource DiffBoxBorderBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="4"
-                                                        Effect="{DynamicResource ChipShadowEffect}">
-                                                    <StackPanel Orientation="Horizontal">
+                                                </local:InsetHighlightBorder>
+                                                <local:InsetHighlightBorder Grid.Column="2"
+                                                                            Padding="7,3"
+                                                                            Background="{DynamicResource DiffBoxBrush}"
+                                                                            BorderBrush="{DynamicResource DiffBoxBorderBrush}"
+                                                                            BorderThickness="1"
+                                                                            CornerRadius="4"
+                                                                            Effect="{DynamicResource ChipShadowEffect}"
+                                                                            HighlightBrush="{DynamicResource ChipHighlightBrush}">
+                                                    <StackPanel VerticalAlignment="Center"
+                                                                Orientation="Horizontal">
                                                         <TextBlock x:Name="AddedText"
+                                                                   VerticalAlignment="Center"
                                                                    Text="{Binding LocalAdded, StringFormat=+{0}}"
                                                                    Foreground="{DynamicResource AheadTextBrush}"
                                                                    FontFamily="{StaticResource MonoFont}"
@@ -703,8 +704,10 @@
                                                         <Border Width="1"
                                                                 Height="9"
                                                                 Margin="7,0"
+                                                                VerticalAlignment="Center"
                                                                 Background="{DynamicResource DiffBoxBorderBrush}" />
                                                         <TextBlock x:Name="DeletedText"
+                                                                   VerticalAlignment="Center"
                                                                    Text="{Binding LocalDeleted, StringFormat=−{0}}"
                                                                    Foreground="{DynamicResource BehindTextBrush}"
                                                                    FontFamily="{StaticResource MonoFont}"
@@ -712,7 +715,7 @@
                                                                    LineHeight="10.5"
                                                                    LineStackingStrategy="BlockLineHeight" />
                                                     </StackPanel>
-                                                </Border>
+                                                </local:InsetHighlightBorder>
                                                 <TextBlock x:Name="ActivityText"
                                                            Grid.Column="4"
                                                            VerticalAlignment="Center"
