@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 
 namespace RhinoWorktreeLauncher;
@@ -91,17 +92,63 @@ public sealed class GitWorktreeScanner
         bool worktreeReady = File.Exists(launcherPath) &&
             project.Readiness.RequiredFiles.All(relativePath =>
                 File.Exists(Path.Combine(fullPath, relativePath)));
+        (int ahead, int behind) = GetDivergence(fullPath);
 
         entries.Add(new WorktreeEntry
         {
             Project = project,
-            DisplayName = new DirectoryInfo(fullPath).Name,
+            DisplayName = isPrimary ? branch : new DirectoryInfo(fullPath).Name,
             BranchName = branch,
             Path = fullPath,
             LauncherPath = launcherPath,
+            LastActivityAt = GetLastActivity(fullPath),
+            AheadCount = ahead,
+            BehindCount = behind,
             IsPrimary = isPrimary,
             CanLaunch = isPrimary ? File.Exists(rhinoPath) : worktreeReady
         });
+    }
+
+    private static (int Ahead, int Behind) GetDivergence(string workingDirectory)
+    {
+        string? output = TryRunGit(
+            workingDirectory,
+            "rev-list",
+            "--left-right",
+            "--count",
+            "HEAD...@{upstream}");
+        if (string.IsNullOrWhiteSpace(output))
+            return (0, 0);
+
+        string[] counts = output.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (counts.Length != 2 ||
+            !int.TryParse(counts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int ahead) ||
+            !int.TryParse(counts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int behind))
+        {
+            return (0, 0);
+        }
+
+        return (ahead, behind);
+    }
+
+    private static DateTimeOffset GetLastActivity(string workingDirectory)
+    {
+        string? output = TryRunGit(workingDirectory, "log", "-1", "--format=%ct", "HEAD");
+        return long.TryParse(output?.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out long timestamp)
+            ? DateTimeOffset.FromUnixTimeSeconds(timestamp)
+            : DateTimeOffset.MinValue;
+    }
+
+    private static string? TryRunGit(string workingDirectory, params string[] arguments)
+    {
+        try
+        {
+            return RunGit(workingDirectory, arguments);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string RunGit(string workingDirectory, params string[] arguments)

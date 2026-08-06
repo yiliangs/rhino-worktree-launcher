@@ -21,6 +21,6 @@ The installer publishes non-destructive versioned releases under `%LOCALAPPDATA%
 
 ## UI
 
-Use `src/RhinoWorktreeLauncher/Assets/rhino-launcher.png` in the header and `rhino-launcher.ico` for the executable. Keep the interface a compact native utility with flat rows and restrained hierarchy.
+Use `src/RhinoWorktreeLauncher/Assets/rhino-launcher.png` in the header and `rhino-launcher.ico` for the executable. The fixed 720 × 1000 interface uses the bundled IBM Plex Sans and Geist Mono fonts, a recessed worktree panel, selectable two-line rows with divergence and activity metadata, and a persistent selected-worktree footer.
 
 For single-file WPF publishing, use `<ApplicationIcon>` for the taskbar icon and a WPF `Resource` for the header PNG. Do not set `Window.Icon` to a linked external path; published startup fails with `XamlParseException`.

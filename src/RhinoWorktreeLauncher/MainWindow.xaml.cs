@@ -5,7 +5,6 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
-using System.Windows.Media;
 
 namespace RhinoWorktreeLauncher;
 
@@ -58,7 +57,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            SetStatus(ex.Message, false);
+            PanelHintText.Text = "Project not supported";
             MessageBox.Show(this, ex.Message, "Project not supported", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -104,14 +103,17 @@ public partial class MainWindow : Window
             selectedManifestPath,
             StringComparison.OrdinalIgnoreCase)) ?? _projects.FirstOrDefault();
         ProjectList.SelectedItem = selection;
-        if (selection is null)
-        {
-            _currentProject = null;
-            RepositoryPathText.Text = "Add a project to begin";
-            _worktrees.Clear();
-            SetStatus("No project manifests registered", null);
-            UpdateSelectionState();
-        }
+        if (selection is not null)
+            return;
+
+        _currentProject = null;
+        RepositoryPathText.Text = "Add a project to begin";
+        _worktrees.Clear();
+        WorktreeCountText.Text = "0";
+        PanelHintText.Text = "No projects registered";
+        EmptyStateText.Text = "Add a project to begin";
+        EmptyStateText.Visibility = Visibility.Visible;
+        UpdateSelectionState();
     }
 
     private async Task RefreshAsync()
@@ -122,7 +124,8 @@ public partial class MainWindow : Window
         _isRefreshing = true;
         LaunchButton.IsEnabled = false;
         OpenFolderButton.IsEnabled = false;
-        SetStatus($"Scanning {_currentProject.DisplayName} worktrees...", null);
+        PanelHintText.Text = "Scanning worktrees...";
+        EmptyStateText.Visibility = Visibility.Collapsed;
 
         try
         {
@@ -131,14 +134,19 @@ public partial class MainWindow : Window
             foreach (WorktreeEntry entry in entries)
                 _worktrees.Add(entry);
 
+            WorktreeCountText.Text = _worktrees.Count.ToString();
+            PanelHintText.Text = "Double-click to launch";
+            EmptyStateText.Text = "No worktrees found";
+            EmptyStateText.Visibility = _worktrees.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             WorktreeList.SelectedIndex = _worktrees.Count > 0 ? 0 : -1;
-            int readyCount = _worktrees.Count(entry => entry.CanLaunch);
-            SetStatus($"{_worktrees.Count} worktrees found, {readyCount} ready to launch", true);
         }
         catch (Exception ex)
         {
             _worktrees.Clear();
-            SetStatus(ex.Message, false);
+            WorktreeCountText.Text = "0";
+            PanelHintText.Text = "Scan failed";
+            EmptyStateText.Text = ex.Message;
+            EmptyStateText.Visibility = Visibility.Visible;
         }
         finally
         {
@@ -152,14 +160,11 @@ public partial class MainWindow : Window
         try
         {
             _launchService.Launch(worktree);
-            string message = worktree.IsPrimary
-                ? $"Opened normal Rhino for {worktree.Project.DisplayName}"
-                : $"Started {worktree.Project.DisplayName} from {worktree.DisplayName}";
-            SetStatus(message, true);
+            PanelHintText.Text = worktree.IsPrimary ? "Normal Rhino started" : "Worktree launch started";
         }
         catch (Exception ex)
         {
-            SetStatus(ex.Message, false);
+            PanelHintText.Text = "Launch failed";
             MessageBox.Show(this, ex.Message, "Rhino launch failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -168,26 +173,15 @@ public partial class MainWindow : Window
     {
         if (WorktreeList.SelectedItem is not WorktreeEntry worktree)
         {
-            LaunchButton.Content = "Select a worktree";
+            SelectedWorktreeText.Text = "No worktree selected";
             LaunchButton.IsEnabled = false;
             OpenFolderButton.IsEnabled = false;
             return;
         }
 
-        LaunchButton.Content = worktree.LaunchLabel;
+        SelectedWorktreeText.Text = worktree.DisplayName;
         LaunchButton.IsEnabled = worktree.CanLaunch && !_isRefreshing;
         OpenFolderButton.IsEnabled = Directory.Exists(worktree.Path) && !_isRefreshing;
-    }
-
-    private void SetStatus(string message, bool? success)
-    {
-        StatusText.Text = message;
-        StatusDot.Fill = success switch
-        {
-            true => new SolidColorBrush(Color.FromRgb(168, 198, 123)),
-            false => new SolidColorBrush(Color.FromRgb(226, 105, 105)),
-            _ => new SolidColorBrush(Color.FromRgb(115, 122, 128))
-        };
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)

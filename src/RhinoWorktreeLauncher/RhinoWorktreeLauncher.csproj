@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <Resource Include="Assets\rhino-launcher.png" />
+    <Resource Include="Assets\Fonts\*.ttf" />
   </ItemGroup>
 
 </Project>
