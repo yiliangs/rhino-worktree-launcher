@@ -12,9 +12,16 @@ public sealed class WorktreeEntry
     public int BehindCount { get; init; }
     public bool IsPrimary { get; init; }
     public bool CanLaunch { get; init; }
+    public bool IsLive => CanLaunch;
+    public double BehindBarWidth => GetDivergenceBarWidth(BehindCount);
+    public double AheadBarWidth => GetDivergenceBarWidth(AheadCount);
+    public string LifeLabel => IsLive ? "Live" : "Dead";
     public string RelativeActivityLabel => FormatRelativeActivity(LastActivityAt, DateTimeOffset.Now);
 
     public override string ToString() => DisplayName;
+
+    private static double GetDivergenceBarWidth(int count) =>
+        count == 0 ? 0 : Math.Min(68, 10 + (2.5 * Math.Sqrt(count)));
 
     private static string FormatRelativeActivity(DateTimeOffset activity, DateTimeOffset now)
     {

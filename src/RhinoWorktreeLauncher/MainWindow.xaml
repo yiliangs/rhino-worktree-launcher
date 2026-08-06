@@ -481,12 +481,36 @@
                                    FontFamily="{StaticResource MonoFont}"
                                    FontSize="11" />
                         <TextBlock x:Name="PanelHintText"
-                                   Grid.Column="4"
+                                   Grid.Column="3"
+                                   Margin="0,0,16,0"
+                                   HorizontalAlignment="Right"
                                    VerticalAlignment="Center"
                                    Text="Double-click to launch"
                                    Foreground="{StaticResource TertiaryBrush}"
                                    FontFamily="{StaticResource UiFont}"
                                    FontSize="11.5" />
+                        <Grid Grid.Column="4" Width="145">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="72" />
+                                <ColumnDefinition Width="1" />
+                                <ColumnDefinition Width="72" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       HorizontalAlignment="Center"
+                                       Text="BEHIND"
+                                       Foreground="#8D6A67"
+                                       FontFamily="{StaticResource UiFont}"
+                                       FontSize="9.5"
+                                       FontWeight="Medium" />
+                            <Border Grid.Column="1" Background="#333941" />
+                            <TextBlock Grid.Column="2"
+                                       HorizontalAlignment="Center"
+                                       Text="AHEAD"
+                                       Foreground="#688665"
+                                       FontFamily="{StaticResource UiFont}"
+                                       FontSize="9.5"
+                                       FontWeight="Medium" />
+                        </Grid>
                     </Grid>
 
                     <Border Grid.Row="0"
@@ -514,6 +538,16 @@
                                         </Grid.RowDefinitions>
 
                                         <StackPanel Grid.Row="0" Orientation="Horizontal">
+                                            <Ellipse x:Name="LifeIndicator"
+                                                     Width="7"
+                                                     Height="7"
+                                                     Margin="0,0,9,0"
+                                                     VerticalAlignment="Center"
+                                                     Fill="#7FAE7A"
+                                                     Stroke="#A37FAE7A"
+                                                     StrokeThickness="1"
+                                                     ToolTip="{Binding LifeLabel}"
+                                                     automation:AutomationProperties.Name="{Binding LifeLabel}" />
                                             <TextBlock x:Name="WorktreeName"
                                                        VerticalAlignment="Center"
                                                        Text="{Binding DisplayName}"
@@ -542,42 +576,76 @@
 
                                         <Grid Grid.Row="2">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="145" />
                                             </Grid.ColumnDefinitions>
 
-                                            <Border Grid.Column="0"
-                                                    Padding="7,3"
-                                                    Background="#1E2125"
-                                                    BorderBrush="#282C31"
-                                                    BorderThickness="1"
-                                                    CornerRadius="4">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock x:Name="BehindText"
-                                                               Text="{Binding BehindCount, StringFormat={}{0} behind}"
-                                                               Foreground="#C07D76"
-                                                               FontFamily="{StaticResource MonoFont}"
-                                                               FontSize="10.5" />
-                                                    <Border Width="1"
-                                                            Height="9"
-                                                            Margin="7,0"
-                                                            VerticalAlignment="Center"
-                                                            Background="#2E3238" />
-                                                    <TextBlock x:Name="AheadText"
-                                                               Text="{Binding AheadCount, StringFormat={}{0} ahead}"
-                                                               Foreground="#7FAE7A"
-                                                               FontFamily="{StaticResource MonoFont}"
-                                                               FontSize="10.5" />
-                                                </StackPanel>
-                                            </Border>
-
-                                            <TextBlock Grid.Column="2"
+                                            <TextBlock Grid.Column="0"
                                                        VerticalAlignment="Center"
                                                        Text="{Binding RelativeActivityLabel}"
                                                        Foreground="#6A7078"
                                                        FontFamily="{StaticResource UiFont}"
                                                        FontSize="11" />
+
+                                            <Grid Grid.Column="1"
+                                                  Width="145"
+                                                  ToolTip="Compared with the default branch">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="72" />
+                                                    <ColumnDefinition Width="1" />
+                                                    <ColumnDefinition Width="72" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="3" />
+                                                    <RowDefinition Height="4" />
+                                                </Grid.RowDefinitions>
+
+                                                <TextBlock x:Name="BehindText"
+                                                           Grid.Column="0"
+                                                           HorizontalAlignment="Right"
+                                                           Margin="0,0,7,0"
+                                                           Text="{Binding BehindCount}"
+                                                           Foreground="#C07D76"
+                                                           FontFamily="{StaticResource MonoFont}"
+                                                           FontSize="10.5" />
+                                                <Border Grid.Column="1"
+                                                        Grid.RowSpan="3"
+                                                        Background="#333941" />
+                                                <TextBlock x:Name="AheadText"
+                                                           Grid.Column="2"
+                                                           HorizontalAlignment="Left"
+                                                           Margin="7,0,0,0"
+                                                           Text="{Binding AheadCount}"
+                                                           Foreground="#7FAE7A"
+                                                           FontFamily="{StaticResource MonoFont}"
+                                                           FontSize="10.5" />
+
+                                                <Border Grid.Column="0"
+                                                        Grid.Row="2"
+                                                        Height="4"
+                                                        Background="#23272C" />
+                                                <Border x:Name="BehindBar"
+                                                        Grid.Column="0"
+                                                        Grid.Row="2"
+                                                        Width="{Binding BehindBarWidth}"
+                                                        Height="4"
+                                                        HorizontalAlignment="Right"
+                                                        Background="#C07D76"
+                                                        CornerRadius="2,0,0,2" />
+                                                <Border Grid.Column="2"
+                                                        Grid.Row="2"
+                                                        Height="4"
+                                                        Background="#23272C" />
+                                                <Border x:Name="AheadBar"
+                                                        Grid.Column="2"
+                                                        Grid.Row="2"
+                                                        Width="{Binding AheadBarWidth}"
+                                                        Height="4"
+                                                        HorizontalAlignment="Left"
+                                                        Background="#7FAE7A"
+                                                        CornerRadius="0,2,2,0" />
+                                            </Grid>
                                         </Grid>
                                     </Grid>
                                     <DataTemplate.Triggers>
@@ -586,6 +654,10 @@
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding BehindCount}" Value="0">
                                             <Setter TargetName="BehindText" Property="Foreground" Value="#484E56" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsLive}" Value="False">
+                                            <Setter TargetName="LifeIndicator" Property="Fill" Value="#C07D76" />
+                                            <Setter TargetName="LifeIndicator" Property="Stroke" Value="#A3C07D76" />
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
                                             <Setter TargetName="WorktreeName" Property="Foreground" Value="#F2F4F7" />
