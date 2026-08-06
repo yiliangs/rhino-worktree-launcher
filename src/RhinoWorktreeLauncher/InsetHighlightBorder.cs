@@ -30,7 +30,7 @@ public sealed class InsetHighlightBorder : Border
         if (HighlightBrush is null || ActualWidth <= 0 || ActualHeight <= 0)
             return;
 
-        const double thickness = 0.67;
+        const double thickness = 1;
         double y = BorderThickness.Top + thickness / 2;
         double start = Math.Max(
             BorderThickness.Left,
