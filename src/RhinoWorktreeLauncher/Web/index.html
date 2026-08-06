@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rhino Worktree Launcher</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <main id="app" class="app-shell">
+        <section class="body">
+            <header class="app-header">
+                <div class="app-mark"><img src="../Assets/rhino-launcher.png" alt=""></div>
+                <h1>Rhino Launcher</h1>
+                <button id="refreshButton" class="sync-control" type="button" aria-label="Refresh">
+                    <span id="refreshIdle" class="refresh-idle">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 5.5A6 6 0 1 0 14 10M13.5 2v3.5H10"/></svg>
+                        Refresh
+                    </span>
+                    <span id="refreshSync" class="refresh-sync" hidden>
+                        <span class="sync-half">
+                            <span id="localProgress" class="progress-fill"></span>
+                            <span class="sync-label">Local</span>
+                        </span>
+                        <span class="sync-divider"></span>
+                        <span class="sync-half">
+                            <span id="gitProgress" class="progress-fill"></span>
+                            <span class="sync-label">Git</span>
+                        </span>
+                    </span>
+                </button>
+            </header>
+
+            <div class="project-row">
+                <div class="project-context">
+                    <div id="projectTags" class="project-tags"></div>
+                    <span id="repositoryPath" class="repository-path"></span>
+                </div>
+                <button id="addProjectButton" class="text-button" type="button">＋ Add project</button>
+            </div>
+
+            <section class="worktree-panel">
+                <header class="panel-header">
+                    <div class="panel-title">
+                        <span>Worktrees</span>
+                        <span id="worktreeCount" class="worktree-count">0</span>
+                    </div>
+                    <span id="panelHint" class="panel-hint">Double-click to launch</span>
+                    <div class="divergence-head" aria-hidden="true">
+                        <span>Behind</span><i></i><span>Ahead</span>
+                    </div>
+                </header>
+                <div id="worktreeList" class="worktree-list"></div>
+                <div id="emptyState" class="empty-state" hidden>No worktrees found</div>
+            </section>
+        </section>
+
+        <footer class="footer">
+            <div class="selected-block">
+                <span class="selected-label">Selected</span>
+                <span id="selectedName" class="selected-name">No worktree selected</span>
+            </div>
+            <button id="openFolderButton" class="button secondary" type="button">Open folder</button>
+            <button id="launchButton" class="button primary" type="button">Launch Rhino</button>
+        </footer>
+    </main>
+    <script type="module" src="app.js"></script>
+</body>
+</html>

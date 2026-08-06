@@ -10,18 +10,26 @@ public sealed class WorktreeEntry
     public DateTimeOffset LastActivityAt { get; init; }
     public int AheadCount { get; init; }
     public int BehindCount { get; init; }
+    public int LocalAdded { get; init; }
+    public int LocalDeleted { get; init; }
+    public int? PullRequestNumber { get; init; }
+    public bool IsPullRequestDraft { get; init; }
+    public bool HasLocalState { get; init; }
+    public bool HasGitState { get; init; }
     public bool IsPrimary { get; init; }
     public bool CanLaunch { get; init; }
-    public bool IsLive => CanLaunch;
-    public double BehindBarWidth => GetDivergenceBarWidth(BehindCount);
-    public double AheadBarWidth => GetDivergenceBarWidth(AheadCount);
-    public string LifeLabel => IsLive ? "Live" : "Dead";
+    public double BehindBarWidth { get; set; }
+    public double AheadBarWidth { get; set; }
+    public bool IsFresh => CanLaunch;
+    public bool HasPullRequest => PullRequestNumber.HasValue;
+    public string FreshnessLabel => IsFresh ? "FRESH" : "STALE";
+    public string PullRequestLabel => HasPullRequest ? $"PR #{PullRequestNumber}" : string.Empty;
     public string RelativeActivityLabel => FormatRelativeActivity(LastActivityAt, DateTimeOffset.Now);
 
     public override string ToString() => DisplayName;
 
-    private static double GetDivergenceBarWidth(int count) =>
-        count == 0 ? 0 : Math.Min(68, 10 + (2.5 * Math.Sqrt(count)));
+    public static double ScaleDivergence(int value, int cap) =>
+        value == 0 ? 0 : Math.Max(3, Math.Round(88 * Math.Sqrt((double)value / Math.Max(1, cap))));
 
     private static string FormatRelativeActivity(DateTimeOffset activity, DateTimeOffset now)
     {

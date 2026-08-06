@@ -14,7 +14,6 @@ $installRoot = Join-Path $dataRoot "releases\$releaseId"
 
 Write-Host 'Publishing Rhino Worktree Launcher...' -ForegroundColor Cyan
 & dotnet publish $projectPath -c Release -r win-x64 --self-contained true `
-    '-p:PublishSingleFile=true' '-p:IncludeNativeLibrariesForSelfExtract=true' `
     -o $installRoot
 if ($LASTEXITCODE -ne 0)
 {
