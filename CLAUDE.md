@@ -23,7 +23,7 @@ The installer publishes non-destructive versioned releases under `%LOCALAPPDATA%
 
 ## UI
 
-Use `src/RhinoWorktreeLauncher/Assets/rhino-launcher.png` in the header and `rhino-launcher.ico` for the executable. The fixed 720 × 1000 interface follows the Windows app theme live, uses bundled IBM Plex Sans and Geist Mono, and keeps local status, tracked-line diff, PR state, activity, and default-branch divergence in one two-line worktree row. Treat 720 × 1000 as the DWM-visible frame rather than WPF's larger window rectangle with invisible resize borders; crop captures to `DWMWA_EXTENDED_FRAME_BOUNDS`. Refresh presents independent LOCAL and GIT progress in its fixed 148 × 50 control.
+Use `src/RhinoWorktreeLauncher/Assets/rhino-launcher.png` in the header and `rhino-launcher.ico` for the executable. The fixed 720 × 1000 interface follows the Windows app theme live, uses bundled IBM Plex Sans and Geist Mono, and keeps local status, tracked-line diff, PR state, activity, and default-branch divergence in one two-line worktree row. Keep WPF text rendering in grayscale; ClearType causes severe RGB fringing with the unhinted Geist Mono variable font at scaled DPI. Treat 720 × 1000 as the DWM-visible frame rather than WPF's larger window rectangle with invisible resize borders; crop captures to `DWMWA_EXTENDED_FRAME_BOUNDS`. Refresh presents independent LOCAL and GIT progress in its fixed 148 × 50 control.
 
 Published releases are self-contained and multifile to avoid single-file extraction and mapping overhead. Use `<ApplicationIcon>` for the taskbar icon and WPF `Resource` items for bundled images and fonts. Do not set `Window.Icon` to a linked external path; published startup fails with `XamlParseException`.
 
