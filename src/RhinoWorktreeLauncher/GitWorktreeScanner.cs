@@ -9,8 +9,9 @@ public sealed class GitWorktreeScanner
     public IReadOnlyList<WorktreeEntry> Scan(ProjectManifest project)
     {
         string primaryRoot = GetPrimaryRoot(project.RepositoryRoot);
+        string comparisonCommit = GetComparisonCommit(primaryRoot);
         string output = RunGit(primaryRoot, "worktree", "list", "--porcelain");
-        List<WorktreeEntry> entries = Parse(output, primaryRoot, project);
+        List<WorktreeEntry> entries = Parse(output, primaryRoot, comparisonCommit, project);
         return entries
             .OrderByDescending(entry => entry.IsPrimary)
             .ThenBy(entry => entry.DisplayName, StringComparer.OrdinalIgnoreCase)
@@ -27,9 +28,21 @@ public sealed class GitWorktreeScanner
         return Path.GetFullPath(Path.GetDirectoryName(commonDirectory)!);
     }
 
+    private static string GetComparisonCommit(string primaryRoot)
+    {
+        string? defaultBranch = TryRunGit(
+            primaryRoot,
+            "symbolic-ref",
+            "--short",
+            "refs/remotes/origin/HEAD")?.Trim();
+        string comparisonRef = string.IsNullOrWhiteSpace(defaultBranch) ? "HEAD" : defaultBranch;
+        return RunGit(primaryRoot, "rev-parse", comparisonRef).Trim();
+    }
+
     private static List<WorktreeEntry> Parse(
         string output,
         string primaryRoot,
+        string comparisonCommit,
         ProjectManifest project)
     {
         List<WorktreeEntry> entries = new List<WorktreeEntry>();
@@ -41,7 +54,7 @@ public sealed class GitWorktreeScanner
         {
             if (line.StartsWith("worktree ", StringComparison.Ordinal))
             {
-                AddEntry(entries, path, branch, primaryRoot, prunable, project);
+                AddEntry(entries, path, branch, primaryRoot, comparisonCommit, prunable, project);
                 path = line.Substring("worktree ".Length).Trim();
                 branch = "detached";
                 prunable = false;
@@ -56,14 +69,14 @@ public sealed class GitWorktreeScanner
             }
             else if (line.Length == 0)
             {
-                AddEntry(entries, path, branch, primaryRoot, prunable, project);
+                AddEntry(entries, path, branch, primaryRoot, comparisonCommit, prunable, project);
                 path = null;
                 branch = "detached";
                 prunable = false;
             }
         }
 
-        AddEntry(entries, path, branch, primaryRoot, prunable, project);
+        AddEntry(entries, path, branch, primaryRoot, comparisonCommit, prunable, project);
         return entries;
     }
 
@@ -72,6 +85,7 @@ public sealed class GitWorktreeScanner
         string? path,
         string branch,
         string primaryRoot,
+        string comparisonCommit,
         bool prunable,
         ProjectManifest project)
     {
@@ -92,7 +106,7 @@ public sealed class GitWorktreeScanner
         bool worktreeReady = File.Exists(launcherPath) &&
             project.Readiness.RequiredFiles.All(relativePath =>
                 File.Exists(Path.Combine(fullPath, relativePath)));
-        (int ahead, int behind) = GetDivergence(fullPath);
+        (int ahead, int behind) = GetDivergence(fullPath, comparisonCommit);
 
         entries.Add(new WorktreeEntry
         {
@@ -109,21 +123,23 @@ public sealed class GitWorktreeScanner
         });
     }
 
-    private static (int Ahead, int Behind) GetDivergence(string workingDirectory)
+    private static (int Ahead, int Behind) GetDivergence(
+        string workingDirectory,
+        string comparisonCommit)
     {
         string? output = TryRunGit(
             workingDirectory,
             "rev-list",
             "--left-right",
             "--count",
-            "HEAD...@{upstream}");
+            $"{comparisonCommit}...HEAD");
         if (string.IsNullOrWhiteSpace(output))
             return (0, 0);
 
         string[] counts = output.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         if (counts.Length != 2 ||
-            !int.TryParse(counts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int ahead) ||
-            !int.TryParse(counts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int behind))
+            !int.TryParse(counts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int behind) ||
+            !int.TryParse(counts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int ahead))
         {
             return (0, 0);
         }

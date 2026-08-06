@@ -554,9 +554,9 @@
                                                     BorderThickness="1"
                                                     CornerRadius="4">
                                                 <StackPanel Orientation="Horizontal">
-                                                    <TextBlock x:Name="AheadText"
-                                                               Text="{Binding AheadCount, StringFormat=+{0}}"
-                                                               Foreground="#7FAE7A"
+                                                    <TextBlock x:Name="BehindText"
+                                                               Text="{Binding BehindCount, StringFormat={}{0} behind}"
+                                                               Foreground="#C07D76"
                                                                FontFamily="{StaticResource MonoFont}"
                                                                FontSize="10.5" />
                                                     <Border Width="1"
@@ -564,9 +564,9 @@
                                                             Margin="7,0"
                                                             VerticalAlignment="Center"
                                                             Background="#2E3238" />
-                                                    <TextBlock x:Name="BehindText"
-                                                               Text="{Binding BehindCount, StringFormat=−{0}}"
-                                                               Foreground="#C07D76"
+                                                    <TextBlock x:Name="AheadText"
+                                                               Text="{Binding AheadCount, StringFormat={}{0} ahead}"
+                                                               Foreground="#7FAE7A"
                                                                FontFamily="{StaticResource MonoFont}"
                                                                FontSize="10.5" />
                                                 </StackPanel>
