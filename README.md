@@ -36,7 +36,7 @@ pwsh -NoProfile -File src/RhinoWorktreeLauncher/Install-RhinoWorktreeLauncher.ps
   -Launch
 ```
 
-Each installation publishes to a versioned folder under `%LOCALAPPDATA%\RhinoWorktreeLauncher\releases\` and updates the Start Menu shortcut. The project catalog remains at `%LOCALAPPDATA%\RhinoWorktreeLauncher\projects.json`.
+Each installation publishes a self-contained multifile release under `%LOCALAPPDATA%\RhinoWorktreeLauncher\releases\` and updates the Start Menu shortcut. The project catalog, cached launcher snapshot, and stable WebView2 profile remain under `%LOCALAPPDATA%\RhinoWorktreeLauncher\` across versioned releases.
 
 ## Add a project
 
@@ -47,3 +47,13 @@ Use **Add project** in the application and select a repository containing `.rhin
 ```powershell
 dotnet build src/RhinoWorktreeLauncher/RhinoWorktreeLauncher.csproj -c Debug
 ```
+
+The executable is a thin .NET 8 WPF host around a local WebView2 application. Native code owns Git, GitHub CLI, dialogs, installation, and process launching. `src/RhinoWorktreeLauncher/Web/` owns the interface and communicates with the host through JSON messages.
+
+Preview the web interface without the native host:
+
+```powershell
+python -m http.server 8765 --directory src/RhinoWorktreeLauncher
+```
+
+Open `http://localhost:8765/Web/index.html?theme=dark` or use `theme=light`. Add `sync=1` to preview the split LOCAL/GIT progress state.

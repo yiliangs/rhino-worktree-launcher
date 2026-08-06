@@ -48,11 +48,8 @@ public sealed class ProjectCatalog
 
     public static ProjectCatalog Load()
     {
-        string dataRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RhinoWorktreeLauncher");
-        Directory.CreateDirectory(dataRoot);
-        string catalogPath = Path.Combine(dataRoot, "projects.json");
+        LauncherStoragePaths.EnsureDataRoot();
+        string catalogPath = LauncherStoragePaths.ProjectCatalogPath;
         if (!File.Exists(catalogPath))
             return new ProjectCatalog(catalogPath, new List<ProjectRegistration>());
 

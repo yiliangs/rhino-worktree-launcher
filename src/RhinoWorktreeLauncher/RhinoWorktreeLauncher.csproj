@@ -10,14 +10,19 @@
     <AssemblyName>RhinoWorktreeLauncher</AssemblyName>
     <RootNamespace>RhinoWorktreeLauncher</RootNamespace>
     <ApplicationIcon>Assets\rhino-launcher.ico</ApplicationIcon>
-    <PublishSingleFile>true</PublishSingleFile>
+    <PublishSingleFile>false</PublishSingleFile>
     <SelfContained>true</SelfContained>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="Assets\rhino-launcher.png" />
-    <Resource Include="Assets\Fonts\*.ttf" />
+    <Content Include="Assets\rhino-launcher.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Web\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
