@@ -1,43 +1,143 @@
-using Microsoft.Web.WebView2.Core;
 using Microsoft.Win32;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
-using DrawingColor = System.Drawing.Color;
 
 namespace RhinoWorktreeLauncher;
 
 public partial class MainWindow : Window
 {
-    private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly IReadOnlyDictionary<string, string> DarkTheme =
+        new Dictionary<string, string>
+        {
+            ["WindowBrush"] = "#16181B",
+            ["PanelBrush"] = "#1A1C20",
+            ["FooterBrush"] = "#121417",
+            ["ControlBrush"] = "#1B1D21",
+            ["ControlHoverBrush"] = "#22252A",
+            ["ProgressBrush"] = "#247FAE7A",
+            ["TagBrush"] = "#0D9AA8BB",
+            ["BadgeBrush"] = "#1F2329",
+            ["DiffBoxBrush"] = "#1E2125",
+            ["RowHoverBrush"] = "#1F2226",
+            ["RowActiveBrush"] = "#262B31",
+            ["TrackBrush"] = "#1C1F23",
+            ["TrackCenterBrush"] = "#3A4048",
+            ["LogoPlateBrush"] = "#F4F6F8",
+            ["PanelBorderBrush"] = "#26292E",
+            ["DividerBrush"] = "#232629",
+            ["ControlBorderBrush"] = "#2E3238",
+            ["ControlHoverBorderBrush"] = "#464C54",
+            ["TagBorderBrush"] = "#232629",
+            ["BadgeBorderBrush"] = "#333941",
+            ["DiffBoxBorderBrush"] = "#282C31",
+            ["TextStrongBrush"] = "#F0F2F5",
+            ["TextBodyBrush"] = "#E6E8EB",
+            ["TextSecondaryBrush"] = "#878D95",
+            ["TextMutedBrush"] = "#6C727A",
+            ["TextFaintBrush"] = "#5D646C",
+            ["TextBadgeBrush"] = "#A5AEBA",
+            ["ControlTextBrush"] = "#B2B8C0",
+            ["AheadTextBrush"] = "#7FAE7A",
+            ["BehindTextBrush"] = "#C07D76",
+            ["ZeroTextBrush"] = "#484E56",
+            ["AheadFillBrush"] = "#5F8A5C",
+            ["BehindFillBrush"] = "#9E5F59",
+            ["FreshTextBrush"] = "#8FAE8B",
+            ["FreshBackgroundBrush"] = "#127FAE7A",
+            ["FreshBorderBrush"] = "#2C3A2F",
+            ["StaleTextBrush"] = "#8A9099",
+            ["StaleBackgroundBrush"] = "#0D9AA8BB",
+            ["StaleBorderBrush"] = "#282C31",
+            ["PatternBrush"] = "#1AB2C0D3",
+            ["PrimaryBrush"] = "#F0F2F5",
+            ["PrimaryHoverBrush"] = "#FFFFFF",
+            ["PrimaryTextBrush"] = "#16181B",
+            ["ScrollThumbBrush"] = "#343840"
+        };
 
+    private static readonly IReadOnlyDictionary<string, string> LightTheme =
+        new Dictionary<string, string>
+        {
+            ["WindowBrush"] = "#F4F5F7",
+            ["PanelBrush"] = "#FFFFFF",
+            ["FooterBrush"] = "#EEF0F3",
+            ["ControlBrush"] = "#FFFFFF",
+            ["ControlHoverBrush"] = "#F7F8FA",
+            ["ProgressBrush"] = "#296BA36F",
+            ["TagBrush"] = "#0F5A697D",
+            ["BadgeBrush"] = "#EEF0F3",
+            ["DiffBoxBrush"] = "#F6F7F9",
+            ["RowHoverBrush"] = "#F4F6F8",
+            ["RowActiveBrush"] = "#E7EBF1",
+            ["TrackBrush"] = "#EDEFF2",
+            ["TrackCenterBrush"] = "#C9CED6",
+            ["LogoPlateBrush"] = "#1B1E23",
+            ["PanelBorderBrush"] = "#DFE2E7",
+            ["DividerBrush"] = "#E0E3E7",
+            ["ControlBorderBrush"] = "#D5D9DF",
+            ["ControlHoverBorderBrush"] = "#B9BFC8",
+            ["TagBorderBrush"] = "#DDE0E5",
+            ["BadgeBorderBrush"] = "#D7DBE1",
+            ["DiffBoxBorderBrush"] = "#E2E5EA",
+            ["TextStrongBrush"] = "#171B21",
+            ["TextBodyBrush"] = "#2A2F36",
+            ["TextSecondaryBrush"] = "#606770",
+            ["TextMutedBrush"] = "#787F89",
+            ["TextFaintBrush"] = "#8D949E",
+            ["TextBadgeBrush"] = "#5B636D",
+            ["ControlTextBrush"] = "#3C424A",
+            ["AheadTextBrush"] = "#3F7A44",
+            ["BehindTextBrush"] = "#A5443C",
+            ["ZeroTextBrush"] = "#B4BAC2",
+            ["AheadFillBrush"] = "#6BA36F",
+            ["BehindFillBrush"] = "#CD7D75",
+            ["FreshTextBrush"] = "#3F7A44",
+            ["FreshBackgroundBrush"] = "#1A6BA36F",
+            ["FreshBorderBrush"] = "#C3DDC4",
+            ["StaleTextBrush"] = "#6D747E",
+            ["StaleBackgroundBrush"] = "#0F5A697D",
+            ["StaleBorderBrush"] = "#DDE0E5",
+            ["PatternBrush"] = "#24465A78",
+            ["PrimaryBrush"] = "#1B1E23",
+            ["PrimaryHoverBrush"] = "#000000",
+            ["PrimaryTextBrush"] = "#F4F6F8",
+            ["ScrollThumbBrush"] = "#C3C8D0"
+        };
+
+    private readonly ObservableCollection<ProjectManifest> _projects =
+        new ObservableCollection<ProjectManifest>();
+    private readonly ObservableCollection<WorktreeEntry> _worktrees =
+        new ObservableCollection<WorktreeEntry>();
     private readonly ProjectCatalog _catalog;
     private readonly GitWorktreeScanner _scanner = new GitWorktreeScanner();
     private readonly WorktreeLaunchService _launchService = new WorktreeLaunchService();
-    private readonly LauncherSnapshotStore _snapshotStore = new LauncherSnapshotStore();
     private readonly DispatcherTimer _themeTimer;
-    private IReadOnlyList<ProjectManifest> _projects = Array.Empty<ProjectManifest>();
-    private IReadOnlyList<WorktreeEntry> _worktrees = Array.Empty<WorktreeEntry>();
     private ProjectManifest? _currentProject;
-    private string? _selectedPath;
-    private string _hint = "Double-click to launch";
     private bool _isRefreshing;
-    private bool _webReady;
     private bool _isClosing;
+    private bool _isUpdatingProjects;
+    private bool _isUpdatingWorktrees;
     private bool? _isLightTheme;
+    private string _hint = "Double-click to launch";
+    private string _repositoryPath = string.Empty;
 
     public MainWindow(ProjectCatalog catalog)
     {
         _catalog = catalog;
         InitializeComponent();
+        ProjectList.ItemsSource = _projects;
+        WorktreeList.ItemsSource = _worktrees;
         SourceInitialized += OnSourceInitialized;
         _themeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _themeTimer.Tick += (_, _) => ApplySystemTheme();
@@ -53,174 +153,33 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _themeTimer.Stop();
-        Browser.Dispose();
         base.OnClosed(e);
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         _themeTimer.Start();
-        await InitializeWebAsync();
+        await ReloadProjectsAsync(null);
     }
 
-    private async Task InitializeWebAsync()
+    private async void Refresh_Click(object sender, RoutedEventArgs e) =>
+        await RefreshAsync(fetchRemote: true);
+
+    private async void ProjectList_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
     {
-        try
-        {
-            LauncherStoragePaths.EnsureDataRoot();
-            CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(
-                userDataFolder: LauncherStoragePaths.WebViewUserDataFolder);
-            await Browser.EnsureCoreWebView2Async(environment);
-            Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            Browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
-#if !DEBUG
-            Browser.CoreWebView2.Settings.AreDevToolsEnabled = false;
-#endif
-            Browser.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                "launcher.local",
-                AppContext.BaseDirectory,
-                CoreWebView2HostResourceAccessKind.Allow);
-            Browser.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
-            Browser.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
-            Browser.Source = new Uri("https://launcher.local/Web/index.html");
-            ApplySystemTheme();
-        }
-        catch (Exception ex)
-        {
-            if (_isClosing)
-                return;
-
-            MessageBox.Show(
-                this,
-                $"The launcher web interface could not start.\n\n{ex.Message}",
-                "Rhino Worktree Launcher",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-            Close();
-        }
-    }
-
-    private void OnNavigationCompleted(
-        object? sender,
-        CoreWebView2NavigationCompletedEventArgs e)
-    {
-        if (_isClosing)
-            return;
-        if (!e.IsSuccess)
-        {
-            MessageBox.Show(
-                this,
-                $"The launcher web interface could not load.\n\n{e.WebErrorStatus}",
-                "Rhino Worktree Launcher",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-            Close();
-            return;
-        }
-
-        Browser.Visibility = Visibility.Visible;
-        LoadingSurface.Visibility = Visibility.Collapsed;
-    }
-
-    private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
-    {
-        WebCommand? command;
-        try
-        {
-            command = JsonSerializer.Deserialize<WebCommand>(e.WebMessageAsJson, JsonOptions);
-        }
-        catch (JsonException)
-        {
-            return;
-        }
-        if (command is null)
+        if (_isUpdatingProjects)
             return;
 
-        switch (command.Type)
-        {
-            case "ready":
-                _webReady = true;
-                SendTheme();
-                LauncherSnapshotDto? snapshot = _snapshotStore.Load();
-                ReloadProjects(snapshot?.CurrentManifestPath, sendState: false);
-                bool restoredSnapshot = snapshot is not null && string.Equals(
-                    snapshot.CurrentManifestPath,
-                    _currentProject?.ManifestPath,
-                    StringComparison.OrdinalIgnoreCase);
-                if (restoredSnapshot)
-                {
-                    _selectedPath = snapshot!.SelectedPath;
-                    SendSnapshot(snapshot!);
-                }
-                else
-                {
-                    SendState();
-                }
-                _ = RefreshAsync(fetchRemote: false, preserveDisplayedState: restoredSnapshot);
-                break;
-            case "refresh":
-                await RefreshAsync(fetchRemote: true);
-                break;
-            case "select-project":
-                await SelectProjectAsync(command.ManifestPath);
-                break;
-            case "select":
-                SelectWorktree(command.Path);
-                break;
-            case "add-project":
-                await AddProjectAsync();
-                break;
-            case "open-folder":
-                OpenFolder(command.Path);
-                break;
-            case "launch":
-                Launch(command.Path);
-                break;
-        }
-    }
-
-    private void ReloadProjects(string? selectedManifestPath, bool sendState = true)
-    {
-        _projects = _catalog.LoadProjects();
-        _currentProject = _projects.FirstOrDefault(project => string.Equals(
-            project.ManifestPath,
-            selectedManifestPath,
-            StringComparison.OrdinalIgnoreCase)) ?? _projects.FirstOrDefault();
-        _worktrees = Array.Empty<WorktreeEntry>();
-        _selectedPath = null;
-        _hint = _currentProject is null ? "No projects registered" : "Loading worktrees...";
-        if (sendState)
-            SendState();
-    }
-
-    private async Task SelectProjectAsync(string? manifestPath)
-    {
-        ProjectManifest? project = _projects.FirstOrDefault(candidate => string.Equals(
-            candidate.ManifestPath,
-            manifestPath,
-            StringComparison.OrdinalIgnoreCase));
-        if (project is null)
+        ProjectManifest? project = ProjectList.SelectedItem as ProjectManifest;
+        if (project is null || ReferenceEquals(project, _currentProject))
             return;
 
-        _currentProject = project;
-        _worktrees = Array.Empty<WorktreeEntry>();
-        _selectedPath = null;
-        _hint = "Loading worktrees...";
-        SendState();
-        await RefreshAsync(fetchRemote: false);
+        await SelectProjectAsync(project);
     }
 
-    private void SelectWorktree(string? path)
-    {
-        if (_worktrees.Any(worktree => string.Equals(worktree.Path, path, StringComparison.OrdinalIgnoreCase)))
-        {
-            _selectedPath = path;
-            SendState();
-            SaveSnapshot();
-        }
-    }
-
-    private async Task AddProjectAsync()
+    private async void AddProject_Click(object sender, RoutedEventArgs e)
     {
         OpenFolderDialog dialog = new OpenFolderDialog
         {
@@ -233,86 +192,178 @@ public partial class MainWindow : Window
         try
         {
             ProjectManifest project = _catalog.AddProject(dialog.FolderName);
-            ReloadProjects(project.ManifestPath);
-            await RefreshAsync(fetchRemote: false);
+            await ReloadProjectsAsync(project.ManifestPath);
         }
         catch (Exception ex)
         {
             _hint = "Project not supported";
-            SendState();
-            MessageBox.Show(this, ex.Message, "Project not supported", MessageBoxButton.OK, MessageBoxImage.Warning);
+            UpdateState();
+            MessageBox.Show(
+                this,
+                ex.Message,
+                "Project not supported",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
     }
 
-    private async Task RefreshAsync(bool fetchRemote, bool preserveDisplayedState = false)
+    private void WorktreeList_SelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_isUpdatingWorktrees)
+            UpdateSelectionState();
+    }
+
+    private void WorktreeList_MouseDoubleClick(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        if (WorktreeList.SelectedItem is WorktreeEntry worktree && worktree.CanLaunch)
+            Launch(worktree);
+    }
+
+    private void WorktreeList_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter ||
+            WorktreeList.SelectedItem is not WorktreeEntry worktree ||
+            !worktree.CanLaunch)
+        {
+            return;
+        }
+
+        Launch(worktree);
+        e.Handled = true;
+    }
+
+    private void OpenFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (WorktreeList.SelectedItem is not WorktreeEntry worktree)
+            return;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            ArgumentList = { worktree.Path },
+            UseShellExecute = true
+        });
+    }
+
+    private void Launch_Click(object sender, RoutedEventArgs e)
+    {
+        if (WorktreeList.SelectedItem is WorktreeEntry worktree)
+            Launch(worktree);
+    }
+
+    private async Task ReloadProjectsAsync(string? selectedManifestPath)
+    {
+        IReadOnlyList<ProjectManifest> projects = _catalog.LoadProjects();
+        _isUpdatingProjects = true;
+        try
+        {
+            _projects.Clear();
+            foreach (ProjectManifest project in projects)
+                _projects.Add(project);
+
+            _currentProject = _projects.FirstOrDefault(project => string.Equals(
+                project.ManifestPath,
+                selectedManifestPath,
+                StringComparison.OrdinalIgnoreCase)) ?? _projects.FirstOrDefault();
+            ProjectList.SelectedItem = _currentProject;
+        }
+        finally
+        {
+            _isUpdatingProjects = false;
+        }
+
+        if (_currentProject is null)
+        {
+            _repositoryPath = string.Empty;
+            _worktrees.Clear();
+            _hint = "No projects registered";
+            UpdateState();
+            return;
+        }
+
+        await SelectProjectAsync(_currentProject);
+    }
+
+    private async Task SelectProjectAsync(ProjectManifest project)
+    {
+        _currentProject = project;
+        _repositoryPath = project.RepositoryRoot;
+        _worktrees.Clear();
+        _hint = "Loading worktrees...";
+        UpdateState();
+        await RefreshAsync(fetchRemote: false);
+    }
+
+    private async Task RefreshAsync(bool fetchRemote)
     {
         if (_isRefreshing || _currentProject is null)
             return;
 
         _isRefreshing = true;
-        string? selectedPath = _selectedPath;
+        string? selectedPath = (WorktreeList.SelectedItem as WorktreeEntry)?.Path;
         _hint = fetchRemote ? "Syncing repository..." : "Loading worktrees...";
-        if (!preserveDisplayedState)
-            SendState();
-        SendSync(active: true, local: 0, git: 0);
+        UpdateState();
+        UpdateSync(active: true, local: 0, git: 0);
 
         try
         {
             ProjectManifest project = _currentProject;
             if (!fetchRemote)
             {
-                if (!preserveDisplayedState)
-                {
-                    _worktrees = await Task.Run(() => _scanner.ScanFast(project));
-                    _selectedPath = ResolveSelection(_worktrees, selectedPath);
-                    _hint = "Loading local details...";
-                    SendState();
-                }
+                IReadOnlyList<WorktreeEntry> fastEntries =
+                    await Task.Run(() => _scanner.ScanFast(project));
+                UpdateWorktrees(fastEntries, selectedPath);
+                _hint = "Loading local details...";
+                UpdateState();
 
-                _worktrees = await Task.Run(() => _scanner.ScanLocal(project));
-                _selectedPath = ResolveSelection(_worktrees, selectedPath);
+                IReadOnlyList<WorktreeEntry> initialLocalEntries =
+                    await Task.Run(() => _scanner.ScanLocal(project));
+                UpdateWorktrees(initialLocalEntries, selectedPath);
                 _hint = "Double-click to launch";
-                SendSync(active: true, local: 1, git: 1);
-                SendState();
-                SaveSnapshot();
-                _ = EnrichInitialGitAsync(project, _worktrees);
+                UpdateSync(active: true, local: 1, git: 1);
+                UpdateState();
+                _ = EnrichInitialGitAsync(project, initialLocalEntries);
                 return;
             }
 
-            Task<IReadOnlyList<WorktreeEntry>> localTask = Task.Run(() => _scanner.ScanLocal(project));
-            Task<GitSyncResult> gitTask = Task.Run(() => SynchronizeGit(project));
+            Task<IReadOnlyList<WorktreeEntry>> localTask =
+                Task.Run(() => _scanner.ScanLocal(project));
+            Task<GitSyncResult> gitTask =
+                Task.Run(() => SynchronizeGit(project));
 
             IReadOnlyList<WorktreeEntry> localEntries = await localTask;
-            _worktrees = localEntries;
-            _selectedPath = ResolveSelection(_worktrees, selectedPath);
+            UpdateWorktrees(localEntries, selectedPath);
             _hint = "Local scan complete; syncing Git...";
-            SendState();
-            SendSync(active: true, local: 1, git: 0);
+            UpdateState();
+            UpdateSync(active: true, local: 1, git: 0);
 
             GitSyncResult gitResult = await gitTask;
-            SendSync(active: true, local: 1, git: 1);
+            UpdateSync(active: true, local: 1, git: 1);
 
-            _worktrees = await Task.Run(() => _scanner.EnrichGit(project, localEntries, gitResult.PullRequests));
-            _selectedPath = ResolveSelection(_worktrees, selectedPath);
+            IReadOnlyList<WorktreeEntry> enriched = await Task.Run(() =>
+                _scanner.EnrichGit(project, localEntries, gitResult.PullRequests));
+            UpdateWorktrees(enriched, selectedPath);
             _hint = gitResult.FetchSucceeded
                 ? "Double-click to launch"
                 : "Local data shown; Git sync unavailable";
-            SendState();
-            SaveSnapshot();
+            UpdateState();
             await Task.Delay(450);
         }
         catch (Exception ex)
         {
-            _worktrees = Array.Empty<WorktreeEntry>();
-            _selectedPath = null;
+            _worktrees.Clear();
             _hint = ex.Message;
-            SendState();
+            UpdateState();
         }
         finally
         {
             _isRefreshing = false;
-            SendSync(active: false, local: 0, git: 0);
-            SendState();
+            UpdateSync(active: false, local: 0, git: 0);
+            UpdateState();
         }
     }
 
@@ -323,30 +374,23 @@ public partial class MainWindow : Window
         try
         {
             IReadOnlyList<WorktreeEntry> enriched = await Task.Run(() =>
-                _scanner.EnrichGit(project, localEntries));
+            {
+                IReadOnlyDictionary<string, PullRequestInfo> pullRequests =
+                    _scanner.GetPullRequests(project);
+                return _scanner.EnrichGit(project, localEntries, pullRequests);
+            });
             if (_isClosing || _isRefreshing || !ReferenceEquals(_currentProject, project))
                 return;
 
-            _worktrees = enriched;
-            _selectedPath = ResolveSelection(_worktrees, _selectedPath);
-            SendState();
-            SaveSnapshot();
+            string? selectedPath = (WorktreeList.SelectedItem as WorktreeEntry)?.Path;
+            UpdateWorktrees(enriched, selectedPath);
+            UpdateState();
         }
         catch
         {
             // Optional divergence enrichment must not delay or break local startup.
         }
     }
-
-    private static string? ResolveSelection(
-        IReadOnlyList<WorktreeEntry> worktrees,
-        string? selectedPath) =>
-        worktrees.FirstOrDefault(worktree => string.Equals(
-            worktree.Path,
-            selectedPath,
-            StringComparison.OrdinalIgnoreCase))?.Path ??
-        worktrees.FirstOrDefault(worktree => worktree.IsPrimary)?.Path ??
-        worktrees.FirstOrDefault()?.Path;
 
     private GitSyncResult SynchronizeGit(ProjectManifest project)
     {
@@ -360,129 +404,178 @@ public partial class MainWindow : Window
             fetchSucceeded = false;
         }
 
-        IReadOnlyDictionary<string, PullRequestInfo> pullRequests = _scanner.GetPullRequests(project);
+        IReadOnlyDictionary<string, PullRequestInfo> pullRequests =
+            _scanner.GetPullRequests(project);
         return new GitSyncResult(fetchSucceeded, pullRequests);
     }
 
-    private void OpenFolder(string? path)
+    private void UpdateWorktrees(
+        IReadOnlyList<WorktreeEntry> entries,
+        string? selectedPath)
     {
-        WorktreeEntry? worktree = FindWorktree(path);
-        if (worktree is null)
-            return;
-        Process.Start(new ProcessStartInfo
+        _isUpdatingWorktrees = true;
+        try
         {
-            FileName = "explorer.exe",
-            ArgumentList = { worktree.Path },
-            UseShellExecute = true
-        });
+            _worktrees.Clear();
+            foreach (WorktreeEntry entry in entries)
+                _worktrees.Add(entry);
+
+            WorktreeList.SelectedItem = _worktrees.FirstOrDefault(entry => string.Equals(
+                entry.Path,
+                selectedPath,
+                StringComparison.OrdinalIgnoreCase)) ??
+                _worktrees.FirstOrDefault(entry => entry.IsPrimary) ??
+                _worktrees.FirstOrDefault();
+        }
+        finally
+        {
+            _isUpdatingWorktrees = false;
+        }
+
+        UpdateSelectionState();
     }
 
-    private void Launch(string? path)
+    private void UpdateState()
     {
-        WorktreeEntry? worktree = FindWorktree(path);
-        if (worktree is null)
-            return;
+        WorktreeCountText.Text = _worktrees.Count.ToString(CultureInfo.InvariantCulture);
+        PanelHintText.Text = _hint;
+        EmptyStateText.Visibility = _worktrees.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        UpdateRepositoryPathText();
+        UpdateSelectionState();
+    }
 
+    private void UpdateSelectionState()
+    {
+        WorktreeEntry? selected = WorktreeList.SelectedItem as WorktreeEntry;
+        SelectedWorktreeText.Text = selected?.DisplayName ?? "No worktree selected";
+        OpenFolderButton.IsEnabled = selected is not null;
+        LaunchButton.IsEnabled = selected?.CanLaunch == true;
+    }
+
+    private void UpdateSync(bool active, double local, double git)
+    {
+        RefreshButton.IsHitTestVisible = !active;
+        RefreshButton.Cursor = active ? Cursors.Arrow : Cursors.Hand;
+        RefreshIdle.Visibility = active ? Visibility.Collapsed : Visibility.Visible;
+        RefreshSync.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!active)
+        {
+            StopProgress(LocalProgressFill);
+            StopProgress(GitProgressFill);
+            return;
+        }
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            SetProgress(LocalProgressFill, local);
+            SetProgress(GitProgressFill, git);
+        }, DispatcherPriority.Loaded);
+    }
+
+    private static void SetProgress(Border fill, double value)
+    {
+        fill.BeginAnimation(WidthProperty, null);
+        if (value >= 1)
+        {
+            fill.Width = (fill.Parent as FrameworkElement)?.ActualWidth ?? 0;
+            return;
+        }
+
+        double width = (fill.Parent as FrameworkElement)?.ActualWidth ?? 0;
+        DoubleAnimation crawl = new DoubleAnimation
+        {
+            From = 0,
+            To = width * 0.72,
+            Duration = TimeSpan.FromSeconds(4),
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        fill.BeginAnimation(WidthProperty, crawl);
+    }
+
+    private static void StopProgress(Border fill)
+    {
+        fill.BeginAnimation(WidthProperty, null);
+        fill.Width = 0;
+    }
+
+    private void Launch(WorktreeEntry worktree)
+    {
         try
         {
             _launchService.Launch(worktree);
-            _hint = worktree.IsPrimary ? "Normal Rhino started" : "Worktree launch started";
-            SendState();
+            _hint = worktree.IsPrimary
+                ? "Normal Rhino started"
+                : "Worktree launch started";
+            UpdateState();
         }
         catch (Exception ex)
         {
             _hint = "Launch failed";
-            SendState();
-            MessageBox.Show(this, ex.Message, "Rhino launch failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            UpdateState();
+            MessageBox.Show(
+                this,
+                ex.Message,
+                "Rhino launch failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
     }
 
-    private WorktreeEntry? FindWorktree(string? path) =>
-        _worktrees.FirstOrDefault(worktree => string.Equals(
-            worktree.Path,
-            path,
-            StringComparison.OrdinalIgnoreCase));
+    private void RepositoryPathText_SizeChanged(
+        object sender,
+        SizeChangedEventArgs e) => UpdateRepositoryPathText();
 
-    private void SendSnapshot(LauncherSnapshotDto snapshot)
+    private void UpdateRepositoryPathText()
     {
-        LauncherStateDto state = new LauncherStateDto(
-            _projects.Select(project => new LauncherProjectDto(project.DisplayName, project.ManifestPath)).ToArray(),
-            snapshot.CurrentManifestPath,
-            snapshot.ProjectName,
-            snapshot.RepositoryPath,
-            snapshot.Worktrees.Select(worktree => worktree with { CanLaunch = false }).ToArray(),
-            snapshot.SelectedPath,
-            "Refreshing worktrees...",
-            true);
-        Post(new { type = "state", state });
+        RepositoryPathText.ToolTip = string.IsNullOrWhiteSpace(_repositoryPath)
+            ? null
+            : _repositoryPath;
+        RepositoryPathText.Text = TruncatePathFromStart(
+            _repositoryPath,
+            Math.Max(0, RepositoryPathText.ActualWidth - 32));
     }
 
-    private void SaveSnapshot()
+    private static string TruncatePathFromStart(string path, double availableWidth)
     {
-        if (_currentProject is null || _worktrees.Count == 0)
-            return;
+        if (string.IsNullOrWhiteSpace(path) || availableWidth <= 0)
+            return path;
 
-        try
+        Typeface typeface = new Typeface(
+            (FontFamily)Application.Current.FindResource("MonoFont"),
+            FontStyles.Normal,
+            FontWeights.Normal,
+            FontStretches.Normal);
+        double pixelsPerDip = VisualTreeHelper.GetDpi(Application.Current.MainWindow).PixelsPerDip;
+
+        double Measure(string value) => new FormattedText(
+            value,
+            CultureInfo.CurrentUICulture,
+            FlowDirection.LeftToRight,
+            typeface,
+            10.5,
+            Brushes.Black,
+            pixelsPerDip).WidthIncludingTrailingWhitespace;
+
+        if (Measure(path) <= availableWidth)
+            return path;
+
+        const string prefix = "…";
+        int low = 0;
+        int high = path.Length;
+        while (low < high)
         {
-            _snapshotStore.Save(new LauncherSnapshotDto(
-                LauncherSnapshotStore.CurrentSchemaVersion,
-                _currentProject.ManifestPath,
-                _currentProject.DisplayName,
-                _currentProject.RepositoryRoot,
-                _worktrees.Select(ToDto).ToArray(),
-                _selectedPath));
+            int length = (low + high + 1) / 2;
+            string candidate = prefix + path.Substring(path.Length - length);
+            if (Measure(candidate) <= availableWidth)
+                low = length;
+            else
+                high = length - 1;
         }
-        catch
-        {
-            // Snapshot persistence is optional and must not affect launcher operation.
-        }
-    }
 
-    private void SendState()
-    {
-        if (!_webReady)
-            return;
-
-        LauncherStateDto state = new LauncherStateDto(
-            _projects.Select(project => new LauncherProjectDto(project.DisplayName, project.ManifestPath)).ToArray(),
-            _currentProject?.ManifestPath,
-            _currentProject?.DisplayName ?? string.Empty,
-            _currentProject?.RepositoryRoot ?? string.Empty,
-            _worktrees.Select(ToDto).ToArray(),
-            _selectedPath,
-            _hint,
-            _isRefreshing);
-        Post(new { type = "state", state });
-    }
-
-    private static LauncherWorktreeDto ToDto(WorktreeEntry worktree) => new LauncherWorktreeDto(
-        worktree.DisplayName,
-        worktree.Path,
-        worktree.IsPrimary,
-        worktree.CanLaunch,
-        worktree.IsFresh,
-        worktree.FreshnessLabel,
-        worktree.HasLocalState,
-        worktree.HasGitState,
-        worktree.LocalAdded,
-        worktree.LocalDeleted,
-        worktree.RelativeActivityLabel,
-        worktree.AheadCount,
-        worktree.BehindCount,
-        worktree.AheadBarWidth,
-        worktree.BehindBarWidth,
-        worktree.HasPullRequest,
-        worktree.PullRequestLabel,
-        worktree.IsPullRequestDraft);
-
-    private void SendSync(bool active, double local, double git) =>
-        Post(new { type = "sync", active, local, git });
-
-    private void Post(object message)
-    {
-        if (!_webReady || Browser.CoreWebView2 is null)
-            return;
-        Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(message, JsonOptions));
+        return prefix + path.Substring(path.Length - low);
     }
 
     private void ApplySystemTheme()
@@ -490,29 +583,55 @@ public partial class MainWindow : Window
         bool isLight = IsSystemLightTheme();
         if (_isLightTheme == isLight)
             return;
+
         _isLightTheme = isLight;
-        Browser.DefaultBackgroundColor = isLight
-            ? DrawingColor.FromArgb(255, 244, 245, 247)
-            : DrawingColor.FromArgb(255, 22, 24, 27);
-        Background = new System.Windows.Media.SolidColorBrush(isLight
-            ? System.Windows.Media.Color.FromRgb(244, 245, 247)
-            : System.Windows.Media.Color.FromRgb(22, 24, 27));
-        LoadingSurface.Background = Background;
-        LoadingLogoPlate.Background = new System.Windows.Media.SolidColorBrush(isLight
-            ? System.Windows.Media.Color.FromRgb(27, 30, 35)
-            : System.Windows.Media.Color.FromRgb(244, 246, 248));
-        LoadingTitle.Foreground = new System.Windows.Media.SolidColorBrush(isLight
-            ? System.Windows.Media.Color.FromRgb(23, 27, 33)
-            : System.Windows.Media.Color.FromRgb(240, 242, 245));
-        LoadingStatus.Foreground = new System.Windows.Media.SolidColorBrush(isLight
-            ? System.Windows.Media.Color.FromRgb(120, 127, 137)
-            : System.Windows.Media.Color.FromRgb(108, 114, 122));
-        SendTheme();
+        IReadOnlyDictionary<string, string> palette =
+            isLight ? LightTheme : DarkTheme;
+        foreach ((string key, string value) in palette)
+            Resources[key] = new SolidColorBrush(
+                (Color)ColorConverter.ConvertFromString(value));
+
+        Resources["ControlShadowEffect"] = isLight
+            ? CreateShadow(3, 1, 0.07, Color.FromRgb(24, 30, 40))
+            : CreateShadow(3, 1, 0.30, Colors.Black);
+        Resources["ChipShadowEffect"] = isLight
+            ? CreateShadow(2, 1, 0.05, Color.FromRgb(24, 30, 40))
+            : CreateShadow(2, 1, 0.30, Colors.Black);
+        Resources["RowActiveShadowEffect"] = isLight
+            ? CreateShadow(2, 1, 0.06, Color.FromRgb(24, 30, 40))
+            : CreateShadow(8, 2, 0.65, Colors.Black);
+        Resources["PrimaryShadowEffect"] = isLight
+            ? CreateShadow(10, 2, 0.14, Color.FromRgb(24, 30, 40))
+            : CreateShadow(10, 2, 0.18, Color.FromRgb(200, 210, 225));
+
+        WorktreePanel.Effect = isLight
+            ? new DropShadowEffect
+            {
+                BlurRadius = 20,
+                Direction = 270,
+                ShadowDepth = 2,
+                Opacity = 0.12,
+                Color = Color.FromRgb(24, 30, 40)
+            }
+            : null;
+        LogoShadow.BlurRadius = isLight ? 16 : 20;
+        LogoShadow.ShadowDepth = isLight ? 1 : 2;
+        LogoShadow.Opacity = isLight ? 0.28 : 0.36;
         ApplyWindowChrome();
     }
 
-    private void SendTheme() =>
-        Post(new { type = "theme", theme = _isLightTheme == true ? "light" : "dark" });
+    private static DropShadowEffect CreateShadow(
+        double blurRadius,
+        double shadowDepth,
+        double opacity,
+        Color color) => new DropShadowEffect
+        {
+            BlurRadius = blurRadius,
+            Direction = 270,
+            ShadowDepth = shadowDepth,
+            Opacity = opacity,
+            Color = color
+        };
 
     private static bool IsSystemLightTheme()
     {
@@ -521,19 +640,25 @@ public partial class MainWindow : Window
         return key?.GetValue("AppsUseLightTheme") is int value && value != 0;
     }
 
-    private void OnSourceInitialized(object? sender, EventArgs e) => ApplyWindowChrome();
+    private void OnSourceInitialized(object? sender, EventArgs e) =>
+        ApplyWindowChrome();
 
     private void ApplyWindowChrome()
     {
         IntPtr handle = new WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero)
             return;
+
         int dark = _isLightTheme == true ? 0 : 1;
         _ = DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
     }
 
     [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
+    private static extern int DwmSetWindowAttribute(
+        IntPtr window,
+        int attribute,
+        ref int value,
+        int size);
 
     private sealed record GitSyncResult(
         bool FetchSucceeded,

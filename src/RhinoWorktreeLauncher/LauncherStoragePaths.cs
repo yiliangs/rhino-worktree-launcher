@@ -9,8 +9,5 @@ internal static class LauncherStoragePaths
         "RhinoWorktreeLauncher");
 
     public static string ProjectCatalogPath { get; } = Path.Combine(DataRoot, "projects.json");
-    public static string SnapshotCachePath { get; } = Path.Combine(DataRoot, "snapshot.json");
-    public static string WebViewUserDataFolder { get; } = Path.Combine(DataRoot, "WebView2");
-
     public static void EnsureDataRoot() => Directory.CreateDirectory(DataRoot);
 }

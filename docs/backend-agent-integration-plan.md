@@ -1,6 +1,6 @@
 # Backend and Agent Integration Plan
 
-Status: proposal only. This document records the intended direction while the current web interface renovation is still in progress. It does not authorize changes to the active frontend work.
+Status: proposal only. This document records the intended direction after the native WPF interface redesign. It does not authorize backend or agent-integration changes.
 
 ## Decision summary
 
@@ -10,7 +10,7 @@ The launcher is a one-off bootstrapper, not a session monitor. A launch runs pre
 
 The system will expose one backend through three adapters:
 
-- The web interface for humans.
+- The WPF desktop interface for humans.
 - MCP tools for agents.
 - A CLI for scripting, diagnostics, installation, and fallback use.
 
@@ -29,7 +29,7 @@ Rhino Worktree Launcher owns:
 - Starting Rhino with the selected worktree's artifacts.
 - Verifying the loaded plug-in and critical dependency paths through the receipt handshake, then reporting one terminal launch result.
 - Writing per-launch diagnostics logs.
-- Serving the same application commands to the web UI, MCP, and CLI.
+- Serving the same application commands to the WPF UI, MCP, and CLI.
 
 Rhino Worktree Launcher does not own:
 
@@ -57,7 +57,7 @@ Rhino Worktree Launcher backend
   Rhino process launch and receipt verification
        |              |              |
        v              v              v
-   Web adapter     MCP adapter     CLI adapter
+   WPF adapter     MCP adapter     CLI adapter
      human            agent         script/fallback
 ```
 
@@ -110,7 +110,7 @@ Registration is explicit and occurs once per repository and machine:
 rwl project register C:\path\to\repository
 ```
 
-The web interface provides the equivalent Add Project action.
+The WPF interface provides the equivalent Add Project action.
 
 The local catalog stores stable repository identity rather than a manifest path inside an expendable worktree:
 
@@ -127,7 +127,7 @@ Registration validates the manifest and driver. Registering a repository is itse
 
 ### Catalog access rules
 
-The catalog is read by the web host, the CLI, and the MCP server as independent processes, so:
+The catalog is read by the WPF application, the CLI, and the MCP server as independent processes, so:
 
 - Reads never write. Loading the catalog is pure; a registration whose manifest fails to load surfaces as a degraded project entry rather than being pruned.
 - Removal happens only through the explicit `RemoveProject` command.
@@ -148,15 +148,15 @@ The backend will expose transport-neutral commands:
 - `Launch`
 - `RunDoctor`
 
-`Launch` is synchronous: it runs preflight, driver build, Rhino start, and receipt verification, then returns one terminal result. It accepts an explicit timeout and always terminates with a machine-readable success or failure. Progress is reported through in-process events for the web UI and streamed output for the CLI; there is no separately addressable operation object.
+`Launch` is synchronous: it runs preflight, driver build, Rhino start, and receipt verification, then returns one terminal result. It accepts an explicit timeout and always terminates with a machine-readable success or failure. Progress is reported through in-process events for the WPF UI and streamed output for the CLI; there is no separately addressable operation object.
 
 Every command returns typed data and structured diagnostics. Optional enrichment failures, such as unavailable GitHub PR data, are represented as degraded results rather than being silently discarded. Required launch failures remain terminal failures.
 
 Each launch writes a diagnostics log under `%LOCALAPPDATA%\RhinoWorktreeLauncher\logs\` for postmortem reading. The log is inert output, not observable state; nothing reads it programmatically.
 
-## Human web interface
+## Human WPF interface
 
-The current WPF-to-web renovation remains a frontend selection. The web frontend consumes backend DTOs and application commands. It must not run Git, invoke project drivers, or infer launch success independently.
+The native WPF frontend consumes backend DTOs and application commands. After backend extraction, it must not run Git, invoke project drivers, or infer launch success independently.
 
 A launch interaction follows:
 
@@ -166,7 +166,7 @@ Launch request
   -> succeeded or failed terminal result
 ```
 
-The web host calls the backend in process. No persistent service or cross-process coordinator exists in this version.
+The WPF application calls the backend in process. No persistent service or cross-process coordinator exists in this version.
 
 ## Agent MCP adapter
 
@@ -225,7 +225,7 @@ rwl integration remove claude
 
 A per-user installer publishes versioned releases and installs a stable bootstrap executable. The Start Menu shortcut, MCP registration, and session hook point to the stable bootstrap rather than a version-specific executable path.
 
-Claude integration is optional. If Claude Code is installed, the installer can register the user-scoped MCP server and merge the owned session hook. If Claude Code is absent, the launcher and web interface remain fully usable, and integration can be installed later through the CLI.
+Claude integration is optional. If Claude Code is installed, the installer can register the user-scoped MCP server and merge the owned session hook. If Claude Code is absent, the desktop launcher remains fully usable, and integration can be installed later through the CLI.
 
 Installation and removal must preserve unrelated MCP servers, hooks, settings, registered projects, and logs unless the user explicitly requests a complete data removal.
 
@@ -266,11 +266,11 @@ The acknowledgement credits the existing Rhino configuration without implying th
 
 ## Implementation sequence
 
-### Phase 0: finish the active frontend renovation
+### Phase 0: finish the native frontend redesign
 
-- Complete the current WPF-to-web work without introducing a second backend model.
+- Complete the native WPF visual port without introducing a second backend model.
 - Keep current worktree scanning and launch behavior stable until the frontend lands.
-- Record DTO boundaries that the extracted backend must preserve or deliberately replace.
+- Record the data boundaries that the extracted backend must preserve or deliberately replace.
 
 ### Phase 1: stabilize project identity and contracts
 
@@ -284,7 +284,7 @@ The acknowledgement credits the existing Rhino configuration without implying th
 
 - Move catalog, Git scanning, readiness, and launch coordination out of the UI assembly's event handlers.
 - Introduce typed command results and diagnostics.
-- Keep the web frontend as a thin client.
+- Keep the WPF frontend as a thin client.
 - Add cancellation and process timeouts.
 
 ### Phase 3: add the CLI
@@ -324,7 +324,7 @@ The implementation is not complete until all of the following hold:
 
 - One registered repository resolves correctly from its primary checkout and every linked worktree.
 - Deleting a linked worktree does not unregister the project.
-- The web UI, CLI, and MCP return the same worktree state and the same launch result shape.
+- The WPF UI, CLI, and MCP return the same worktree state and the same launch result shape.
 - A launch result proves the selected `.rhp` and declared dependencies loaded from the selected worktree.
 - Overlapping launches do not corrupt Rhino's persistent registration state.
 - A transient manifest read failure never removes a registration from the catalog.
@@ -332,7 +332,7 @@ The implementation is not complete until all of the following hold:
 - Required build, launch, receipt, and timeout failures remain visible and machine-readable.
 - Installation preserves unrelated Claude Code settings and integrations.
 - Reinstall and upgrade are idempotent.
-- Removing Claude integration leaves the web application and project catalog usable.
+- Removing Claude integration leaves the desktop application and project catalog usable.
 
 ## Deferred decisions
 
