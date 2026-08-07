@@ -135,7 +135,7 @@ public partial class MainWindow : Window
     private bool _isUpdatingProjects;
     private bool _isUpdatingWorktrees;
     private bool? _isLightTheme;
-    private string _hint = "Double-click to launch";
+    private string _hint = string.Empty;
     private string _repositoryPath = string.Empty;
 
     public MainWindow(ProjectCatalog catalog)
@@ -329,7 +329,7 @@ public partial class MainWindow : Window
                 IReadOnlyList<WorktreeEntry> initialLocalEntries =
                     await Task.Run(() => _scanner.ScanLocal(project));
                 UpdateWorktrees(initialLocalEntries, selectedPath);
-                _hint = "Double-click to launch";
+                _hint = string.Empty;
                 UpdateSync(active: true, local: 1, git: 1);
                 UpdateState();
                 _ = EnrichInitialGitAsync(project, initialLocalEntries);
@@ -354,7 +354,7 @@ public partial class MainWindow : Window
                 _scanner.EnrichGit(project, localEntries, gitResult.PullRequests));
             UpdateWorktrees(enriched, selectedPath);
             _hint = gitResult.FetchSucceeded
-                ? "Double-click to launch"
+                ? string.Empty
                 : "Local data shown; Git sync unavailable";
             UpdateState();
             await Task.Delay(450);
