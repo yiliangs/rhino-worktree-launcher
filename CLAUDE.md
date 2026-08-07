@@ -8,7 +8,7 @@ Independent native .NET 8 WPF utility for launching Rhino plug-in repositories f
 - `ProjectCatalog` stores only local manifest paths under `%LOCALAPPDATA%\RhinoWorktreeLauncher\projects.json`.
 - `GitWorktreeScanner` discovers non-prunable worktrees, local diff and divergence metadata, and optional authenticated GitHub PR state.
 - `MainWindow` owns the native WPF interface, live Windows theme response, refresh coordination, dialogs, and backend execution.
-- `TrackingTextBlock` supplies the letter spacing that WPF text controls do not expose; `InlineIdentityPanel` keeps identity badges adjacent to a branch name without sacrificing trimming; `InsetHighlightBorder` renders the restrained inner highlight on raised controls and chips.
+- `TrackingTextBlock` supplies the letter spacing that WPF text controls do not expose and explicitly honors the inherited WPF text-formatting mode; `InlineIdentityPanel` keeps identity badges adjacent to a branch name without sacrificing trimming; `InsetHighlightBorder` renders the restrained inner highlight on raised controls and chips.
 - `WorktreeLaunchService` launches normal Rhino for the primary checkout or the repository-owned worktree entry point for linked worktrees.
 - The application never edits Rhino registration and never infers a plug-in's build or verification protocol.
 

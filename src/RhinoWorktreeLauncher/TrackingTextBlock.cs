@@ -128,5 +128,7 @@ public sealed class TrackingTextBlock : Control
         new Typeface(FontFamily, FontStyle, FontWeight, FontStretch),
         FontSize,
         Foreground,
+        null,
+        TextOptions.GetTextFormattingMode(this),
         VisualTreeHelper.GetDpi(this).PixelsPerDip);
 }
