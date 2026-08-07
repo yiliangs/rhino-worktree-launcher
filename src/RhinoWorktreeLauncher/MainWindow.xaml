@@ -678,7 +678,6 @@
                                  BorderThickness="0"
                                  ItemContainerStyle="{StaticResource WorktreeRowItem}"
                                  SelectionChanged="WorktreeList_SelectionChanged"
-                                 MouseDoubleClick="WorktreeList_MouseDoubleClick"
                                  KeyDown="WorktreeList_KeyDown"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto">

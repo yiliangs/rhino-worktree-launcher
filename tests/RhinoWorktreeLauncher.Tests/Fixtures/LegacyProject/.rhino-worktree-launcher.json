@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "projectId": "legacy-plugin",
+  "displayName": "Legacy Plugin",
+  "primaryLaunch": {
+    "mode": "normal-rhino",
+    "rhinoVersion": 8
+  },
+  "worktreeLaunch": {
+    "entrypoint": "LaunchWorktreeRhino.bat"
+  }
+}

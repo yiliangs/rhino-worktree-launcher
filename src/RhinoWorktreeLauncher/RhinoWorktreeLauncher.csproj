@@ -19,4 +19,8 @@
     <Resource Include="Assets\Fonts\*.ttf" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\RhinoWorktreeLauncher.Core\RhinoWorktreeLauncher.Core.csproj" />
+  </ItemGroup>
+
 </Project>

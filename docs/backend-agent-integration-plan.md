@@ -1,6 +1,6 @@
 # Backend and Agent Integration Plan
 
-Status: proposal only. This document records the intended direction after the native WPF interface redesign. It does not authorize backend or agent-integration changes.
+Status: implemented for review under issue #2. Automated backend, CLI, MCP, catalog, routing, receipt, and distribution gates are in place. Live `RHINO_PACKAGE_DIRS` verification remains environment-blocked because the installed Rhino 8 currently hangs before opening a window even when started directly without RWL or plug-in environment variables.
 
 ## Decision summary
 
