@@ -46,14 +46,14 @@ The driver writes newline-delimited JSON to stdout. It may write progress events
 
 ```json
 {"protocolVersion":1,"kind":"event","stage":"build","message":"Building Debug x64."}
-{"protocolVersion":1,"kind":"result","success":true,"packageDirectory":"C:\\source\\plugin-task\\Plugin\\bin\\Debug\\net481","pluginPath":"C:\\source\\plugin-task\\Plugin\\bin\\Debug\\net481\\Plugin.rhp","rhinoRuntime":"netfx","criticalDependencies":[{"name":"Plugin.Core","path":"C:\\source\\plugin-task\\Plugin\\bin\\Debug\\net481\\Plugin.Core.dll"}],"receipt":{"launchIdEnvironmentVariable":"RWL_LAUNCH_ID","receiptPathEnvironmentVariable":"RWL_RECEIPT_PATH"}}
+{"protocolVersion":1,"kind":"result","success":true,"packageDirectory":"C:\\source\\plugin-task\\Plugin\\bin\\Debug\\net481","pluginPath":"C:\\source\\plugin-task\\Plugin\\bin\\Debug\\net481\\Plugin.rhp","rhinoRuntime":"netfx","criticalDependencies":[{"name":"Plugin.Core","path":"C:\\source\\plugin-task\\Plugin\\bin\\Debug\\net481\\Plugin.Core.dll"}],"receipt":{"launchIdEnvironmentVariable":"RWL_LAUNCH_ID","receiptPathEnvironmentVariable":"RWL_RECEIPT_PATH"},"registration":{"mode":"windows-registry-lease","pluginId":"f3cf4a28-ea9e-4e08-baba-5fc6645a5d72","startupCommand":"_MyPluginCommand"}}
 ```
 
-A failed result sets `success` to `false` and supplies stable `errorCode` and human-readable `errorMessage`. A successful result must report existing absolute paths. The package directory, `.rhp`, and every critical dependency must be inside the selected worktree. `rhinoRuntime` is optional and, when supplied, is `netfx` or `netcore`; RWL maps it to Rhino's process runtime switch.
+A failed result sets `success` to `false` and supplies stable `errorCode` and human-readable `errorMessage`. A successful result must report existing absolute paths. The package directory, `.rhp`, and every critical dependency must be inside the selected worktree. `rhinoRuntime` is optional and, when supplied, is `netfx` or `netcore`; RWL maps it to Rhino's process runtime switch. `registration` is optional. Use `windows-registry-lease` only when the plug-in GUID is already registered at another checkout; RWL serializes starts for that GUID, redirects every existing HKLM/HKCU registration path, runs `startupCommand` to demand-load the selected plug-in, and restores the previous paths after receipt verification.
 
 ## Loaded-binary receipt schema v1
 
-RWL starts Rhino with `RHINO_PACKAGE_DIRS` set only on that child process. It also sets the two environment variables declared by the driver result. After the plug-in has loaded, repository-owned code writes the receipt atomically:
+RWL sets the two receipt environment variables on the Rhino child. Without `registration`, it also sets `RHINO_PACKAGE_DIRS`. With a registry lease, it uses the temporarily redirected registration and startup command instead. After the plug-in has loaded, repository-owned code writes the receipt atomically:
 
 ```json
 {

@@ -30,7 +30,7 @@ See [driver protocol v1](docs/driver-protocol-v1.md), the copyable [PowerShell d
 
 ## Launch isolation and verification
 
-For Rhino 8, RWL sets `RHINO_PACKAGE_DIRS` only on the new Rhino process. It does not edit persistent plug-in registration. Repository-owned code inside the plug-in writes a receipt after load; RWL fails closed unless the launch ID, Rhino PID, `.rhp` path, and every declared critical dependency match the selected worktree's driver result.
+For an unregistered plug-in, RWL can expose the selected output through the new Rhino process's `RHINO_PACKAGE_DIRS`. When the same plug-in GUID is already registered at another checkout, Rhino does not reliably override that registration. A driver can therefore request a serialized Windows registry startup lease: RWL redirects every existing Rhino registration for that GUID, demand-loads the selected plug-in, verifies the receipt, and restores the exact previous paths before returning. Repository-owned code inside the plug-in writes the receipt after load; RWL fails closed unless the launch ID, Rhino PID, `.rhp` path, and every declared critical dependency match the selected worktree's driver result.
 
 Rhino Worktree Launcher can use Rhino's `RHINO_PACKAGE_DIRS` development mechanism to expose a selected build output to a Rhino process. The `launchSettings.json` configuration used to identify this mechanism was shared by Dale Fugier in the McNeel forum discussion [C# Visual Studio New command in Plugin not recognized](https://discourse.mcneel.com/t/c-visual-studio-new-command-in-plugin-not-recognized/201370/5). Rhino Worktree Launcher is an independent orchestration tool built around project registration, Git worktree selection, launch verification, and human and agent workflows.
 
