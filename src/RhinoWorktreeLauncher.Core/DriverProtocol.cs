@@ -29,6 +29,7 @@ public sealed class DriverResult
     public string? RhinoRuntime { get; init; }
     public DriverDependency[] CriticalDependencies { get; init; } = Array.Empty<DriverDependency>();
     public ReceiptContract Receipt { get; init; } = new ReceiptContract();
+    public PluginRegistrationContract? Registration { get; init; }
 }
 
 public sealed class DriverDependency
@@ -41,6 +42,13 @@ public sealed class ReceiptContract
 {
     public string LaunchIdEnvironmentVariable { get; init; } = string.Empty;
     public string ReceiptPathEnvironmentVariable { get; init; } = string.Empty;
+}
+
+public sealed class PluginRegistrationContract
+{
+    public string Mode { get; init; } = string.Empty;
+    public string PluginId { get; init; } = string.Empty;
+    public string StartupCommand { get; init; } = string.Empty;
 }
 
 public sealed class LaunchReceipt

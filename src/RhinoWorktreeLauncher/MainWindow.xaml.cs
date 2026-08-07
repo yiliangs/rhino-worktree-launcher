@@ -234,12 +234,12 @@ public partial class MainWindow : Window
         if (WorktreeList.SelectedItem is not WorktreeSnapshot worktree)
             return;
 
-        Process.Start(new ProcessStartInfo
+        ProcessLaunchGate.Start(() => Process.Start(new ProcessStartInfo
         {
             FileName = "explorer.exe",
             ArgumentList = { worktree.Path },
             UseShellExecute = true
-        });
+        }));
     }
 
     private void Launch_Click(object sender, RoutedEventArgs e)

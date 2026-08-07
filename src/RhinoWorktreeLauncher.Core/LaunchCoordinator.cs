@@ -69,17 +69,26 @@ internal sealed class LaunchCoordinator
                     driver.ErrorMessage ?? "The project driver reported failure."));
             }
 
-            await ReportAsync("rhino", "Starting Rhino with the selected package directory.");
-            ProcessStartInfo startInfo = CreateRhinoStartInfo(context, driver, launchId, receiptPath);
-            launchedRhino = _options.RhinoProcessStarter(startInfo);
+            LaunchReceipt receipt;
+            IReadOnlyList<VerifiedDependency> dependencies;
+            using (PluginRegistrationLease? registrationLease =
+                await AcquireRegistrationLeaseAsync(context, driver, ReportAsync, token))
+            {
+                await ReportAsync("rhino", "Starting Rhino with the selected worktree plug-in.");
+                launchedRhino = ProcessLaunchGate.Start(() =>
+                {
+                    ProcessStartInfo startInfo = CreateRhinoStartInfo(context, driver, launchId, receiptPath);
+                    return _options.RhinoProcessStarter(startInfo);
+                });
 
-            await ReportAsync("receipt", "Waiting for the plug-in loaded-binary receipt.");
-            LaunchReceipt receipt = await WaitForReceiptAsync(receiptPath, launchedRhino, token);
-            IReadOnlyList<VerifiedDependency> dependencies = VerifyReceipt(
-                launchId,
-                launchedRhino.Id,
-                driver,
-                receipt);
+                await ReportAsync("receipt", "Waiting for the plug-in loaded-binary receipt.");
+                receipt = await WaitForReceiptAsync(receiptPath, launchedRhino, token);
+                dependencies = VerifyReceipt(
+                    launchId,
+                    launchedRhino.Id,
+                    driver,
+                    receipt);
+            }
             launchVerified = true;
 
             LaunchResult result = new LaunchResult(
@@ -171,6 +180,26 @@ internal sealed class LaunchCoordinator
         }
     }
 
+    private async Task<PluginRegistrationLease?> AcquireRegistrationLeaseAsync(
+        ResolvedContext context,
+        DriverResult driver,
+        Func<string, string, Task> report,
+        CancellationToken cancellationToken)
+    {
+        if (driver.Registration is null)
+            return null;
+        if (!string.Equals(driver.Registration.Mode, PluginRegistrationLease.Mode, StringComparison.Ordinal))
+            throw new InvalidDataException($"Unsupported plug-in registration mode '{driver.Registration.Mode}'.");
+
+        await report("registration", "Acquiring the selected plug-in startup registration lease.");
+        return await PluginRegistrationLease.AcquireAsync(
+            _options.LocksDirectory,
+            context.Manifest.Launch.RhinoVersion,
+            driver.Registration.PluginId,
+            driver.PluginPath,
+            cancellationToken);
+    }
+
     private async Task<DriverResult> RunDriverAsync(
         ResolvedContext context,
         string requestPath,
@@ -245,6 +274,15 @@ internal sealed class LaunchCoordinator
         {
             throw new InvalidDataException($"Unsupported Rhino runtime '{driver.RhinoRuntime}'.");
         }
+        if (driver.Registration is not null &&
+            (!string.Equals(driver.Registration.Mode, PluginRegistrationLease.Mode, StringComparison.Ordinal) ||
+             !Guid.TryParse(driver.Registration.PluginId, out _) ||
+             string.IsNullOrWhiteSpace(driver.Registration.StartupCommand) ||
+             driver.Registration.StartupCommand.IndexOfAny(new[] { '\r', '\n' }) >= 0))
+        {
+            throw new InvalidDataException(
+                "Driver registration must use windows-registry-lease, a valid plug-in GUID, and a startup command.");
+        }
 
         string worktreePrefix = Path.GetFullPath(context.WorktreePath).TrimEnd(Path.DirectorySeparatorChar) +
             Path.DirectorySeparatorChar;
@@ -285,9 +323,14 @@ internal sealed class LaunchCoordinator
         startInfo.ArgumentList.Add("/notemplate");
         if (!string.IsNullOrWhiteSpace(driver.RhinoRuntime))
             startInfo.ArgumentList.Add($"/{driver.RhinoRuntime}");
-        startInfo.Environment["RHINO_PACKAGE_DIRS"] =
-            Path.GetFullPath(driver.PackageDirectory).TrimEnd(Path.DirectorySeparatorChar) +
-            Path.DirectorySeparatorChar;
+        if (driver.Registration is not null)
+            startInfo.ArgumentList.Add($"/runscript={driver.Registration.StartupCommand}");
+        if (driver.Registration is null)
+        {
+            startInfo.Environment["RHINO_PACKAGE_DIRS"] =
+                Path.GetFullPath(driver.PackageDirectory).TrimEnd(Path.DirectorySeparatorChar) +
+                Path.DirectorySeparatorChar;
+        }
         startInfo.Environment[driver.Receipt.LaunchIdEnvironmentVariable] = launchId;
         startInfo.Environment[driver.Receipt.ReceiptPathEnvironmentVariable] = receiptPath;
         return startInfo;

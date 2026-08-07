@@ -1,6 +1,6 @@
 # Backend and Agent Integration Plan
 
-Status: implemented for review under issue #2. Automated backend, CLI, MCP, catalog, routing, receipt, and distribution gates are in place. Live `RHINO_PACKAGE_DIRS` verification remains environment-blocked because the installed Rhino 8 currently hangs before opening a window even when started directly without RWL or plug-in environment variables.
+Status: implemented for review under issue #2. Automated backend, CLI, MCP, catalog, routing, receipt, distribution, and live Rhino gates are in place. Live testing proved that `RHINO_PACKAGE_DIRS` works for unregistered output but does not reliably override a conventionally registered plug-in with the same GUID. Natalie therefore uses the serialized registry-lease transport described below.
 
 ## Decision summary
 
@@ -233,13 +233,13 @@ Installation and removal must preserve unrelated MCP servers, hooks, settings, r
 
 The overall architecture is independent of the final Rhino plug-in discovery mechanism.
 
-The preferred Rhino 8 candidate is a process-specific environment:
+The first Rhino 8 candidate was a process-specific environment:
 
 ```text
 RHINO_PACKAGE_DIRS=<selected worktree output directory>
 ```
 
-The backend would receive the built package directory from the project driver, set the environment variable only for the new Rhino process, launch Rhino, and wait for the receipt handshake.
+The backend receives the built package directory from the project driver, sets the environment variable only for the new Rhino process, launches Rhino, and waits for the receipt handshake when no conflicting registration exists.
 
 This candidate must be tested against:
 
@@ -250,11 +250,7 @@ This candidate must be tested against:
 - Critical dependencies loaded from an unexpected checkout.
 - Supported Rhino versions and runtimes.
 
-Overlapping launches must not corrupt Rhino's persistent registration state. The process-specific environment satisfies this inherently. If the temporary registry lease must survive as a fallback transport, same-project launches serialize behind a lock file, because overlapping lease restores can destroy the primary registration.
-
-If the candidate deterministically loads each process from its selected worktree without persistent registration changes, the temporary registry lease should be removed rather than retained as a parallel mechanism.
-
-If it does not, the launch transport must provide another isolated strategy while preserving the same backend command and receipt contracts.
+The same-GUID test failed: with Natalie registered at the primary checkout, pointing `RHINO_PACKAGE_DIRS` at a linked worktree either blocked startup or failed to construct the selected plug-in. Natalie therefore declares `windows-registry-lease`, its plug-in GUID, and a demand-load command in the driver result. RWL serializes starts for that GUID behind a cross-process file lock, snapshots every existing HKLM/HKCU `PlugIn\\FileName`, redirects them to the selected `.rhp`, starts Rhino with the demand-load command, verifies the receipt, and restores the exact paths before returning. Already-started Rhino processes can then run concurrently; only their registration-sensitive startup windows serialize.
 
 ## README attribution
 

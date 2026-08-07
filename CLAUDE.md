@@ -22,7 +22,7 @@ The backend is a one-off bootstrapper, not a Rhino session monitor. Do not add d
 - Optional GitHub/fetch failures are warnings and never hide local worktrees.
 - Driver requests, events, terminal results, and receipts are versioned JSON.
 - A successful driver result must identify selected-worktree artifacts. `rhinoRuntime` selects `/netfx` or `/netcore` when required.
-- Rhino receives `RHINO_PACKAGE_DIRS` and receipt variables only in its child environment. Never mutate persistent Rhino registration.
+- Rhino receives receipt variables only through its child environment. Drivers may use `RHINO_PACKAGE_DIRS` or declare a serialized Windows registry startup lease for an already-registered same-GUID plug-in; a lease must restore every previous registration path before launch returns.
 - Process creation is not success. Launch succeeds only after receipt launch ID, PID, `.rhp`, and every critical dependency path match. Timeout or mismatch terminates the unverified child.
 - Every launch writes inert JSONL diagnostics under `%LOCALAPPDATA%\RhinoWorktreeLauncher\logs`.
 - Claude install/remove owns only the `rhino-worktree-launcher` MCP entry and the RWL `session-context` hook. Preserve all unrelated settings and integrations.

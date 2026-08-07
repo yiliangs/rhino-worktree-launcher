@@ -11,6 +11,7 @@ public sealed class LauncherBackendOptions
 
     public string CatalogPath { get; init; } = Path.Combine(DefaultDataRoot, "projects.json");
     public string LogsDirectory { get; init; } = Path.Combine(DefaultDataRoot, "logs");
+    public string LocksDirectory { get; init; } = Path.Combine(DefaultDataRoot, "locks");
     public string GitExecutable { get; init; } = "git";
     public string GitHubExecutable { get; init; } = ResolveGitHubCliPath();
     public string PowerShellExecutable { get; init; } = "pwsh";
@@ -19,8 +20,8 @@ public sealed class LauncherBackendOptions
         $"Rhino {version}",
         "System",
         "Rhino.exe");
-    public Func<ProcessStartInfo, Process> RhinoProcessStarter { get; init; } = startInfo =>
-        Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start Rhino.");
+    public Func<ProcessStartInfo, Process> RhinoProcessStarter { get; init; } =
+        ShellRhinoProcessStarter.Start;
 
     private static string ResolveGitHubCliPath()
     {
