@@ -334,12 +334,11 @@
                     <ControlTemplate TargetType="ScrollViewer">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="12" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="12" />
                             </Grid.ColumnDefinitions>
                             <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"
-                                                    Grid.Column="1"
+                                                    Grid.Column="0"
                                                     CanContentScroll="{TemplateBinding CanContentScroll}"
                                                     CanHorizontallyScroll="False"
                                                     CanVerticallyScroll="True"
@@ -348,12 +347,12 @@
                                                     Margin="{TemplateBinding Padding}"
                                                     SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
                             <ScrollBar x:Name="PART_VerticalScrollBar"
-                                       Grid.Column="2"
+                                       Grid.Column="1"
                                        Width="4"
                                        MinWidth="0"
                                        MaxWidth="4"
                                        Margin="0,6"
-                                       HorizontalAlignment="Center"
+                                       HorizontalAlignment="Right"
                                        Maximum="{TemplateBinding ScrollableHeight}"
                                        Orientation="Vertical"
                                        ViewportSize="{TemplateBinding ViewportHeight}"
