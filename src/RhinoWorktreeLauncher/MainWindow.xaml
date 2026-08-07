@@ -20,6 +20,10 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
+        <CornerRadius x:Key="SmallCornerRadius">4</CornerRadius>
+        <CornerRadius x:Key="MediumCornerRadius">8</CornerRadius>
+        <CornerRadius x:Key="LargeCornerRadius">14</CornerRadius>
+
         <SolidColorBrush x:Key="WindowBrush" Color="#16181B" />
         <SolidColorBrush x:Key="PanelBrush" Color="#1A1C20" />
         <SolidColorBrush x:Key="FooterBrush" Color="#121417" />
@@ -151,7 +155,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="{TemplateBinding Tag}"
+                                CornerRadius="{StaticResource MediumCornerRadius}"
                                 Effect="{TemplateBinding Effect}"
                                 HighlightBrush="{DynamicResource ControlHighlightBrush}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -191,7 +195,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="9"
+                                CornerRadius="{StaticResource MediumCornerRadius}"
                                 Effect="{TemplateBinding Effect}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
@@ -231,7 +235,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="5">
+                                CornerRadius="{StaticResource SmallCornerRadius}">
                             <ContentPresenter />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -261,10 +265,10 @@
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="Transparent"
                                     BorderThickness="1"
-                                    CornerRadius="9" />
+                                    CornerRadius="{StaticResource MediumCornerRadius}" />
                             <Border x:Name="Texture"
                                     Background="{StaticResource SelectionTexture}"
-                                    CornerRadius="9"
+                                    CornerRadius="{StaticResource MediumCornerRadius}"
                                     IsHitTestVisible="False"
                                     Visibility="Collapsed">
                                 <Border.OpacityMask>
@@ -316,7 +320,7 @@
                                             <ControlTemplate TargetType="Thumb">
                                                 <Border Margin="1,0"
                                                         Background="{DynamicResource ScrollThumbBrush}"
-                                                        CornerRadius="2" />
+                                                        CornerRadius="{StaticResource SmallCornerRadius}" />
                                             </ControlTemplate>
                                         </Thumb.Template>
                                     </Thumb>
@@ -388,7 +392,7 @@
                 <Border Grid.Column="0"
                         Width="50"
                         Height="50"
-                        CornerRadius="12">
+                        CornerRadius="{StaticResource MediumCornerRadius}">
                     <Border.Background>
                         <ImageBrush ImageSource="/RhinoWorktreeLauncher;component/Assets/rhino-launcher.png"
                                     Stretch="Uniform" />
@@ -413,9 +417,6 @@
                         Style="{StaticResource ControlButton}"
                         automation:AutomationProperties.Name="Refresh"
                         Click="Refresh_Click">
-                    <Button.Tag>
-                        <CornerRadius>8</CornerRadius>
-                    </Button.Tag>
                     <Grid Width="146" Height="48">
                         <StackPanel x:Name="RefreshIdle"
                                     Margin="0,0,0,3"
@@ -533,7 +534,7 @@
                     Background="{DynamicResource PanelBrush}"
                     BorderBrush="{DynamicResource PanelBorderBrush}"
                     BorderThickness="1"
-                    CornerRadius="14">
+                    CornerRadius="{StaticResource LargeCornerRadius}">
                 <Grid ClipToBounds="True">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -657,7 +658,7 @@
                                                                         Background="{DynamicResource BadgeBrush}"
                                                                         BorderBrush="{DynamicResource BadgeBorderBrush}"
                                                                         BorderThickness="1"
-                                                                        CornerRadius="4"
+                                                                        CornerRadius="{StaticResource SmallCornerRadius}"
                                                                         Effect="{DynamicResource ChipShadowEffect}"
                                                                         HighlightBrush="{DynamicResource ChipHighlightBrush}"
                                                                         Visibility="{Binding IsPrimary, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -674,7 +675,7 @@
                                                                         Background="{DynamicResource FreshBackgroundBrush}"
                                                                         BorderBrush="{DynamicResource FreshBorderBrush}"
                                                                         BorderThickness="1"
-                                                                        CornerRadius="4"
+                                                                        CornerRadius="{StaticResource SmallCornerRadius}"
                                                                         Effect="{DynamicResource ChipShadowEffect}"
                                                                         HighlightBrush="{DynamicResource ChipHighlightBrush}"
                                                                         Visibility="{Binding HasPullRequest, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -718,7 +719,7 @@
                                                                             Background="{DynamicResource FreshBackgroundBrush}"
                                                                             BorderBrush="{DynamicResource FreshBorderBrush}"
                                                                             BorderThickness="1"
-                                                                            CornerRadius="4"
+                                                                            CornerRadius="{StaticResource SmallCornerRadius}"
                                                                             Effect="{DynamicResource ChipShadowEffect}"
                                                                             HighlightBrush="{DynamicResource ChipHighlightBrush}">
                                                     <local:TrackingTextBlock x:Name="FreshnessText"
@@ -734,7 +735,7 @@
                                                                             Background="{DynamicResource DiffBoxBrush}"
                                                                             BorderBrush="{DynamicResource DiffBoxBorderBrush}"
                                                                             BorderThickness="1"
-                                                                            CornerRadius="4"
+                                                                            CornerRadius="{StaticResource SmallCornerRadius}"
                                                                             Effect="{DynamicResource ChipShadowEffect}"
                                                                             HighlightBrush="{DynamicResource ChipHighlightBrush}">
                                                     <StackPanel VerticalAlignment="Center"
@@ -933,9 +934,6 @@
                         Content="Open folder"
                         FontSize="13"
                         Click="OpenFolder_Click">
-                    <Button.Tag>
-                        <CornerRadius>9</CornerRadius>
-                    </Button.Tag>
                 </Button>
 
                 <Button x:Name="LaunchButton"
