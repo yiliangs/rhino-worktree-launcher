@@ -327,13 +327,19 @@
             </Setter>
         </Style>
 
-        <Style x:Key="OverlayScrollViewer" TargetType="ScrollViewer">
+        <Style x:Key="GutteredScrollViewer" TargetType="ScrollViewer">
             <Setter Property="Focusable" Value="False" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ScrollViewer">
                         <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                            </Grid.ColumnDefinitions>
                             <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"
+                                                    Grid.Column="1"
                                                     CanContentScroll="{TemplateBinding CanContentScroll}"
                                                     CanHorizontallyScroll="False"
                                                     CanVerticallyScroll="True"
@@ -342,12 +348,12 @@
                                                     Margin="{TemplateBinding Padding}"
                                                     SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
                             <ScrollBar x:Name="PART_VerticalScrollBar"
+                                       Grid.Column="2"
                                        Width="4"
                                        MinWidth="0"
                                        MaxWidth="4"
-                                       Margin="0,6,4,6"
-                                       HorizontalAlignment="Right"
-                                       Panel.ZIndex="1"
+                                       Margin="0,6"
+                                       HorizontalAlignment="Center"
                                        Maximum="{TemplateBinding ScrollableHeight}"
                                        Orientation="Vertical"
                                        ViewportSize="{TemplateBinding ViewportHeight}"
@@ -544,7 +550,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <Grid Grid.Row="0" Margin="20,16,20,14">
+                    <Grid Grid.Row="0" Margin="20,16,32,14">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="9" />
@@ -624,7 +630,7 @@
                                  ScrollViewer.VerticalScrollBarVisibility="Auto">
                             <ListBox.Template>
                                 <ControlTemplate TargetType="ListBox">
-                                    <ScrollViewer Style="{StaticResource OverlayScrollViewer}"
+                                    <ScrollViewer Style="{StaticResource GutteredScrollViewer}"
                                                   CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"
                                                   HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
                                                   VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
