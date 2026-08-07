@@ -1,0 +1,280 @@
+using System.Text.Json;
+using RhinoWorktreeLauncher;
+
+namespace Rwl.Cli;
+
+internal static class Program
+{
+    private static readonly JsonSerializerOptions OutputJson = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+
+    public static async Task<int> Main(string[] args)
+    {
+        try
+        {
+            Arguments arguments = new Arguments(args);
+            LauncherBackend backend = new LauncherBackend();
+            return arguments.Positionals switch
+            {
+                ["project", "register", string path] => await WriteAsync(
+                    await backend.RegisterProjectAsync(path, CancellationToken.None),
+                    arguments.Json,
+                    value => $"Registered '{value.ProjectId}'. This repository and each worktree's driver are trusted to execute local build scripts."),
+                ["project", "remove", string projectId] => await WriteAsync(
+                    await backend.RemoveProjectAsync(projectId, CancellationToken.None),
+                    arguments.Json,
+                    _ => $"Removed project '{projectId}'."),
+                ["context"] => await WriteAsync(
+                    await backend.ResolveContextAsync(
+                        arguments.RequiredOption("--cwd"),
+                        CancellationToken.None),
+                    arguments.Json,
+                    value => $"{value.DisplayName}: {value.WorktreePath}"),
+                ["worktree", "list"] => await WriteAsync(
+                    await backend.GetWorktreeSnapshotAsync(
+                        arguments.RequiredOption("--project"),
+                        includeRemote: !arguments.HasFlag("--local-only"),
+                        CancellationToken.None),
+                    arguments.Json,
+                    value => string.Join(Environment.NewLine, value.Worktrees.Select(worktree => worktree.Path))),
+                ["worktree", "inspect"] => await WriteAsync(
+                    await backend.InspectWorktreeAsync(
+                        arguments.RequiredOption("--path"),
+                        CancellationToken.None),
+                    arguments.Json,
+                    value => value.CanLaunch ? "Ready to launch." : "Not ready to launch."),
+                ["launch"] => await LaunchAsync(backend, arguments),
+                ["doctor"] => await DoctorAsync(backend, arguments),
+                ["integration", "install", "claude"] => await InstallClaudeAsync(arguments),
+                ["integration", "remove", "claude"] => await RemoveClaudeAsync(arguments),
+                ["session-context"] => await SessionContextWriter.WriteAsync(
+                    backend,
+                    Console.In,
+                    Console.Out),
+                _ => WriteUsage()
+            };
+        }
+        catch (ArgumentException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 2;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 1;
+        }
+    }
+
+    private static async Task<int> LaunchAsync(LauncherBackend backend, Arguments arguments)
+    {
+        double timeoutSeconds = arguments.OptionalDouble("--timeout", 180);
+        Progress<LaunchProgress>? progress = arguments.Json
+            ? null
+            : new Progress<LaunchProgress>(update => Console.Error.WriteLine($"[{update.Stage}] {update.Message}"));
+        return await WriteAsync(
+            await backend.LaunchAsync(
+                arguments.RequiredOption("--path"),
+                TimeSpan.FromSeconds(timeoutSeconds),
+                progress,
+                CancellationToken.None),
+            arguments.Json,
+            value => value.Status == LaunchStatus.Succeeded
+                ? $"Verified {value.PluginPath} in Rhino process {value.RhinoProcessId}."
+                : $"Launch failed. Diagnostics: {value.DiagnosticsLogPath}");
+    }
+
+    private static async Task<int> DoctorAsync(LauncherBackend backend, Arguments arguments)
+    {
+        CommandResult<DoctorReport> result = await backend.RunDoctorAsync(CancellationToken.None);
+        int adapterExit = await WriteAsync(
+            result,
+            arguments.Json,
+            value => value.Healthy ? "RWL doctor passed." : "RWL doctor found required failures.");
+        return adapterExit == 0 && result.Value?.Healthy == true ? 0 : 1;
+    }
+
+    private static async Task<int> InstallClaudeAsync(Arguments arguments)
+    {
+        string bootstrap = arguments.OptionalOption(
+            "--bootstrap",
+            Environment.GetEnvironmentVariable("RWL_BOOTSTRAP_PATH") ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "RhinoWorktreeLauncher",
+                "bootstrap",
+                "rwl.exe"));
+        ClaudeIntegrationManager manager = new ClaudeIntegrationManager();
+        await manager.InstallAsync(bootstrap, CancellationToken.None);
+        Console.WriteLine($"Installed Claude integration through '{Path.GetFullPath(bootstrap)}'.");
+        return 0;
+    }
+
+    private static async Task<int> RemoveClaudeAsync(Arguments arguments)
+    {
+        _ = arguments;
+        ClaudeIntegrationManager manager = new ClaudeIntegrationManager();
+        await manager.RemoveAsync(CancellationToken.None);
+        Console.WriteLine("Removed the RWL Claude integration. Projects, desktop application, and logs were preserved.");
+        return 0;
+    }
+
+    private static Task<int> WriteAsync<T>(
+        CommandResult<T> result,
+        bool json,
+        Func<T, string> humanText)
+    {
+        if (json)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(result, OutputJson));
+        }
+        else if (result.Value is not null)
+        {
+            Console.WriteLine(humanText(result.Value));
+            foreach (Diagnostic diagnostic in result.Diagnostics)
+                Console.Error.WriteLine($"[{diagnostic.Code}] {diagnostic.Message}");
+        }
+        else
+        {
+            foreach (Diagnostic diagnostic in result.Diagnostics)
+                Console.Error.WriteLine($"[{diagnostic.Code}] {diagnostic.Message}");
+        }
+        return Task.FromResult(result.Succeeded ? 0 : 1);
+    }
+
+    private static int WriteUsage()
+    {
+        Console.Error.WriteLine(
+            """
+            Usage:
+              rwl project register <path> [--json]
+              rwl project remove <id> [--json]
+              rwl context --cwd <path> [--json]
+              rwl worktree list --project <id> [--local-only] [--json]
+              rwl worktree inspect --path <path> [--json]
+              rwl launch --path <path> [--timeout <seconds>] [--json]
+              rwl doctor [--json]
+              rwl integration install claude [--bootstrap <path>]
+              rwl integration remove claude
+            """);
+        return 2;
+    }
+
+    private sealed class Arguments
+    {
+        private readonly string[] _args;
+
+        public Arguments(string[] args)
+        {
+            _args = args;
+            Positionals = args
+                .Where((argument, index) => !argument.StartsWith("--", StringComparison.Ordinal) &&
+                    (index == 0 || !OptionConsumesValue(args[index - 1])))
+                .ToArray();
+        }
+
+        public string[] Positionals { get; }
+        public bool Json => HasFlag("--json");
+
+        public bool HasFlag(string name) => _args.Contains(name, StringComparer.OrdinalIgnoreCase);
+
+        public string RequiredOption(string name) => OptionalOption(name, null) ??
+            throw new ArgumentException($"Missing required option {name}.");
+
+        public string OptionalOption(string name, string? fallback)
+        {
+            for (int index = 0; index < _args.Length - 1; index++)
+            {
+                if (string.Equals(_args[index], name, StringComparison.OrdinalIgnoreCase))
+                    return _args[index + 1];
+            }
+            return fallback!;
+        }
+
+        public double OptionalDouble(string name, double fallback)
+        {
+            string? value = OptionalOption(name, null);
+            return value is null
+                ? fallback
+                : double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out double parsed) && parsed > 0
+                    ? parsed
+                    : throw new ArgumentException($"{name} must be a positive number.");
+        }
+
+        private static bool OptionConsumesValue(string option) => option.Equals("--cwd", StringComparison.OrdinalIgnoreCase) ||
+            option.Equals("--project", StringComparison.OrdinalIgnoreCase) ||
+            option.Equals("--path", StringComparison.OrdinalIgnoreCase) ||
+            option.Equals("--timeout", StringComparison.OrdinalIgnoreCase) ||
+            option.Equals("--bootstrap", StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+internal static class SessionContextWriter
+{
+    private static readonly JsonSerializerOptions OutputJson = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+
+    public static async Task<int> WriteAsync(
+        LauncherBackend backend,
+        TextReader input,
+        TextWriter output)
+    {
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(await input.ReadToEndAsync());
+        }
+        catch (JsonException)
+        {
+            return 0;
+        }
+
+        using (document)
+        {
+            if (!document.RootElement.TryGetProperty("cwd", out JsonElement cwdElement) ||
+                string.IsNullOrWhiteSpace(cwdElement.GetString()))
+            {
+                return 0;
+            }
+
+            CommandResult<ResolvedContext> result = await backend.ResolveContextAsync(
+                cwdElement.GetString()!,
+                CancellationToken.None);
+            if (!result.Succeeded)
+            {
+                Diagnostic? registration = result.Diagnostics.FirstOrDefault(diagnostic =>
+                    diagnostic.Code == "project_registration_required");
+                if (registration is null)
+                    return 0;
+
+                await WriteContextAsync(
+                    output,
+                    registration.Message + " Do not execute the repository driver until registration succeeds.");
+                return 0;
+            }
+
+            ResolvedContext context = result.Value!;
+            await WriteContextAsync(
+                output,
+                $"This session is inside the registered Rhino project \"{context.DisplayName}\" at worktree \"{context.WorktreePath}\". " +
+                "Use the rhino-worktree-launcher MCP tools for Rhino launch and loaded-binary verification. " +
+                "Do not launch Rhino.exe directly or edit plug-in registration. Ordinary editing, Git operations, and repository-owned headless verification remain outside RWL.");
+            return 0;
+        }
+    }
+
+    private static async Task WriteContextAsync(TextWriter output, string context) =>
+        await output.WriteLineAsync(JsonSerializer.Serialize(new
+        {
+            hookSpecificOutput = new
+            {
+                hookEventName = "SessionStart",
+                additionalContext = context
+            }
+        }, OutputJson));
+}

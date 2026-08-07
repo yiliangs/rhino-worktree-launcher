@@ -121,26 +121,23 @@ public partial class MainWindow : Window
             ["ChipHighlightBrush"] = "#B3FFFFFF"
         };
 
-    private readonly ObservableCollection<ProjectManifest> _projects =
-        new ObservableCollection<ProjectManifest>();
-    private readonly ObservableCollection<WorktreeEntry> _worktrees =
-        new ObservableCollection<WorktreeEntry>();
-    private readonly ProjectCatalog _catalog;
-    private readonly GitWorktreeScanner _scanner = new GitWorktreeScanner();
-    private readonly WorktreeLaunchService _launchService = new WorktreeLaunchService();
+    private readonly ObservableCollection<ProjectSnapshot> _projects =
+        new ObservableCollection<ProjectSnapshot>();
+    private readonly ObservableCollection<WorktreeSnapshot> _worktrees =
+        new ObservableCollection<WorktreeSnapshot>();
+    private readonly LauncherBackend _backend;
     private readonly DispatcherTimer _themeTimer;
-    private ProjectManifest? _currentProject;
+    private ProjectSnapshot? _currentProject;
     private bool _isRefreshing;
-    private bool _isClosing;
     private bool _isUpdatingProjects;
     private bool _isUpdatingWorktrees;
     private bool? _isLightTheme;
     private string _hint = string.Empty;
     private string _repositoryPath = string.Empty;
 
-    public MainWindow(ProjectCatalog catalog)
+    public MainWindow(LauncherBackend backend)
     {
-        _catalog = catalog;
+        _backend = backend;
         InitializeComponent();
         ProjectList.ItemsSource = _projects;
         WorktreeList.ItemsSource = _worktrees;
@@ -148,12 +145,6 @@ public partial class MainWindow : Window
         _themeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _themeTimer.Tick += (_, _) => ApplySystemTheme();
         ApplySystemTheme();
-    }
-
-    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
-    {
-        _isClosing = true;
-        base.OnClosing(e);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -178,7 +169,7 @@ public partial class MainWindow : Window
         if (_isUpdatingProjects)
             return;
 
-        ProjectManifest? project = ProjectList.SelectedItem as ProjectManifest;
+        ProjectSnapshot? project = ProjectList.SelectedItem as ProjectSnapshot;
         if (project is null || ReferenceEquals(project, _currentProject))
             return;
 
@@ -197,8 +188,12 @@ public partial class MainWindow : Window
 
         try
         {
-            ProjectManifest project = _catalog.AddProject(dialog.FolderName);
-            await ReloadProjectsAsync(project.ManifestPath);
+            CommandResult<ProjectRegistration> result = await _backend.RegisterProjectAsync(
+                dialog.FolderName,
+                CancellationToken.None);
+            if (!result.Succeeded)
+                throw new InvalidOperationException(result.Diagnostics[0].Message);
+            await ReloadProjectsAsync(result.Value!.ProjectId);
         }
         catch (Exception ex)
         {
@@ -221,18 +216,10 @@ public partial class MainWindow : Window
             UpdateSelectionState();
     }
 
-    private void WorktreeList_MouseDoubleClick(
-        object sender,
-        MouseButtonEventArgs e)
-    {
-        if (WorktreeList.SelectedItem is WorktreeEntry worktree && worktree.CanLaunch)
-            Launch(worktree);
-    }
-
     private void WorktreeList_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter ||
-            WorktreeList.SelectedItem is not WorktreeEntry worktree ||
+            WorktreeList.SelectedItem is not WorktreeSnapshot worktree ||
             !worktree.CanLaunch)
         {
             return;
@@ -244,7 +231,7 @@ public partial class MainWindow : Window
 
     private void OpenFolder_Click(object sender, RoutedEventArgs e)
     {
-        if (WorktreeList.SelectedItem is not WorktreeEntry worktree)
+        if (WorktreeList.SelectedItem is not WorktreeSnapshot worktree)
             return;
 
         Process.Start(new ProcessStartInfo
@@ -257,23 +244,25 @@ public partial class MainWindow : Window
 
     private void Launch_Click(object sender, RoutedEventArgs e)
     {
-        if (WorktreeList.SelectedItem is WorktreeEntry worktree)
+        if (WorktreeList.SelectedItem is WorktreeSnapshot worktree)
             Launch(worktree);
     }
 
-    private async Task ReloadProjectsAsync(string? selectedManifestPath)
+    private async Task ReloadProjectsAsync(string? selectedProjectId)
     {
-        IReadOnlyList<ProjectManifest> projects = _catalog.LoadProjects();
+        CommandResult<IReadOnlyList<ProjectSnapshot>> result = await _backend.GetProjectsAsync(
+            CancellationToken.None);
+        IReadOnlyList<ProjectSnapshot> projects = result.Value ?? Array.Empty<ProjectSnapshot>();
         _isUpdatingProjects = true;
         try
         {
             _projects.Clear();
-            foreach (ProjectManifest project in projects)
+            foreach (ProjectSnapshot project in projects)
                 _projects.Add(project);
 
             _currentProject = _projects.FirstOrDefault(project => string.Equals(
-                project.ManifestPath,
-                selectedManifestPath,
+                project.ProjectId,
+                selectedProjectId,
                 StringComparison.OrdinalIgnoreCase)) ?? _projects.FirstOrDefault();
             ProjectList.SelectedItem = _currentProject;
         }
@@ -294,10 +283,10 @@ public partial class MainWindow : Window
         await SelectProjectAsync(_currentProject);
     }
 
-    private async Task SelectProjectAsync(ProjectManifest project)
+    private async Task SelectProjectAsync(ProjectSnapshot project)
     {
         _currentProject = project;
-        _repositoryPath = project.RepositoryRoot;
+        _repositoryPath = project.Registration.PrimaryCheckout;
         _worktrees.Clear();
         _hint = "Loading worktrees...";
         UpdateState();
@@ -310,54 +299,28 @@ public partial class MainWindow : Window
             return;
 
         _isRefreshing = true;
-        string? selectedPath = (WorktreeList.SelectedItem as WorktreeEntry)?.Path;
+        string? selectedPath = (WorktreeList.SelectedItem as WorktreeSnapshot)?.Path;
         _hint = fetchRemote ? "Syncing repository..." : "Loading worktrees...";
         UpdateState();
         UpdateSync(active: true, local: 0, git: 0);
 
         try
         {
-            ProjectManifest project = _currentProject;
-            if (!fetchRemote)
-            {
-                IReadOnlyList<WorktreeEntry> fastEntries =
-                    await Task.Run(() => _scanner.ScanFast(project));
-                UpdateWorktrees(fastEntries, selectedPath);
-                _hint = "Loading local details...";
-                UpdateState();
+            CommandResult<ProjectWorktrees> result = await _backend.GetWorktreeSnapshotAsync(
+                _currentProject.ProjectId,
+                fetchRemote,
+                CancellationToken.None);
+            if (!result.Succeeded || result.Value is null)
+                throw new InvalidOperationException(result.Diagnostics[0].Message);
 
-                IReadOnlyList<WorktreeEntry> initialLocalEntries =
-                    await Task.Run(() => _scanner.ScanLocal(project));
-                UpdateWorktrees(initialLocalEntries, selectedPath);
-                _hint = string.Empty;
-                UpdateSync(active: true, local: 1, git: 1);
-                UpdateState();
-                _ = EnrichInitialGitAsync(project, initialLocalEntries);
-                return;
-            }
-
-            Task<IReadOnlyList<WorktreeEntry>> localTask =
-                Task.Run(() => _scanner.ScanLocal(project));
-            Task<GitSyncResult> gitTask =
-                Task.Run(() => SynchronizeGit(project));
-
-            IReadOnlyList<WorktreeEntry> localEntries = await localTask;
-            UpdateWorktrees(localEntries, selectedPath);
-            _hint = "Local scan complete; syncing Git...";
-            UpdateState();
-            UpdateSync(active: true, local: 1, git: 0);
-
-            GitSyncResult gitResult = await gitTask;
+            UpdateWorktrees(result.Value.Worktrees, selectedPath);
             UpdateSync(active: true, local: 1, git: 1);
-
-            IReadOnlyList<WorktreeEntry> enriched = await Task.Run(() =>
-                _scanner.EnrichGit(project, localEntries, gitResult.PullRequests));
-            UpdateWorktrees(enriched, selectedPath);
-            _hint = gitResult.FetchSucceeded
+            _hint = result.Diagnostics.Count == 0
                 ? string.Empty
-                : "Local data shown; Git sync unavailable";
+                : "Local data shown; remote enrichment unavailable";
             UpdateState();
-            await Task.Delay(450);
+            if (fetchRemote)
+                await Task.Delay(450);
         }
         catch (Exception ex)
         {
@@ -373,57 +336,15 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task EnrichInitialGitAsync(
-        ProjectManifest project,
-        IReadOnlyList<WorktreeEntry> localEntries)
-    {
-        try
-        {
-            IReadOnlyList<WorktreeEntry> enriched = await Task.Run(() =>
-            {
-                IReadOnlyDictionary<string, PullRequestInfo> pullRequests =
-                    _scanner.GetPullRequests(project);
-                return _scanner.EnrichGit(project, localEntries, pullRequests);
-            });
-            if (_isClosing || _isRefreshing || !ReferenceEquals(_currentProject, project))
-                return;
-
-            string? selectedPath = (WorktreeList.SelectedItem as WorktreeEntry)?.Path;
-            UpdateWorktrees(enriched, selectedPath);
-            UpdateState();
-        }
-        catch
-        {
-            // Optional divergence enrichment must not delay or break local startup.
-        }
-    }
-
-    private GitSyncResult SynchronizeGit(ProjectManifest project)
-    {
-        bool fetchSucceeded = true;
-        try
-        {
-            _scanner.Fetch(project);
-        }
-        catch
-        {
-            fetchSucceeded = false;
-        }
-
-        IReadOnlyDictionary<string, PullRequestInfo> pullRequests =
-            _scanner.GetPullRequests(project);
-        return new GitSyncResult(fetchSucceeded, pullRequests);
-    }
-
     private void UpdateWorktrees(
-        IReadOnlyList<WorktreeEntry> entries,
+        IReadOnlyList<WorktreeSnapshot> entries,
         string? selectedPath)
     {
         _isUpdatingWorktrees = true;
         try
         {
             _worktrees.Clear();
-            foreach (WorktreeEntry entry in entries)
+            foreach (WorktreeSnapshot entry in entries)
                 _worktrees.Add(entry);
 
             WorktreeList.SelectedItem = _worktrees.FirstOrDefault(entry => string.Equals(
@@ -454,7 +375,7 @@ public partial class MainWindow : Window
 
     private void UpdateSelectionState()
     {
-        WorktreeEntry? selected = WorktreeList.SelectedItem as WorktreeEntry;
+        WorktreeSnapshot? selected = WorktreeList.SelectedItem as WorktreeSnapshot;
         SelectedWorktreeText.Text = selected?.DisplayName ?? "No worktree selected";
         OpenFolderButton.IsEnabled = selected is not null;
         LaunchButton.IsEnabled = selected?.CanLaunch == true;
@@ -507,14 +428,25 @@ public partial class MainWindow : Window
         fill.Width = 0;
     }
 
-    private void Launch(WorktreeEntry worktree)
+    private async void Launch(WorktreeSnapshot worktree)
     {
         try
         {
-            _launchService.Launch(worktree);
-            _hint = worktree.IsPrimary
-                ? "Normal Rhino started"
-                : "Worktree launch started";
+            LaunchButton.IsEnabled = false;
+            Progress<LaunchProgress> progress = new Progress<LaunchProgress>(update =>
+            {
+                _hint = update.Message;
+                UpdateState();
+            });
+            CommandResult<LaunchResult> result = await _backend.LaunchAsync(
+                worktree.Path,
+                TimeSpan.FromMinutes(3),
+                progress,
+                CancellationToken.None);
+            if (!result.Succeeded)
+                throw new InvalidOperationException(result.Diagnostics[0].Message);
+
+            _hint = "Selected plug-in verified in Rhino";
             UpdateState();
         }
         catch (Exception ex)
@@ -527,6 +459,10 @@ public partial class MainWindow : Window
                 "Rhino launch failed",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+        }
+        finally
+        {
+            UpdateSelectionState();
         }
     }
 
@@ -698,7 +634,4 @@ public partial class MainWindow : Window
         public int Bottom;
     }
 
-    private sealed record GitSyncResult(
-        bool FetchSucceeded,
-        IReadOnlyDictionary<string, PullRequestInfo> PullRequests);
 }

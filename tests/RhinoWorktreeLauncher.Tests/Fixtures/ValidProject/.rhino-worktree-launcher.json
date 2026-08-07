@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 2,
+  "projectId": "fixture-plugin",
+  "displayName": "Fixture Plugin",
+  "driver": {
+    "protocolVersion": 1,
+    "entrypoint": "tools/rhino-worktree/Driver.ps1"
+  },
+  "launch": {
+    "rhinoVersion": 8,
+    "mode": "rhino-package-directory"
+  }
+}

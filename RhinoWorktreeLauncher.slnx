@@ -1,5 +1,12 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/RhinoWorktreeLauncher.Core/RhinoWorktreeLauncher.Core.csproj" />
+    <Project Path="src/Rwl.Cli/Rwl.Cli.csproj" />
+    <Project Path="src/Rwl.Bootstrap/Rwl.Bootstrap.csproj" />
+    <Project Path="src/Rwl.Mcp/Rwl.Mcp.csproj" />
     <Project Path="src/RhinoWorktreeLauncher/RhinoWorktreeLauncher.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RhinoWorktreeLauncher.Tests/RhinoWorktreeLauncher.Tests.csproj" />
   </Folder>
 </Solution>

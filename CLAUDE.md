@@ -1,30 +1,37 @@
 # Rhino Worktree Launcher
 
-Independent native .NET 8 WPF utility for launching Rhino plug-in repositories from Git worktrees.
+Independent .NET 8 Windows application with one backend and three adapters: native WPF, `rwl` CLI, and stdio MCP.
 
 ## Architecture
 
-- `ProjectManifest` owns the versioned `.rhino-worktree-launcher.json` contract.
-- `ProjectCatalog` stores only local manifest paths under `%LOCALAPPDATA%\RhinoWorktreeLauncher\projects.json`.
-- `GitWorktreeScanner` discovers non-prunable worktrees, local diff and divergence metadata, and optional authenticated GitHub PR state.
-- `MainWindow` owns the native WPF interface, live Windows theme response, refresh coordination, dialogs, and backend execution.
-- `TrackingTextBlock` supplies the letter spacing that WPF text controls do not expose and explicitly honors the inherited WPF text-formatting mode; `InlineIdentityPanel` keeps identity badges adjacent to a branch name without sacrificing trimming; `InsetHighlightBorder` renders the restrained inner highlight on raised controls and chips.
-- `WorktreeLaunchService` launches normal Rhino for the primary checkout or the repository-owned worktree entry point for linked worktrees.
-- The application never edits Rhino registration and never infers a plug-in's build or verification protocol.
+- `RhinoWorktreeLauncher.Core` owns schema-v2 manifests, stable Git repository identity, the pure project catalog, context resolution, worktree scanning, driver execution, process-scoped Rhino startup, receipt verification, diagnostics, and Claude configuration merging.
+- `RhinoWorktreeLauncher` is the native WPF adapter. It binds backend DTOs and invokes backend commands in process. It must not run Git, project drivers, or Rhino directly.
+- `Rwl.Cli` is the script/diagnostic adapter and Claude `SessionStart` hook target.
+- `Rwl.Mcp` is a thin newline-delimited JSON-RPC stdio server over the same commands. Its launch tool remains one blocking request.
+- `Rwl.Bootstrap` is the stable `%LOCALAPPDATA%\RhinoWorktreeLauncher\bootstrap\rwl.exe`. It resolves `current.json` and forwards to the current versioned desktop, CLI, or MCP executable.
+- `templates/` and `docs/driver-protocol-v1.md` define the repository adoption surface.
 
-## Build and install
+The backend is a one-off bootstrapper, not a Rhino session monitor. Do not add durable launch operations, reattachment, background observation, or a service.
+
+## Contract invariants
+
+- Schema v2 is a hard cut. Do not restore v1 parsing.
+- Registration stores `projectId`, Git common directory, primary checkout, and manifest-relative path. It is the trust decision for each worktree's repository-owned driver.
+- Catalog reads never write or prune. Legacy/path-based and temporarily unreadable entries remain visible as degraded until explicit removal or re-registration.
+- Catalog writes re-read while holding the file lock and replace atomically.
+- Optional GitHub/fetch failures are warnings and never hide local worktrees.
+- Driver requests, events, terminal results, and receipts are versioned JSON.
+- A successful driver result must identify selected-worktree artifacts. `rhinoRuntime` selects `/netfx` or `/netcore` when required.
+- Rhino receives `RHINO_PACKAGE_DIRS` and receipt variables only in its child environment. Never mutate persistent Rhino registration.
+- Process creation is not success. Launch succeeds only after receipt launch ID, PID, `.rhp`, and every critical dependency path match. Timeout or mismatch terminates the unverified child.
+- Every launch writes inert JSONL diagnostics under `%LOCALAPPDATA%\RhinoWorktreeLauncher\logs`.
+- Claude install/remove owns only the `rhino-worktree-launcher` MCP entry and the RWL `session-context` hook. Preserve all unrelated settings and integrations.
+
+## Build and verify
 
 ```powershell
-dotnet build src/RhinoWorktreeLauncher/RhinoWorktreeLauncher.csproj -c Debug
-pwsh -NoProfile -File src/RhinoWorktreeLauncher/Install-RhinoWorktreeLauncher.ps1 -Launch
+dotnet build RhinoWorktreeLauncher.slnx -c Debug
+dotnet test tests/RhinoWorktreeLauncher.Tests/RhinoWorktreeLauncher.Tests.csproj
 ```
 
-The installer publishes non-destructive versioned releases under `%LOCALAPPDATA%\RhinoWorktreeLauncher\releases\` and updates one Start Menu shortcut.
-
-## UI
-
-Use `src/RhinoWorktreeLauncher/Assets/rhino-launcher.png` in the header and `rhino-launcher.ico` for the executable. The fixed 720 × 1000 interface follows the Windows app theme live, embeds the same Google Fonts IBM Plex Sans and Geist Mono variable binaries as the design handoff, and keeps local status, tracked-line diff, PR state, activity, and default-branch divergence in one two-line worktree row. Keep WPF text on Ideal metrics with Fixed hinting and ClearType antialiasing; at 150% DPI this most closely reproduces Chromium's fractional LCD coverage. Treat 720 × 1000 as the DWM-visible frame rather than WPF's larger window rectangle with invisible resize borders; crop captures to `DWMWA_EXTENDED_FRAME_BOUNDS`. Use only the shared 4, 8, and 14 corner-radius tokens for labels, controls/rows, and the main panel respectively. The worktree scrollbar owns a dedicated 12-unit right rail with its thumb right-aligned so the visible gaps on either side are equal after the list's outer inset; do not add a compensating left rail. The active thumb starts flush with the first row, and a full-height indicator at 0.32 opacity occupies the same rail when the list is not scrollable. Row backgrounds and textures must terminate before the scrollbar rail. Refresh presents independent LOCAL and GIT progress in its fixed 148 × 50 control. Add project remains borderless text at rest and reveals the Refresh control chrome on hover without changing its measured bounds.
-
-Published releases are self-contained and multifile to avoid single-file extraction and mapping overhead. Use `<ApplicationIcon>` for the taskbar icon and WPF `Resource` items for bundled images and fonts. Do not set `Window.Icon` to a linked external path; published startup fails with `XamlParseException`.
-
-Startup verification must distinguish native window visibility from completion of local scanning and optional Git/GitHub enrichment. The interface must remain usable when fetch or authenticated `gh` lookup fails.
+The WPF design remains the completed fixed 720 × 1000 native surface. Preserve its theme, typography, scroll rail, shared corner-radius tokens, and current interaction details while changing backend behavior.
