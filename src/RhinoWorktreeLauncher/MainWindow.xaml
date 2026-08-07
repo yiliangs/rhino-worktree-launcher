@@ -219,8 +219,9 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,0,12,0" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="10.5" />
             <Setter Property="FontWeight" Value="Medium" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -514,21 +515,18 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding DisplayName}"
-                                       LineHeight="14.4"
+                                       LineHeight="12.6"
                                        LineStackingStrategy="BlockLineHeight" />
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <TextBlock Grid.Column="1"
-                           Margin="8,0"
-                           VerticalAlignment="Center"
-                           Text="|"
-                           Foreground="{DynamicResource TextFaintBrush}"
-                           FontFamily="{StaticResource MonoFont}"
-                           FontSize="10.5"
-                           LineHeight="12.6"
-                           LineStackingStrategy="BlockLineHeight" />
+                <Border Grid.Column="1"
+                        Width="1"
+                        Height="10"
+                        Margin="0,0,9,0"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource DividerBrush}" />
 
                 <TextBlock x:Name="RepositoryPathText"
                            Grid.Column="2"
@@ -536,7 +534,7 @@
                            TextTrimming="CharacterEllipsis"
                            TextWrapping="NoWrap"
                            ToolTipService.ShowDuration="30000"
-                           Foreground="{DynamicResource TextMutedBrush}"
+                           Foreground="{DynamicResource TextFaintBrush}"
                            FontFamily="{StaticResource MonoFont}"
                            FontSize="10.5"
                            LineHeight="12.6"
