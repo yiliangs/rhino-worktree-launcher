@@ -265,7 +265,7 @@
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0,0,10,0" />
             <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
-            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="FontSize" Value="11.5" />
             <Setter Property="FontWeight" Value="Medium" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -559,7 +559,7 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding DisplayName}"
-                                       LineHeight="12.6"
+                                       LineHeight="13.8"
                                        LineStackingStrategy="BlockLineHeight" />
                         </DataTemplate>
                     </ListBox.ItemTemplate>
