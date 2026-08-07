@@ -30,7 +30,6 @@
         <SolidColorBrush x:Key="ControlBrush" Color="#1B1D21" />
         <SolidColorBrush x:Key="ControlHoverBrush" Color="#22252A" />
         <SolidColorBrush x:Key="ProgressBrush" Color="#247FAE7A" />
-        <SolidColorBrush x:Key="TagBrush" Color="#0D9AA8BB" />
         <SolidColorBrush x:Key="BadgeBrush" Color="#1F2329" />
         <SolidColorBrush x:Key="DiffBoxBrush" Color="#1E2125" />
         <SolidColorBrush x:Key="RowHoverBrush" Color="#1F2226" />
@@ -41,7 +40,6 @@
         <SolidColorBrush x:Key="DividerBrush" Color="#232629" />
         <SolidColorBrush x:Key="ControlBorderBrush" Color="#2E3238" />
         <SolidColorBrush x:Key="ControlHoverBorderBrush" Color="#464C54" />
-        <SolidColorBrush x:Key="TagBorderBrush" Color="#232629" />
         <SolidColorBrush x:Key="BadgeBorderBrush" Color="#333941" />
         <SolidColorBrush x:Key="DiffBoxBorderBrush" Color="#282C31" />
         <SolidColorBrush x:Key="TextStrongBrush" Color="#F0F2F5" />
@@ -216,13 +214,12 @@
             </Setter>
         </Style>
 
-        <Style x:Key="ProjectTagItem" TargetType="ListBoxItem">
+        <Style x:Key="ProjectTextItem" TargetType="ListBoxItem">
             <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
-            <Setter Property="Background" Value="{DynamicResource TagBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource TagBorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="9,4" />
-            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,12,0" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="Medium" />
             <Setter Property="Cursor" Value="Hand" />
@@ -230,21 +227,16 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="TagChrome"
-                                Padding="{TemplateBinding Padding}"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="{StaticResource SmallCornerRadius}">
+                        <Border Padding="{TemplateBinding Padding}"
+                                Background="Transparent">
                             <ContentPresenter />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsSelected" Value="False">
-                                <Setter Property="Opacity" Value="0.62" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Opacity" Value="1" />
-                                <Setter TargetName="TagChrome" Property="BorderBrush" Value="{DynamicResource ControlHoverBorderBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -482,16 +474,17 @@
             <Grid Grid.Row="1" Margin="0,0,0,20">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="9" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <ListBox x:Name="ProjectList"
                          Grid.Column="0"
+                         VerticalAlignment="Center"
                          Background="Transparent"
                          BorderThickness="0"
-                         ItemContainerStyle="{StaticResource ProjectTagItem}"
+                         ItemContainerStyle="{StaticResource ProjectTextItem}"
                          SelectionChanged="ProjectList_SelectionChanged"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          ScrollViewer.VerticalScrollBarVisibility="Disabled">
@@ -508,6 +501,16 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+
+                <TextBlock Grid.Column="1"
+                           Margin="8,0"
+                           VerticalAlignment="Center"
+                           Text="|"
+                           Foreground="{DynamicResource TextFaintBrush}"
+                           FontFamily="{StaticResource MonoFont}"
+                           FontSize="10.5"
+                           LineHeight="12.6"
+                           LineStackingStrategy="BlockLineHeight" />
 
                 <TextBlock x:Name="RepositoryPathText"
                            Grid.Column="2"
