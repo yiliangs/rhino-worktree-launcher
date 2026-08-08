@@ -126,6 +126,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<WorktreeSnapshot> _worktrees =
         new ObservableCollection<WorktreeSnapshot>();
     private readonly LauncherBackend _backend;
+    private readonly McpClientIntegrationManager _integrationManager =
+        new McpClientIntegrationManager();
     private readonly DispatcherTimer _themeTimer;
     private ProjectSnapshot? _currentProject;
     private bool _isRefreshing;
@@ -161,6 +163,119 @@ public partial class MainWindow : Window
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) =>
         await RefreshAsync(fetchRemote: true);
+
+    private async void McpSetup_Click(object sender, RoutedEventArgs e)
+    {
+        McpSetupOverlay.Visibility = Visibility.Visible;
+        await RefreshIntegrationStatusAsync();
+    }
+
+    private void McpSetupClose_Click(object sender, RoutedEventArgs e) =>
+        McpSetupOverlay.Visibility = Visibility.Collapsed;
+
+    private async void ConfigureClaude_Click(object sender, RoutedEventArgs e) =>
+        await RunIntegrationActionAsync(async () =>
+        {
+            await _integrationManager.InstallAsync(
+                McpClientKind.ClaudeCode,
+                GetBootstrapPath(),
+                installSessionContext: ClaudeSessionContextCheckBox.IsChecked == true,
+                CancellationToken.None);
+            McpSetupHintText.Text = "Claude Code configured. Restart Claude Code to load the MCP server.";
+        });
+
+    private async void RemoveClaude_Click(object sender, RoutedEventArgs e) =>
+        await RunIntegrationActionAsync(async () =>
+        {
+            await _integrationManager.RemoveAsync(McpClientKind.ClaudeCode, CancellationToken.None);
+            McpSetupHintText.Text = "Claude Code integration removed. RWL projects and application data were preserved.";
+        });
+
+    private async void ConfigureCodex_Click(object sender, RoutedEventArgs e) =>
+        await RunIntegrationActionAsync(async () =>
+        {
+            await _integrationManager.InstallAsync(
+                McpClientKind.Codex,
+                GetBootstrapPath(),
+                installSessionContext: false,
+                CancellationToken.None);
+            McpSetupHintText.Text = "Codex configured with a 300-second launch timeout. Restart Codex to load the MCP server.";
+        });
+
+    private async void RemoveCodex_Click(object sender, RoutedEventArgs e) =>
+        await RunIntegrationActionAsync(async () =>
+        {
+            await _integrationManager.RemoveAsync(McpClientKind.Codex, CancellationToken.None);
+            McpSetupHintText.Text = "Codex integration removed. RWL projects and application data were preserved.";
+        });
+
+    private async Task RunIntegrationActionAsync(Func<Task> action)
+    {
+        McpSetupOverlay.IsHitTestVisible = false;
+        try
+        {
+            await action();
+            await RefreshIntegrationStatusAsync();
+        }
+        catch (Exception exception)
+        {
+            McpSetupHintText.Text = exception.Message;
+            MessageBox.Show(
+                this,
+                exception.Message,
+                "MCP setup could not be changed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+        finally
+        {
+            McpSetupOverlay.IsHitTestVisible = true;
+        }
+    }
+
+    private async Task RefreshIntegrationStatusAsync()
+    {
+        try
+        {
+            McpClientIntegrationStatus claude = await _integrationManager.GetStatusAsync(
+                McpClientKind.ClaudeCode,
+                CancellationToken.None);
+            McpClientIntegrationStatus codex = await _integrationManager.GetStatusAsync(
+                McpClientKind.Codex,
+                CancellationToken.None);
+            ClaudeIntegrationStatusText.Text = FormatIntegrationStatus(claude);
+            CodexIntegrationStatusText.Text = FormatIntegrationStatus(codex);
+            ClaudeSessionContextCheckBox.IsChecked = claude.McpConfigured
+                ? claude.SessionContextConfigured
+                : true;
+        }
+        catch (Exception exception)
+        {
+            McpSetupHintText.Text = exception.Message;
+        }
+    }
+
+    private static string FormatIntegrationStatus(McpClientIntegrationStatus status)
+    {
+        if (!status.McpConfigured)
+            return "Not configured";
+        if (!status.BootstrapAvailable)
+            return "Configured, but the RWL bootstrap is missing";
+        if (status.SessionContextSupported)
+        {
+            return status.SessionContextConfigured
+                ? "Ready; exact-worktree session context enabled"
+                : "Ready; session context disabled";
+        }
+        return "Ready; launch timeout set to 300 seconds";
+    }
+
+    private static string GetBootstrapPath() =>
+        Environment.GetEnvironmentVariable("RWL_BOOTSTRAP_PATH") ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "RhinoWorktreeLauncher",
+            "bootstrap",
+            "rwl.exe");
 
     private async void ProjectList_SelectionChanged(
         object sender,

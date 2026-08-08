@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using RhinoWorktreeLauncher;
 
 namespace Rwl.Cli;
@@ -8,7 +9,8 @@ internal static class Program
     private static readonly JsonSerializerOptions OutputJson = new JsonSerializerOptions
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
 
     public static async Task<int> Main(string[] args)
@@ -52,8 +54,10 @@ internal static class Program
                     value => value.CanLaunch ? "Ready to launch." : "Not ready to launch."),
                 ["launch"] => await LaunchAsync(backend, arguments),
                 ["doctor"] => await DoctorAsync(backend, arguments),
-                ["integration", "install", "claude"] => await InstallClaudeAsync(arguments),
-                ["integration", "remove", "claude"] => await RemoveClaudeAsync(arguments),
+                ["integration", "status"] => await IntegrationStatusAsync(arguments, client: null),
+                ["integration", "status", string client] => await IntegrationStatusAsync(arguments, ParseClient(client)),
+                ["integration", "install", string client] => await InstallIntegrationAsync(arguments, ParseClient(client)),
+                ["integration", "remove", string client] => await RemoveIntegrationAsync(arguments, ParseClient(client)),
                 ["session-context"] => await SessionContextWriter.WriteAsync(
                     backend,
                     Console.In,
@@ -101,7 +105,9 @@ internal static class Program
         return adapterExit == 0 && result.Value?.Healthy == true ? 0 : 1;
     }
 
-    private static async Task<int> InstallClaudeAsync(Arguments arguments)
+    private static async Task<int> InstallIntegrationAsync(
+        Arguments arguments,
+        McpClientKind client)
     {
         string bootstrap = arguments.OptionalOption(
             "--bootstrap",
@@ -110,20 +116,70 @@ internal static class Program
                 "RhinoWorktreeLauncher",
                 "bootstrap",
                 "rwl.exe"));
-        ClaudeIntegrationManager manager = new ClaudeIntegrationManager();
-        await manager.InstallAsync(bootstrap, CancellationToken.None);
-        Console.WriteLine($"Installed Claude integration through '{Path.GetFullPath(bootstrap)}'.");
+        McpClientIntegrationManager manager = new McpClientIntegrationManager();
+        McpClientIntegrationStatus status = await manager.InstallAsync(
+            client,
+            bootstrap,
+            installSessionContext: client == McpClientKind.ClaudeCode &&
+                !arguments.HasFlag("--no-session-context"),
+            CancellationToken.None);
+        WriteIntegrationStatus(status, arguments.Json);
         return 0;
     }
 
-    private static async Task<int> RemoveClaudeAsync(Arguments arguments)
+    private static async Task<int> RemoveIntegrationAsync(
+        Arguments arguments,
+        McpClientKind client)
     {
-        _ = arguments;
-        ClaudeIntegrationManager manager = new ClaudeIntegrationManager();
-        await manager.RemoveAsync(CancellationToken.None);
-        Console.WriteLine("Removed the RWL Claude integration. Projects, desktop application, and logs were preserved.");
+        McpClientIntegrationManager manager = new McpClientIntegrationManager();
+        McpClientIntegrationStatus status = await manager.RemoveAsync(client, CancellationToken.None);
+        WriteIntegrationStatus(status, arguments.Json);
         return 0;
     }
+
+    private static async Task<int> IntegrationStatusAsync(
+        Arguments arguments,
+        McpClientKind? client)
+    {
+        McpClientIntegrationManager manager = new McpClientIntegrationManager();
+        McpClientKind[] clients = client is null
+            ? new[] { McpClientKind.ClaudeCode, McpClientKind.Codex }
+            : new[] { client.Value };
+        McpClientIntegrationStatus[] statuses = await Task.WhenAll(clients.Select(candidate =>
+            manager.GetStatusAsync(candidate, CancellationToken.None)));
+        if (arguments.Json)
+            Console.WriteLine(JsonSerializer.Serialize(statuses, OutputJson));
+        else
+            foreach (McpClientIntegrationStatus status in statuses)
+                WriteIntegrationStatus(status, json: false);
+        return statuses.All(status => !status.McpConfigured || status.Ready) ? 0 : 1;
+    }
+
+    private static void WriteIntegrationStatus(McpClientIntegrationStatus status, bool json)
+    {
+        if (json)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(status, OutputJson));
+            return;
+        }
+
+        string state = status.Ready
+            ? "ready"
+            : status.McpConfigured
+                ? "configured, but bootstrap is missing"
+                : "not configured";
+        string context = status.SessionContextSupported
+            ? status.SessionContextConfigured ? "; session context enabled" : "; session context disabled"
+            : string.Empty;
+        Console.WriteLine($"{McpClientIntegrationManager.DisplayName(status.Client)}: {state}{context}.");
+    }
+
+    private static McpClientKind ParseClient(string value) => value.ToLowerInvariant() switch
+    {
+        "claude" or "claude-code" => McpClientKind.ClaudeCode,
+        "codex" => McpClientKind.Codex,
+        _ => throw new ArgumentException($"Unknown MCP client '{value}'. Expected 'claude' or 'codex'.")
+    };
 
     private static Task<int> WriteAsync<T>(
         CommandResult<T> result,
@@ -160,8 +216,9 @@ internal static class Program
               rwl worktree inspect --path <path> [--json]
               rwl launch --path <path> [--timeout <seconds>] [--json]
               rwl doctor [--json]
-              rwl integration install claude [--bootstrap <path>]
-              rwl integration remove claude
+              rwl integration status [claude|codex] [--json]
+              rwl integration install <claude|codex> [--bootstrap <path>] [--no-session-context] [--json]
+              rwl integration remove <claude|codex> [--json]
             """);
         return 2;
     }

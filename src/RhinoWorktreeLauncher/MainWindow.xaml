@@ -586,6 +586,10 @@
                            SizeChanged="RepositoryPathText_SizeChanged" />
 
                 <StackPanel Grid.Column="3" Margin="8,0,0,0" Orientation="Horizontal">
+                    <Button Margin="0,0,4,0"
+                            Style="{StaticResource GhostButton}"
+                            Content="MCP setup"
+                            Click="McpSetup_Click" />
                     <Button x:Name="ProjectSettingsButton"
                             Margin="0,0,4,0"
                             Style="{StaticResource GhostButton}"
@@ -1012,5 +1016,130 @@
                         Click="Launch_Click" />
             </Grid>
         </Border>
+
+        <Grid x:Name="McpSetupOverlay"
+              Grid.RowSpan="2"
+              Panel.ZIndex="20"
+              Background="#B0000000"
+              Visibility="Collapsed">
+            <Border Width="560"
+                    Padding="26"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource ControlHoverBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource LargeCornerRadius}">
+                <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center"
+                                   Text="MCP CLIENT SETUP"
+                                   Foreground="{DynamicResource TextStrongBrush}"
+                                   FontSize="18"
+                                   FontWeight="Medium" />
+                        <Button Grid.Column="1"
+                                Style="{StaticResource GhostButton}"
+                                Content="Close"
+                                Click="McpSetupClose_Click" />
+                    </Grid>
+                    <TextBlock Margin="0,0,0,20"
+                               Text="Connect AI clients to the stable RWL bootstrap. Existing client settings are preserved and backed up before changes."
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="12" />
+
+                    <Border Padding="16"
+                            Margin="0,0,0,12"
+                            Background="{DynamicResource ControlBrush}"
+                            BorderBrush="{DynamicResource ControlBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource MediumCornerRadius}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="70" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Claude Code"
+                                           Foreground="{DynamicResource TextStrongBrush}"
+                                           FontWeight="Medium" />
+                                <TextBlock x:Name="ClaudeIntegrationStatusText"
+                                           Margin="0,4,0,8"
+                                           Text="Checking..."
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11" />
+                                <CheckBox x:Name="ClaudeSessionContextCheckBox"
+                                          IsChecked="True"
+                                          Content="Inject exact worktree context at SessionStart"
+                                          Foreground="{DynamicResource TextBodyBrush}"
+                                          FontSize="11" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Height="34"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource ControlButton}"
+                                    Content="Configure"
+                                    Click="ConfigureClaude_Click" />
+                            <Button Grid.Column="3"
+                                    Height="34"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource GhostButton}"
+                                    Content="Remove"
+                                    Click="RemoveClaude_Click" />
+                        </Grid>
+                    </Border>
+
+                    <Border Padding="16"
+                            Background="{DynamicResource ControlBrush}"
+                            BorderBrush="{DynamicResource ControlBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource MediumCornerRadius}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="70" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Codex"
+                                           Foreground="{DynamicResource TextStrongBrush}"
+                                           FontWeight="Medium" />
+                                <TextBlock x:Name="CodexIntegrationStatusText"
+                                           Margin="0,4,0,0"
+                                           Text="Checking..."
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Height="34"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource ControlButton}"
+                                    Content="Configure"
+                                    Click="ConfigureCodex_Click" />
+                            <Button Grid.Column="3"
+                                    Height="34"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource GhostButton}"
+                                    Content="Remove"
+                                    Click="RemoveCodex_Click" />
+                        </Grid>
+                    </Border>
+
+                    <TextBlock x:Name="McpSetupHintText"
+                               Margin="0,14,0,0"
+                               Text="Clients must be restarted after configuration changes."
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextFaintBrush}"
+                               FontSize="11" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>
