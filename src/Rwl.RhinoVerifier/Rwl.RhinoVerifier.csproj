@@ -11,7 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="RhinoCommon" Version="8.32.26160.13001" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="RhinoCommon" Version="8.33.26188.13001" ExcludeAssets="runtime" PrivateAssets="all" />
     <Reference Include="System.Runtime.Serialization" />
   </ItemGroup>
 </Project>
