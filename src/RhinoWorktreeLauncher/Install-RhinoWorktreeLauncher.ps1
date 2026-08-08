@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$ProjectRoot,
+    [string]$PackageRoot,
     [switch]$InstallClaudeIntegration,
+    [switch]$InstallCodexIntegration,
     [switch]$Launch
 )
 
@@ -23,6 +25,12 @@ $mcpRoot = Join-Path $installRoot 'mcp'
 $bootstrapPublishRoot = Join-Path $installRoot 'bootstrap-publish'
 $stableBootstrapRoot = Join-Path $dataRoot 'bootstrap'
 $stableBootstrapPath = Join-Path $stableBootstrapRoot 'rwl.exe'
+$bundledPackageRoot = Join-Path $PSScriptRoot 'payload'
+if ([string]::IsNullOrWhiteSpace($PackageRoot) -and (Test-Path -LiteralPath $bundledPackageRoot))
+{
+    $PackageRoot = $bundledPackageRoot
+}
+$usePackage = -not [string]::IsNullOrWhiteSpace($PackageRoot)
 
 function Move-AtomicReplace([string]$Source, [string]$Destination)
 {
@@ -46,24 +54,52 @@ function Move-AtomicReplace([string]$Source, [string]$Destination)
     }
 }
 
-Write-Host 'Publishing Rhino Worktree Launcher...' -ForegroundColor Cyan
-& dotnet build $verifierProject -c Release
-if ($LASTEXITCODE -ne 0) { throw "Rhino verifier build failed with exit code $LASTEXITCODE." }
-& dotnet publish $desktopProject -c Release -r win-x64 --self-contained true -o $desktopRoot
-if ($LASTEXITCODE -ne 0) { throw "Desktop publish failed with exit code $LASTEXITCODE." }
-& dotnet publish $cliProject -c Release -r win-x64 --self-contained true -o $cliRoot
-if ($LASTEXITCODE -ne 0) { throw "CLI publish failed with exit code $LASTEXITCODE." }
-& dotnet publish $mcpProject -c Release -r win-x64 --self-contained true -o $mcpRoot
-if ($LASTEXITCODE -ne 0) { throw "MCP publish failed with exit code $LASTEXITCODE." }
-& dotnet publish $bootstrapProject -c Release -r win-x64 --self-contained true -o $bootstrapPublishRoot
-if ($LASTEXITCODE -ne 0)
+if ($usePackage)
 {
-    throw "Bootstrap publish failed with exit code $LASTEXITCODE."
+    $PackageRoot = [IO.Path]::GetFullPath($PackageRoot)
+    $requiredPayload = @(
+        (Join-Path $PackageRoot 'desktop\RhinoWorktreeLauncher.exe'),
+        (Join-Path $PackageRoot 'cli\rwl-cli.exe'),
+        (Join-Path $PackageRoot 'mcp\rwl-mcp.exe'),
+        (Join-Path $PackageRoot 'bootstrap\rwl.exe')
+    )
+    foreach ($requiredPath in $requiredPayload)
+    {
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf))
+        {
+            throw "The RWL package is incomplete. Missing '$requiredPath'."
+        }
+    }
+
+    Write-Host 'Installing the prebuilt Rhino Worktree Launcher package...' -ForegroundColor Cyan
+    New-Item -ItemType Directory -Force -Path $desktopRoot, $cliRoot, $mcpRoot | Out-Null
+    Copy-Item -Path (Join-Path $PackageRoot 'desktop\*') -Destination $desktopRoot -Recurse -Force
+    Copy-Item -Path (Join-Path $PackageRoot 'cli\*') -Destination $cliRoot -Recurse -Force
+    Copy-Item -Path (Join-Path $PackageRoot 'mcp\*') -Destination $mcpRoot -Recurse -Force
+    $publishedBootstrapPath = Join-Path $PackageRoot 'bootstrap\rwl.exe'
 }
-$verifierOutput = Join-Path $sourceRoot 'Rwl.RhinoVerifier\bin\Release\net48\Rwl.RhinoVerifier.rhp'
-Copy-Item -LiteralPath $verifierOutput -Destination $desktopRoot -Force
-Copy-Item -LiteralPath $verifierOutput -Destination $cliRoot -Force
-Copy-Item -LiteralPath $verifierOutput -Destination $mcpRoot -Force
+else
+{
+    Write-Host 'Publishing Rhino Worktree Launcher from source...' -ForegroundColor Cyan
+    & dotnet build $verifierProject -c Release
+    if ($LASTEXITCODE -ne 0) { throw "Rhino verifier build failed with exit code $LASTEXITCODE." }
+    & dotnet publish $desktopProject -c Release -r win-x64 --self-contained true -o $desktopRoot
+    if ($LASTEXITCODE -ne 0) { throw "Desktop publish failed with exit code $LASTEXITCODE." }
+    & dotnet publish $cliProject -c Release -r win-x64 --self-contained true -o $cliRoot
+    if ($LASTEXITCODE -ne 0) { throw "CLI publish failed with exit code $LASTEXITCODE." }
+    & dotnet publish $mcpProject -c Release -r win-x64 --self-contained true -o $mcpRoot
+    if ($LASTEXITCODE -ne 0) { throw "MCP publish failed with exit code $LASTEXITCODE." }
+    & dotnet publish $bootstrapProject -c Release -r win-x64 --self-contained true -o $bootstrapPublishRoot
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "Bootstrap publish failed with exit code $LASTEXITCODE."
+    }
+    $verifierOutput = Join-Path $sourceRoot 'Rwl.RhinoVerifier\bin\Release\net48\Rwl.RhinoVerifier.rhp'
+    Copy-Item -LiteralPath $verifierOutput -Destination $desktopRoot -Force
+    Copy-Item -LiteralPath $verifierOutput -Destination $cliRoot -Force
+    Copy-Item -LiteralPath $verifierOutput -Destination $mcpRoot -Force
+    $publishedBootstrapPath = Join-Path $bootstrapPublishRoot 'rwl.exe'
+}
 
 $desktopExecutable = Join-Path $desktopRoot 'RhinoWorktreeLauncher.exe'
 $cliExecutable = Join-Path $cliRoot 'rwl-cli.exe'
@@ -76,7 +112,7 @@ $releasePointer = [ordered]@{
 }
 New-Item -ItemType Directory -Force -Path $dataRoot, $stableBootstrapRoot | Out-Null
 $bootstrapTemporary = Join-Path $stableBootstrapRoot "rwl.$PID.new.exe"
-Copy-Item -LiteralPath (Join-Path $bootstrapPublishRoot 'rwl.exe') -Destination $bootstrapTemporary -Force
+Copy-Item -LiteralPath $publishedBootstrapPath -Destination $bootstrapTemporary -Force
 Move-AtomicReplace $bootstrapTemporary $stableBootstrapPath
 
 $pointerPath = Join-Path $dataRoot 'current.json'
@@ -86,6 +122,7 @@ Move-AtomicReplace $pointerTemporary $pointerPath
 
 $startMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
 $shortcutPath = Join-Path $startMenu 'Rhino Worktree Launcher.lnk'
+New-Item -ItemType Directory -Force -Path $startMenu | Out-Null
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $stableBootstrapPath
@@ -114,6 +151,17 @@ if ($InstallClaudeIntegration)
     if ($integration.ExitCode -ne 0)
     {
         throw "Claude integration installation failed with exit code $($integration.ExitCode)."
+    }
+}
+
+if ($InstallCodexIntegration)
+{
+    $integration = Start-Process -FilePath $stableBootstrapPath `
+        -ArgumentList @('integration', 'install', 'codex', '--bootstrap', ('"{0}"' -f $stableBootstrapPath)) `
+        -Wait -PassThru
+    if ($integration.ExitCode -ne 0)
+    {
+        throw "Codex integration installation failed with exit code $($integration.ExitCode)."
     }
 }
 

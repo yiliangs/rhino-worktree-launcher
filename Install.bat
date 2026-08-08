@@ -1,7 +1,10 @@
 @echo off
 setlocal
 
-pwsh -NoProfile -File "%~dp0src\RhinoWorktreeLauncher\Install-RhinoWorktreeLauncher.ps1" -Launch %*
+set "INSTALL_SCRIPT=%~dp0Install-RhinoWorktreeLauncher.ps1"
+if not exist "%INSTALL_SCRIPT%" set "INSTALL_SCRIPT=%~dp0src\RhinoWorktreeLauncher\Install-RhinoWorktreeLauncher.ps1"
+
+pwsh -NoProfile -File "%INSTALL_SCRIPT%" -Launch %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (
