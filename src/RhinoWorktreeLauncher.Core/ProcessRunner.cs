@@ -8,6 +8,18 @@ internal static class ProcessRunner
         string fileName,
         string workingDirectory,
         IEnumerable<string> arguments,
+        CancellationToken cancellationToken) => await RunAsync(
+        fileName,
+        workingDirectory,
+        arguments,
+        null,
+        cancellationToken);
+
+    public static async Task<string> RunAsync(
+        string fileName,
+        string workingDirectory,
+        IEnumerable<string> arguments,
+        IReadOnlyDictionary<string, string>? environment,
         CancellationToken cancellationToken)
     {
         ProcessStartInfo startInfo = new ProcessStartInfo
@@ -21,6 +33,11 @@ internal static class ProcessRunner
         };
         foreach (string argument in arguments)
             startInfo.ArgumentList.Add(argument);
+        if (environment is not null)
+        {
+            foreach ((string name, string value) in environment)
+                startInfo.Environment[name] = value;
+        }
 
         using Process process = Process.Start(startInfo) ??
             throw new InvalidOperationException($"Could not start {fileName}.");
@@ -51,6 +68,20 @@ internal static class ProcessRunner
         string workingDirectory,
         IEnumerable<string> arguments,
         Func<string, Task> onOutputLine,
+        CancellationToken cancellationToken) => await RunLinesAsync(
+        fileName,
+        workingDirectory,
+        arguments,
+        null,
+        onOutputLine,
+        cancellationToken);
+
+    public static async Task RunLinesAsync(
+        string fileName,
+        string workingDirectory,
+        IEnumerable<string> arguments,
+        IReadOnlyDictionary<string, string>? environment,
+        Func<string, Task> onOutputLine,
         CancellationToken cancellationToken)
     {
         ProcessStartInfo startInfo = new ProcessStartInfo
@@ -64,6 +95,11 @@ internal static class ProcessRunner
         };
         foreach (string argument in arguments)
             startInfo.ArgumentList.Add(argument);
+        if (environment is not null)
+        {
+            foreach ((string name, string value) in environment)
+                startInfo.Environment[name] = value;
+        }
 
         using Process process = Process.Start(startInfo) ??
             throw new InvalidOperationException($"Could not start {fileName}.");

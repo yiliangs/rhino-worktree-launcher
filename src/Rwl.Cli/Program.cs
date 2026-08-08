@@ -20,9 +20,13 @@ internal static class Program
             return arguments.Positionals switch
             {
                 ["project", "register", string path] => await WriteAsync(
-                    await backend.RegisterProjectAsync(path, CancellationToken.None),
+                    await backend.RegisterProjectAsync(
+                        new ProjectRegistrationRequest(
+                            path,
+                            new ProjectAccessGrant(true, !arguments.HasFlag("--no-remote"))),
+                        CancellationToken.None),
                     arguments.Json,
-                    value => $"Registered '{value.ProjectId}'. Its app-local driver can execute build commands against selected worktrees."),
+                    value => $"Registered '{value.ProjectId}' with an app-owned {value.BuildProfile.Mode} build profile."),
                 ["project", "remove", string projectId] => await WriteAsync(
                     await backend.RemoveProjectAsync(projectId, CancellationToken.None),
                     arguments.Json,
@@ -149,7 +153,7 @@ internal static class Program
         Console.Error.WriteLine(
             """
             Usage:
-              rwl project register <path> [--json]
+              rwl project register <path> [--no-remote] [--json]
               rwl project remove <id> [--json]
               rwl context --cwd <path> [--json]
               rwl worktree list --project <id> [--local-only] [--json]
@@ -252,9 +256,7 @@ internal static class SessionContextWriter
                 if (registration is null)
                     return 0;
 
-                await WriteContextAsync(
-                    output,
-                    registration.Message + " Do not execute an app-local project driver until registration succeeds.");
+                await WriteContextAsync(output, registration.Message);
                 return 0;
             }
 

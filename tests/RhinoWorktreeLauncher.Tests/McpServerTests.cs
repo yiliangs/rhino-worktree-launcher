@@ -52,7 +52,9 @@ public sealed class McpServerTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs")
         });
-        await backend.RegisterProjectAsync(temporary.PathFor("repository"), CancellationToken.None);
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),
+            CancellationToken.None);
         string request = JsonSerializer.Serialize(new
         {
             jsonrpc = "2.0",

@@ -8,13 +8,13 @@ internal sealed class PluginRegistrationLease : IDisposable
     public const string Mode = "windows-registry-lease";
 
     private readonly FileStream _lock;
-    private readonly IReadOnlyList<Registration> _registrations;
+    private readonly Registration _registration;
     private bool _disposed;
 
-    private PluginRegistrationLease(FileStream registrationLock, IReadOnlyList<Registration> registrations)
+    private PluginRegistrationLease(FileStream registrationLock, Registration registration)
     {
         _lock = registrationLock;
-        _registrations = registrations;
+        _registration = registration;
     }
 
     public static async Task<PluginRegistrationLease> AcquireAsync(
@@ -35,35 +35,41 @@ internal sealed class PluginRegistrationLease : IDisposable
             locksDirectory,
             $"rhino-{rhinoVersion}-{normalizedPluginId}.registration.lock");
         FileStream registrationLock = await AcquireFileLockAsync(lockPath, cancellationToken);
-        List<Registration> registrations = new List<Registration>();
-
         try
         {
-            string pluginKeyPath =
-                $@"Software\McNeel\Rhinoceros\{rhinoVersion}.0\Plug-ins\{normalizedPluginId}\PlugIn";
-            AddRegistrationIfPresent(Registry.LocalMachine, "HKLM", pluginKeyPath, registrations);
-            AddRegistrationIfPresent(Registry.CurrentUser, "HKCU", pluginKeyPath, registrations);
-            if (registrations.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    $"No Rhino {rhinoVersion} registration exists for plug-in {normalizedPluginId}.");
-            }
-
+            string pluginRootPath =
+                $@"Software\McNeel\Rhinoceros\{rhinoVersion}.0\Plug-ins\{normalizedPluginId}";
+            string pluginKeyPath = pluginRootPath + @"\PlugIn";
+            bool rootExisted;
+            bool pluginKeyExisted;
+            using (RegistryKey? root = Registry.CurrentUser.OpenSubKey(pluginRootPath, writable: false))
+                rootExisted = root is not null;
+            using (RegistryKey? key = Registry.CurrentUser.OpenSubKey(pluginKeyPath, writable: false))
+                pluginKeyExisted = key is not null;
+            RegistryKey writable = Registry.CurrentUser.CreateSubKey(pluginKeyPath, writable: true) ??
+                throw new UnauthorizedAccessException($"The launcher cannot create HKCU\\{pluginKeyPath}.");
+            bool hadFileName = writable.GetValueNames().Contains("FileName", StringComparer.OrdinalIgnoreCase);
+            object? fileName = hadFileName
+                ? writable.GetValue("FileName", null, RegistryValueOptions.DoNotExpandEnvironmentNames)
+                : null;
+            RegistryValueKind? fileNameKind = hadFileName ? writable.GetValueKind("FileName") : null;
             string selectedPath = Path.GetFullPath(pluginPath);
-            foreach (Registration registration in registrations)
-                registration.Key.SetValue("FileName", selectedPath, RegistryValueKind.String);
-            return new PluginRegistrationLease(registrationLock, registrations);
+            writable.SetValue("FileName", selectedPath, RegistryValueKind.String);
+            writable.Dispose();
+            return new PluginRegistrationLease(
+                registrationLock,
+                new Registration(
+                    pluginRootPath,
+                    pluginKeyPath,
+                    rootExisted,
+                    pluginKeyExisted,
+                    hadFileName,
+                    fileName,
+                    fileNameKind));
         }
         catch
         {
-            try
-            {
-                RestoreAndDispose(registrations);
-            }
-            finally
-            {
-                registrationLock.Dispose();
-            }
+            registrationLock.Dispose();
             throw;
         }
     }
@@ -77,7 +83,7 @@ internal sealed class PluginRegistrationLease : IDisposable
 
         try
         {
-            RestoreAndDispose(_registrations);
+            Restore(_registration);
         }
         finally
         {
@@ -87,62 +93,35 @@ internal sealed class PluginRegistrationLease : IDisposable
     }
 
     [SupportedOSPlatform("windows")]
-    private static void AddRegistrationIfPresent(
-        RegistryKey root,
-        string rootName,
-        string keyPath,
-        ICollection<Registration> registrations)
-    {
-        using RegistryKey? existing = root.OpenSubKey(keyPath, writable: false);
-        if (existing is null)
-            return;
-
-        RegistryKey writable = root.OpenSubKey(keyPath, writable: true) ??
-            throw new UnauthorizedAccessException($"The launcher cannot update {rootName}\\{keyPath}.");
-        bool hadFileName = writable.GetValueNames().Contains("FileName", StringComparer.OrdinalIgnoreCase);
-        object? fileName = hadFileName
-            ? writable.GetValue("FileName", null, RegistryValueOptions.DoNotExpandEnvironmentNames)
-            : null;
-        RegistryValueKind? fileNameKind = hadFileName
-            ? writable.GetValueKind("FileName")
-            : null;
-        registrations.Add(new Registration(writable, hadFileName, fileName, fileNameKind));
-    }
-
-    private static void RestoreAndDispose(IEnumerable<Registration> registrations)
+    private static void Restore(Registration registration)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Rhino registry launch leases require Windows.");
 
-        Exception? restoreFailure = null;
-        foreach (Registration registration in registrations)
+        if (!registration.RootExisted)
         {
-            try
-            {
-                if (registration.HadFileName)
-                {
-                    registration.Key.SetValue(
-                        "FileName",
-                        registration.FileName ?? string.Empty,
-                        registration.FileNameKind ?? RegistryValueKind.String);
-                }
-                else
-                {
-                    registration.Key.DeleteValue("FileName", throwOnMissingValue: false);
-                }
-            }
-            catch (Exception exception)
-            {
-                restoreFailure ??= exception;
-            }
-            finally
-            {
-                registration.Key.Dispose();
-            }
+            Registry.CurrentUser.DeleteSubKeyTree(registration.RootPath, throwOnMissingSubKey: false);
+            return;
+        }
+        if (!registration.PluginKeyExisted)
+        {
+            Registry.CurrentUser.DeleteSubKeyTree(registration.PluginKeyPath, throwOnMissingSubKey: false);
+            return;
         }
 
-        if (restoreFailure is not null)
-            throw new InvalidOperationException("Rhino plug-in registration restoration failed.", restoreFailure);
+        using RegistryKey key = Registry.CurrentUser.OpenSubKey(registration.PluginKeyPath, writable: true) ??
+            throw new InvalidOperationException("The temporary current-user plug-in registration disappeared before restoration.");
+        if (registration.HadFileName)
+        {
+            key.SetValue(
+                "FileName",
+                registration.FileName ?? string.Empty,
+                registration.FileNameKind ?? RegistryValueKind.String);
+        }
+        else
+        {
+            key.DeleteValue("FileName", throwOnMissingValue: false);
+        }
     }
 
     private static async Task<FileStream> AcquireFileLockAsync(
@@ -164,7 +143,10 @@ internal sealed class PluginRegistrationLease : IDisposable
     }
 
     private sealed record Registration(
-        RegistryKey Key,
+        string RootPath,
+        string PluginKeyPath,
+        bool RootExisted,
+        bool PluginKeyExisted,
         bool HadFileName,
         object? FileName,
         RegistryValueKind? FileNameKind);

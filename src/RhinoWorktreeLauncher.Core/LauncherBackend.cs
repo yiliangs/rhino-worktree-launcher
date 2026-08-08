@@ -5,6 +5,8 @@ public sealed class LauncherBackend
     private readonly ProjectCatalog _catalog;
     private readonly ContextResolver _contextResolver;
     private readonly WorktreeScanner _scanner;
+    private readonly WorktreeWorkspaceManager _workspaceManager;
+    private readonly BuildCoordinator _buildCoordinator;
     private readonly LaunchCoordinator _launchCoordinator;
 
     public LauncherBackend(LauncherBackendOptions? options = null)
@@ -13,19 +15,30 @@ public sealed class LauncherBackend
         _catalog = new ProjectCatalog(Options.CatalogPath);
         _contextResolver = new ContextResolver(_catalog);
         _scanner = new WorktreeScanner(Options);
-        _launchCoordinator = new LaunchCoordinator(Options, _contextResolver);
+        _workspaceManager = new WorktreeWorkspaceManager(Options);
+        _buildCoordinator = new BuildCoordinator(Options, _contextResolver, _workspaceManager);
+        _launchCoordinator = new LaunchCoordinator(Options, _contextResolver, _buildCoordinator);
     }
 
     public LauncherBackendOptions Options { get; }
 
     public async Task<CommandResult<ProjectRegistration>> RegisterProjectAsync(
-        string repositoryPath,
+        ProjectRegistrationRequest request,
         CancellationToken cancellationToken)
     {
+        if (!request.Access.ReadProject)
+        {
+            return CommandResult<ProjectRegistration>.Failure(new Diagnostic(
+                "project_read_consent_required",
+                "Project-wide read consent is required before RWL can inspect or register this Git project."));
+        }
+
         try
         {
             ProjectRegistration registration = await _catalog.RegisterAsync(
-                repositoryPath,
+                request.RepositoryPath,
+                request.Access,
+                request.ImportedDriverPath,
                 cancellationToken);
             return CommandResult<ProjectRegistration>.Success(registration);
         }
@@ -55,6 +68,72 @@ public sealed class LauncherBackend
     public Task<CommandResult<ResolvedContext>> ResolveContextAsync(
         string path,
         CancellationToken cancellationToken) => _contextResolver.ResolveAsync(path, cancellationToken);
+
+    public async Task<CommandResult<WorktreeWorkspace>> PrepareWorktreeAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        CommandResult<ResolvedContext> context = await _contextResolver.ResolveAsync(path, cancellationToken);
+        if (!context.Succeeded)
+            return CommandResult<WorktreeWorkspace>.Failure(context.Diagnostics.ToArray());
+
+        try
+        {
+            return CommandResult<WorktreeWorkspace>.Success(
+                await _workspaceManager.PrepareAsync(context.Value!, cancellationToken));
+        }
+        catch (Exception exception)
+        {
+            return CommandResult<WorktreeWorkspace>.Failure(new Diagnostic(
+                "workspace_prepare_failed",
+                exception.Message));
+        }
+    }
+
+    public async Task<CommandResult<ProjectRegistration>> UpdateProjectSettingsAsync(
+        ProjectSettingsRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return CommandResult<ProjectRegistration>.Success(
+                await _catalog.UpdateSettingsAsync(request, cancellationToken));
+        }
+        catch (Exception exception)
+        {
+            return CommandResult<ProjectRegistration>.Failure(new Diagnostic(
+                "project_settings_failed",
+                exception.Message));
+        }
+    }
+
+    public async Task<CommandResult<bool>> ClearProjectCacheAsync(
+        string projectId,
+        CancellationToken cancellationToken)
+    {
+        CommandResult<ProjectSnapshot> project = await GetProjectSnapshotAsync(projectId, cancellationToken);
+        if (!project.Succeeded)
+            return CommandResult<bool>.Failure(project.Diagnostics.ToArray());
+
+        try
+        {
+            DeleteOwnedDirectory(Options.WorkspacesDirectory, projectId);
+            DeleteOwnedDirectory(Options.RemotesDirectory, projectId + ".git");
+            return CommandResult<bool>.Success(true);
+        }
+        catch (Exception exception)
+        {
+            return CommandResult<bool>.Failure(new Diagnostic("cache_clear_failed", exception.Message));
+        }
+    }
+
+    public Task<CommandResult<PreparedLaunchArtifacts>> BuildWorktreeAsync(
+        string path,
+        IProgress<BuildProgress>? progress,
+        CancellationToken cancellationToken) => _buildCoordinator.BuildAsync(
+        path,
+        progress,
+        cancellationToken);
 
     public async Task<CommandResult<IReadOnlyList<ProjectSnapshot>>> GetProjectsAsync(
         CancellationToken cancellationToken)
@@ -115,11 +194,12 @@ public sealed class LauncherBackend
             return CommandResult<WorktreeInspection>.Failure(contextResult.Diagnostics.ToArray());
 
         ResolvedContext context = contextResult.Value!;
-        string driverPath = context.DriverPath;
-        string rhinoPath = Options.RhinoExecutableResolver(context.Contract.Launch.RhinoVersion);
+        string rhinoPath = Options.RhinoExecutableResolver(context.RhinoVersion);
         List<Diagnostic> diagnostics = new List<Diagnostic>();
-        if (!File.Exists(driverPath))
-            diagnostics.Add(new Diagnostic("driver_missing", $"Project driver was not found at '{driverPath}'."));
+        if (!context.BuildProfile.IsConfigured)
+            diagnostics.Add(new Diagnostic("build_profile_incomplete", "The app-owned build profile is incomplete."));
+        if (!File.Exists(Options.VerifierPluginPath))
+            diagnostics.Add(new Diagnostic("verifier_missing", $"RWL's Rhino verifier was not found at '{Options.VerifierPluginPath}'."));
         if (!File.Exists(rhinoPath))
             diagnostics.Add(new Diagnostic("rhino_missing", $"Rhino was not found at '{rhinoPath}'."));
 
@@ -127,7 +207,7 @@ public sealed class LauncherBackend
             context.ProjectId,
             context.WorktreePath,
             Options.CatalogPath,
-            driverPath,
+            Options.WorkspacesDirectory,
             rhinoPath,
             context.IsPrimary,
             diagnostics.Count == 0);
@@ -167,14 +247,14 @@ public sealed class LauncherBackend
                 $"project:{project.ProjectId}",
                 project.Availability == ProjectAvailability.Available,
                 project.Availability == ProjectAvailability.Available
-                    ? $"{project.DisplayName} contract is available."
+                    ? $"{project.DisplayName} app-owned configuration is available."
                     : string.Join(" ", project.Diagnostics.Select(diagnostic => diagnostic.Message)),
                 project.Availability == ProjectAvailability.Available
                     ? DiagnosticSeverity.Info
                     : DiagnosticSeverity.Error));
-            string rhinoPath = Options.RhinoExecutableResolver(project.Registration.Launch.RhinoVersion);
+            string rhinoPath = Options.RhinoExecutableResolver(project.Registration.RhinoVersion);
             checks.Add(new DoctorCheck(
-                $"rhino:{project.Registration.Launch.RhinoVersion}",
+                $"rhino:{project.Registration.RhinoVersion}",
                 File.Exists(rhinoPath),
                 File.Exists(rhinoPath) ? rhinoPath : $"Rhino was not found at '{rhinoPath}'.",
                 File.Exists(rhinoPath) ? DiagnosticSeverity.Info : DiagnosticSeverity.Error));
@@ -217,5 +297,16 @@ public sealed class LauncherBackend
                     DiagnosticSeverity.Error));
             }
         }
+    }
+
+    private static void DeleteOwnedDirectory(string root, string childName)
+    {
+        string ownedRoot = Path.GetFullPath(root);
+        string target = Path.GetFullPath(Path.Combine(ownedRoot, childName));
+        string prefix = ownedRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!target.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The cache path escaped RWL application storage.");
+        if (Directory.Exists(target))
+            Directory.Delete(target, recursive: true);
     }
 }

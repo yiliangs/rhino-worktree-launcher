@@ -1,0 +1,324 @@
+<Window x:Class="RhinoWorktreeLauncher.AddProjectDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add project"
+        Width="590"
+        Height="650"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource WindowBrush}"
+        Foreground="{DynamicResource TextBodyBrush}"
+        FontFamily="{StaticResource UiFont}"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+    <Window.Resources>
+        <SolidColorBrush x:Key="WindowBrush" Color="#16181B" />
+        <SolidColorBrush x:Key="PanelBrush" Color="#1A1C20" />
+        <SolidColorBrush x:Key="ControlBrush" Color="#1B1D21" />
+        <SolidColorBrush x:Key="ControlHoverBrush" Color="#22252A" />
+        <SolidColorBrush x:Key="PanelBorderBrush" Color="#2A2E34" />
+        <SolidColorBrush x:Key="DividerBrush" Color="#25292E" />
+        <SolidColorBrush x:Key="TextStrongBrush" Color="#F0F2F5" />
+        <SolidColorBrush x:Key="TextBodyBrush" Color="#E6E8EB" />
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#9298A1" />
+        <SolidColorBrush x:Key="TextMutedBrush" Color="#707780" />
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#F0F2F5" />
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#16181B" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#7FAE7A" />
+
+        <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="Height" Value="42" />
+            <Setter Property="Padding" Value="18,0" />
+            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.92" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.76" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="QuietButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+            <Setter Property="Background" Value="{DynamicResource ControlBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PanelBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="Switch" TargetType="CheckBox">
+            <Setter Property="Width" Value="38" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid>
+                            <Border x:Name="Track"
+                                    Background="{DynamicResource PanelBorderBrush}"
+                                    CornerRadius="11" />
+                            <Ellipse x:Name="Thumb"
+                                     Width="16"
+                                     Height="16"
+                                     Margin="3"
+                                     HorizontalAlignment="Left"
+                                     Fill="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Thumb" Property="Fill" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BuildChoice" TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Card"
+                                Padding="14,12"
+                                Background="{DynamicResource ControlBrush}"
+                                BorderBrush="{DynamicResource PanelBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="18" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Ellipse x:Name="Ring"
+                                         Width="12"
+                                         Height="12"
+                                         VerticalAlignment="Top"
+                                         Margin="0,3,0,0"
+                                         Stroke="{DynamicResource TextMutedBrush}"
+                                         StrokeThickness="1.5" />
+                                <Ellipse x:Name="Dot"
+                                         Grid.Column="0"
+                                         Width="6"
+                                         Height="6"
+                                         VerticalAlignment="Top"
+                                         Margin="0,6,0,0"
+                                         Fill="{DynamicResource AccentBrush}"
+                                         Visibility="Collapsed" />
+                                <ContentPresenter Grid.Column="1" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="28,24,28,22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="18" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="18" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="20" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock x:Name="EyebrowText" Text="ADD PROJECT"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       FontFamily="{StaticResource MonoFont}"
+                       FontSize="10"
+                       FontWeight="Medium" />
+            <TextBlock x:Name="HeadingText" Margin="0,7,0,0"
+                       Text="Grant RWL access"
+                       Foreground="{DynamicResource TextStrongBrush}"
+                       FontSize="22"
+                       FontWeight="Medium" />
+            <TextBlock x:Name="ProjectPathText"
+                       Margin="0,7,0,0"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       FontFamily="{StaticResource MonoFont}"
+                       FontSize="11" />
+        </StackPanel>
+
+        <Border Grid.Row="2"
+                Padding="18,16"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource PanelBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="26" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Column="0" Width="2" Margin="5,8,0,-10" Background="{DynamicResource DividerBrush}" />
+                <Border Grid.Column="0" Width="10" Height="10" VerticalAlignment="Top" Margin="1,5,0,0"
+                        Background="{DynamicResource AccentBrush}" CornerRadius="2" />
+                <StackPanel Grid.Column="1">
+                    <DockPanel LastChildFill="False">
+                        <TextBlock Text="Project files" Foreground="{DynamicResource TextStrongBrush}" FontWeight="Medium" />
+                        <Border Margin="9,0,0,0" Padding="6,2" Background="{DynamicResource ControlBrush}"
+                                BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="1" CornerRadius="4">
+                            <TextBlock Text="REQUIRED" Foreground="{DynamicResource TextMutedBrush}"
+                                       FontFamily="{StaticResource MonoFont}" FontSize="8.5" />
+                        </Border>
+                    </DockPanel>
+                    <TextBlock Margin="0,4,16,0"
+                               Text="Read this Git project and all of its worktrees. RWL does not write to them."
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="11.5" />
+                </StackPanel>
+
+                <Border Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,12,0,12"
+                        Height="1" Background="{DynamicResource DividerBrush}" />
+
+                <Border Grid.Row="2" Grid.Column="0" Width="10" Height="10" VerticalAlignment="Top" Margin="1,5,0,0"
+                        Background="{DynamicResource TextMutedBrush}" CornerRadius="5" />
+                <StackPanel Grid.Row="2" Grid.Column="1">
+                    <TextBlock Text="Remote status" Foreground="{DynamicResource TextStrongBrush}" FontWeight="Medium" />
+                    <TextBlock Margin="0,4,16,0"
+                               Text="Read remote branches and pull requests into RWL storage. You can turn this off later."
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="11.5" />
+                </StackPanel>
+                <CheckBox x:Name="RemoteReadToggle"
+                          Grid.Row="2"
+                          Grid.Column="2"
+                          Margin="12,1,0,0"
+                          VerticalAlignment="Top"
+                          IsChecked="True"
+                          Style="{StaticResource Switch}" />
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="4">
+            <TextBlock Text="BUILD SETUP"
+                       Margin="2,0,0,9"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       FontFamily="{StaticResource MonoFont}"
+                       FontSize="10" />
+            <RadioButton x:Name="DetectedBuildChoice"
+                         GroupName="BuildMode"
+                         IsChecked="True"
+                         Style="{StaticResource BuildChoice}"
+                         Checked="BuildChoice_Changed">
+                <StackPanel>
+                    <TextBlock Text="Use the detected setup" Foreground="{DynamicResource TextStrongBrush}" FontWeight="Medium" />
+                    <TextBlock Margin="0,3,0,0" Text="RWL finds the plug-in project and creates an editable app-owned profile."
+                               TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5" />
+                </StackPanel>
+            </RadioButton>
+            <RadioButton x:Name="CustomDriverChoice"
+                         GroupName="BuildMode"
+                         Style="{StaticResource BuildChoice}"
+                         Checked="BuildChoice_Changed">
+                <StackPanel>
+                    <TextBlock Text="Import my own driver" Foreground="{DynamicResource TextStrongBrush}" FontWeight="Medium" />
+                    <TextBlock Margin="0,3,0,0" Text="Advanced: RWL copies your PowerShell driver into its own storage."
+                               TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5" />
+                </StackPanel>
+            </RadioButton>
+            <Grid x:Name="DriverPicker" Margin="20,0,0,0" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Padding="11,9" Background="{DynamicResource ControlBrush}"
+                        BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="1" CornerRadius="7">
+                    <TextBlock x:Name="DriverPathText" Text="No driver selected" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextMutedBrush}" FontFamily="{StaticResource MonoFont}" FontSize="10.5" />
+                </Border>
+                <Button Grid.Column="2" Height="36" Padding="13,0" Content="Choose file"
+                        Style="{StaticResource QuietButton}" Click="ChooseDriver_Click" />
+            </Grid>
+            <TextBlock x:Name="ValidationText" Margin="20,7,0,0" Foreground="#C07D76" FontSize="11" Visibility="Collapsed" />
+        </StackPanel>
+
+        <Grid Grid.Row="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="10" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="No repository files will be created or changed."
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           FontSize="10.5" />
+                <CheckBox x:Name="ClearCacheToggle"
+                          Margin="0,6,0,0"
+                          Content="Clear RWL build and remote caches"
+                          Foreground="{DynamicResource TextSecondaryBrush}"
+                          FontSize="10.5"
+                          Visibility="Collapsed" />
+            </StackPanel>
+            <Button Grid.Column="1" Width="86" Content="Cancel" Style="{StaticResource QuietButton}" Click="Cancel_Click" />
+            <Button x:Name="ConfirmButton" Grid.Column="3" Width="154" Content="Grant access and add" Style="{StaticResource ActionButton}" Click="Add_Click" />
+        </Grid>
+    </Grid>
+</Window>

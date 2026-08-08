@@ -585,11 +585,16 @@
                            LineStackingStrategy="BlockLineHeight"
                            SizeChanged="RepositoryPathText_SizeChanged" />
 
-                <Button Grid.Column="3"
-                        Margin="8,0,0,0"
-                        Style="{StaticResource GhostButton}"
-                        Content="＋ Add project"
-                        Click="AddProject_Click" />
+                <StackPanel Grid.Column="3" Margin="8,0,0,0" Orientation="Horizontal">
+                    <Button x:Name="ProjectSettingsButton"
+                            Margin="0,0,4,0"
+                            Style="{StaticResource GhostButton}"
+                            Content="Settings"
+                            Click="ProjectSettings_Click" />
+                    <Button Style="{StaticResource GhostButton}"
+                            Content="＋ Add project"
+                            Click="AddProject_Click" />
+                </StackPanel>
             </Grid>
 
             <Border x:Name="WorktreePanel"
@@ -785,7 +790,7 @@
                                                                             Effect="{DynamicResource ChipShadowEffect}"
                                                                             HighlightBrush="{DynamicResource ChipHighlightBrush}">
                                                     <local:TrackingTextBlock x:Name="FreshnessText"
-                                                               Text="{Binding DriverStatusLabel}"
+                                                               Text="{Binding BuildStatusLabel}"
                                                                Tracking="0.1"
                                                                LineHeight="9"
                                                                Foreground="{DynamicResource FreshTextBrush}"
@@ -895,7 +900,7 @@
                                         </Grid>
                                     </Grid>
                                     <DataTemplate.Triggers>
-                                        <DataTrigger Binding="{Binding HasDriver}" Value="False">
+                                        <DataTrigger Binding="{Binding HasBuildProfile}" Value="False">
                                             <Setter TargetName="FreshnessBadge" Property="Background" Value="{DynamicResource StaleBackgroundBrush}" />
                                             <Setter TargetName="FreshnessBadge" Property="BorderBrush" Value="{DynamicResource StaleBorderBrush}" />
                                             <Setter TargetName="FreshnessText" Property="Foreground" Value="{DynamicResource StaleTextBrush}" />

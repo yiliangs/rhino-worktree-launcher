@@ -186,10 +186,20 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) != true)
             return;
 
+        AddProjectDialog consent = new AddProjectDialog(dialog.FolderName)
+        {
+            Owner = this
+        };
+        if (consent.ShowDialog() != true)
+            return;
+
         try
         {
             CommandResult<ProjectRegistration> result = await _backend.RegisterProjectAsync(
-                dialog.FolderName,
+                new ProjectRegistrationRequest(
+                    consent.ProjectPath,
+                    new ProjectAccessGrant(ReadProject: true, ReadRemote: consent.ReadRemote),
+                    consent.ImportedDriverPath),
                 CancellationToken.None);
             if (!result.Succeeded)
                 throw new InvalidOperationException(result.Diagnostics[0].Message);
@@ -204,6 +214,52 @@ public partial class MainWindow : Window
                 this,
                 ex.Message,
                 "Project could not be added",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private async void ProjectSettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentProject is null)
+            return;
+
+        AddProjectDialog settings = new AddProjectDialog(_currentProject.Registration)
+        {
+            Owner = this
+        };
+        if (settings.ShowDialog() != true)
+            return;
+
+        try
+        {
+            CommandResult<ProjectRegistration> result = await _backend.UpdateProjectSettingsAsync(
+                new ProjectSettingsRequest(
+                    _currentProject.ProjectId,
+                    settings.ReadRemote,
+                    settings.BuildMode,
+                    settings.ImportedDriverPath),
+                CancellationToken.None);
+            if (!result.Succeeded)
+                throw new InvalidOperationException(result.Diagnostics[0].Message);
+
+            if (settings.ClearCache)
+            {
+                CommandResult<bool> cleared = await _backend.ClearProjectCacheAsync(
+                    _currentProject.ProjectId,
+                    CancellationToken.None);
+                if (!cleared.Succeeded)
+                    throw new InvalidOperationException(cleared.Diagnostics[0].Message);
+            }
+
+            await ReloadProjectsAsync(result.Value!.ProjectId);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                ex.Message,
+                "Project settings could not be saved",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
@@ -366,6 +422,7 @@ public partial class MainWindow : Window
     private void UpdateState()
     {
         WorktreeCountText.Text = _worktrees.Count.ToString(CultureInfo.InvariantCulture);
+        ProjectSettingsButton.IsEnabled = _currentProject is not null;
         PanelHintText.Text = _hint;
         EmptyStateText.Visibility = _worktrees.Count == 0
             ? Visibility.Visible
