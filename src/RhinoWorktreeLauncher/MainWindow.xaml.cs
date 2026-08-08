@@ -339,7 +339,7 @@ public partial class MainWindow : Window
         if (_currentProject is null)
             return;
 
-        AddProjectDialog settings = new AddProjectDialog(_currentProject.Registration)
+        ProjectSettingsDialog settings = new ProjectSettingsDialog(_currentProject.Registration)
         {
             Owner = this
         };

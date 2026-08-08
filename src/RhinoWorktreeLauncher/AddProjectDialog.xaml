@@ -310,12 +310,6 @@
                 <TextBlock Text="No repository files will be created or changed."
                            Foreground="{DynamicResource TextMutedBrush}"
                            FontSize="10.5" />
-                <CheckBox x:Name="ClearCacheToggle"
-                          Margin="0,6,0,0"
-                          Content="Clear RWL build and remote caches"
-                          Foreground="{DynamicResource TextSecondaryBrush}"
-                          FontSize="10.5"
-                          Visibility="Collapsed" />
             </StackPanel>
             <Button Grid.Column="1" Width="86" Content="Cancel" Style="{StaticResource QuietButton}" Click="Cancel_Click" />
             <Button x:Name="ConfirmButton" Grid.Column="3" Width="154" Content="Grant access and add" Style="{StaticResource ActionButton}" Click="Add_Click" />

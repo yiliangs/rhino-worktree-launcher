@@ -7,8 +7,6 @@ namespace RhinoWorktreeLauncher;
 public partial class AddProjectDialog : Window
 {
     private string? _driverPath;
-    private readonly bool _editingExisting;
-    private readonly bool _existingDriverImported;
 
     public AddProjectDialog(string projectPath)
     {
@@ -18,31 +16,12 @@ public partial class AddProjectDialog : Window
         Loaded += (_, _) => ApplyOwnerTheme();
     }
 
-    public AddProjectDialog(ProjectRegistration registration)
-        : this(registration.PrimaryCheckout)
-    {
-        _editingExisting = true;
-        _existingDriverImported = registration.BuildProfile.Mode == BuildMode.ImportedDriver;
-        Title = "Project settings";
-        EyebrowText.Text = "PROJECT SETTINGS";
-        HeadingText.Text = registration.DisplayName;
-        ConfirmButton.Content = "Save settings";
-        RemoteReadToggle.IsChecked = registration.Access.ReadRemote;
-        ClearCacheToggle.Visibility = Visibility.Visible;
-        if (_existingDriverImported)
-        {
-            CustomDriverChoice.IsChecked = true;
-            DriverPathText.Text = "Current imported driver (choose a file to replace)";
-        }
-    }
-
     public string ProjectPath { get; }
     public bool ReadRemote => RemoteReadToggle.IsChecked == true;
     public BuildMode BuildMode => CustomDriverChoice.IsChecked == true
         ? BuildMode.ImportedDriver
         : BuildMode.Typed;
     public string? ImportedDriverPath => CustomDriverChoice.IsChecked == true ? _driverPath : null;
-    public bool ClearCache => ClearCacheToggle.IsChecked == true;
 
     private void BuildChoice_Changed(object sender, RoutedEventArgs e)
     {
@@ -75,8 +54,7 @@ public partial class AddProjectDialog : Window
     private void Add_Click(object sender, RoutedEventArgs e)
     {
         if (CustomDriverChoice.IsChecked == true &&
-            string.IsNullOrWhiteSpace(_driverPath) &&
-            !(_editingExisting && _existingDriverImported))
+            string.IsNullOrWhiteSpace(_driverPath))
         {
             ValidationText.Text = "Choose the driver RWL should import.";
             ValidationText.Visibility = Visibility.Visible;
