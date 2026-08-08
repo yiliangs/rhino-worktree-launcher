@@ -95,7 +95,9 @@ public sealed class LauncherBackend
         CommandResult<ProjectSnapshot> projectResult = await GetProjectSnapshotAsync(
             projectId,
             cancellationToken);
-        if (!projectResult.Succeeded || projectResult.Value?.Manifest is null)
+        if (!projectResult.Succeeded ||
+            projectResult.Value is null ||
+            projectResult.Value.Availability != ProjectAvailability.Available)
         {
             return CommandResult<ProjectWorktrees>.Failure(
                 projectResult.Diagnostics.ToArray());
@@ -113,11 +115,8 @@ public sealed class LauncherBackend
             return CommandResult<WorktreeInspection>.Failure(contextResult.Diagnostics.ToArray());
 
         ResolvedContext context = contextResult.Value!;
-        string manifestPath = Path.Combine(
-            context.WorktreePath,
-            ProjectManifest.DefaultFileName);
-        string driverPath = context.Manifest.ResolveDriverPath(context.WorktreePath);
-        string rhinoPath = Options.RhinoExecutableResolver(context.Manifest.Launch.RhinoVersion);
+        string driverPath = context.DriverPath;
+        string rhinoPath = Options.RhinoExecutableResolver(context.Contract.Launch.RhinoVersion);
         List<Diagnostic> diagnostics = new List<Diagnostic>();
         if (!File.Exists(driverPath))
             diagnostics.Add(new Diagnostic("driver_missing", $"Project driver was not found at '{driverPath}'."));
@@ -127,7 +126,7 @@ public sealed class LauncherBackend
         WorktreeInspection inspection = new WorktreeInspection(
             context.ProjectId,
             context.WorktreePath,
-            manifestPath,
+            Options.CatalogPath,
             driverPath,
             rhinoPath,
             context.IsPrimary,
@@ -173,15 +172,12 @@ public sealed class LauncherBackend
                 project.Availability == ProjectAvailability.Available
                     ? DiagnosticSeverity.Info
                     : DiagnosticSeverity.Error));
-            if (project.Manifest is not null)
-            {
-                string rhinoPath = Options.RhinoExecutableResolver(project.Manifest.Launch.RhinoVersion);
-                checks.Add(new DoctorCheck(
-                    $"rhino:{project.Manifest.Launch.RhinoVersion}",
-                    File.Exists(rhinoPath),
-                    File.Exists(rhinoPath) ? rhinoPath : $"Rhino was not found at '{rhinoPath}'.",
-                    File.Exists(rhinoPath) ? DiagnosticSeverity.Info : DiagnosticSeverity.Error));
-            }
+            string rhinoPath = Options.RhinoExecutableResolver(project.Registration.Launch.RhinoVersion);
+            checks.Add(new DoctorCheck(
+                $"rhino:{project.Registration.Launch.RhinoVersion}",
+                File.Exists(rhinoPath),
+                File.Exists(rhinoPath) ? rhinoPath : $"Rhino was not found at '{rhinoPath}'.",
+                File.Exists(rhinoPath) ? DiagnosticSeverity.Info : DiagnosticSeverity.Error));
         }
 
         DoctorReport report = new DoctorReport(

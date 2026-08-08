@@ -4,33 +4,39 @@ Rhino Worktree Launcher is a native Windows tool for registering Rhino plug-in r
 
 RWL is a one-off bootstrapper. A launch performs repository preflight/build work, starts Rhino, verifies the loaded `.rhp` and critical dependencies, returns one terminal result, and stops observing the process. It does not monitor Rhino sessions or retain launch state beyond diagnostics logs.
 
-## Project contract
+## Project configuration
 
-An adopting repository commits `.rhino-worktree-launcher.json` and a repository-owned driver:
+Project identity and launch settings live in `%LOCALAPPDATA%\RhinoWorktreeLauncher\projects.json`, not in the user's repository:
 
 ```json
 {
-  "schemaVersion": 2,
-  "projectId": "example-plugin",
-  "displayName": "Example Plugin",
-  "driver": {
-    "protocolVersion": 1,
-    "entrypoint": "tools/rhino-worktree/Driver.ps1"
-  },
-  "launch": {
-    "rhinoVersion": 8,
-    "mode": "rhino-package-directory"
-  }
+  "schemaVersion": 4,
+  "projects": [{
+    "projectId": "example-plugin",
+    "displayName": "Example Plugin",
+    "gitCommonDirectory": "C:\\source\\example-plugin\\.git",
+    "primaryCheckout": "C:\\source\\example-plugin",
+    "driver": {
+      "protocolVersion": 1,
+      "entrypoint": "projects/natalie/Driver.ps1"
+    },
+    "launch": {
+      "rhinoVersion": 8,
+      "mode": "rhino-package-directory"
+    }
+  }]
 }
 ```
 
-The selected worktree's driver owns project-specific preflight, build, artifact discovery, critical-dependency declaration, and receipt configuration. Registration is the machine trust decision: it permits RWL to execute that repository's driver and build scripts from every linked worktree.
+The app-local project driver owns project-specific preflight, build, artifact discovery, critical-dependency declaration, and receipt configuration. RWL passes the selected worktree path in each launch request, so one driver serves the primary checkout and every linked worktree.
+
+**Add Project** always completes the app-local registration without changing the repository. It creates `%LOCALAPPDATA%\RhinoWorktreeLauncher\projects\<project-id>\Driver.ps1`, importing a legacy worktree driver when one exists or otherwise installing a starter. Existing app-local drivers are never overwritten. A generated starter must be configured with the project's build and artifact paths before the first launch.
 
 See [driver protocol v1](docs/driver-protocol-v1.md), the copyable [PowerShell driver template](templates/Driver.ps1), and the dependency-free [.NET Framework receipt writer](templates/WorktreeLaunchReceiptBootstrap.cs).
 
 ## Launch isolation and verification
 
-For an unregistered plug-in, RWL can expose the selected output through the new Rhino process's `RHINO_PACKAGE_DIRS`. When the same plug-in GUID is already registered at another checkout, Rhino does not reliably override that registration. A driver can therefore request a serialized Windows registry startup lease: RWL redirects every existing Rhino registration for that GUID, demand-loads the selected plug-in, verifies the receipt, and restores the exact previous paths before returning. Repository-owned code inside the plug-in writes the receipt after load; RWL fails closed unless the launch ID, Rhino PID, `.rhp` path, and every declared critical dependency match the selected worktree's driver result.
+For a genuinely unregistered plug-in, RWL can expose the selected output through the new Rhino process's `RHINO_PACKAGE_DIRS`. Do not use that transport when the same plug-in GUID is already registered at another checkout: live testing showed that Rhino can load the selected worktree successfully while silently rewriting the persistent registration to that worktree. A driver must request a serialized Windows registry startup lease for that case. RWL redirects every existing Rhino registration for the GUID, asks the interactive Windows shell to open its installed bootstrap, and sends only the per-launch environment overrides to that one-shot broker through a current-user named pipe. The broker starts Rhino and returns Rhino's actual PID; RWL then demand-loads the selected plug-in, verifies the receipt, and restores the exact previous registration values before returning. Repository-owned code inside the plug-in writes the receipt after load; RWL fails closed unless the launch ID, Rhino PID, `.rhp` path, and every declared critical dependency match the selected worktree's driver result.
 
 Rhino Worktree Launcher can use Rhino's `RHINO_PACKAGE_DIRS` development mechanism to expose a selected build output to a Rhino process. The `launchSettings.json` configuration used to identify this mechanism was shared by Dale Fugier in the McNeel forum discussion [C# Visual Studio New command in Plugin not recognized](https://discourse.mcneel.com/t/c-visual-studio-new-command-in-plugin-not-recognized/201370/5). Rhino Worktree Launcher is an independent orchestration tool built around project registration, Git worktree selection, launch verification, and human and agent workflows.
 
@@ -54,7 +60,7 @@ rwl integration install claude
 rwl integration remove claude
 ```
 
-Installation merges one user-scoped MCP server and one conditional `SessionStart` hook. Existing Claude settings, hooks, and MCP servers are preserved. Unrelated directories receive no context. A compatible but unregistered repository receives registration guidance, and its driver is not executed until registration establishes trust.
+Installation merges one user-scoped MCP server and one conditional `SessionStart` hook. Existing Claude settings, hooks, and MCP servers are preserved. Unrelated directories receive no context. A compatible but unregistered repository receives registration guidance; adding it creates its driver only in RWL's application data.
 
 ## CLI
 

@@ -6,6 +6,10 @@ namespace RhinoWorktreeLauncher;
 internal sealed class LaunchCoordinator
 {
     private static readonly TimeSpan ReceiptPollDelay = TimeSpan.FromMilliseconds(75);
+    private static readonly JsonSerializerOptions LogJson = new JsonSerializerOptions(JsonDefaults.Write)
+    {
+        WriteIndented = false
+    };
     private readonly LauncherBackendOptions _options;
     private readonly ContextResolver _contextResolver;
 
@@ -59,7 +63,7 @@ internal sealed class LaunchCoordinator
                 JsonSerializer.Serialize(request, JsonDefaults.Write),
                 token);
 
-            await ReportAsync("driver", "Running the repository-owned launch driver.");
+            await ReportAsync("driver", "Running the app-owned project launch driver.");
             DriverResult driver = await RunDriverAsync(context, requestPath, ReportAsync, token);
             ValidateDriverResult(driver, context);
             if (!driver.Success)
@@ -75,11 +79,8 @@ internal sealed class LaunchCoordinator
                 await AcquireRegistrationLeaseAsync(context, driver, ReportAsync, token))
             {
                 await ReportAsync("rhino", "Starting Rhino with the selected worktree plug-in.");
-                launchedRhino = ProcessLaunchGate.Start(() =>
-                {
-                    ProcessStartInfo startInfo = CreateRhinoStartInfo(context, driver, launchId, receiptPath);
-                    return _options.RhinoProcessStarter(startInfo);
-                });
+                ProcessStartInfo startInfo = CreateRhinoStartInfo(context, driver, launchId, receiptPath);
+                launchedRhino = _options.RhinoProcessStarter(startInfo);
 
                 await ReportAsync("receipt", "Waiting for the plug-in loaded-binary receipt.");
                 receipt = await WaitForReceiptAsync(receiptPath, launchedRhino, token);
@@ -194,7 +195,7 @@ internal sealed class LaunchCoordinator
         await report("registration", "Acquiring the selected plug-in startup registration lease.");
         return await PluginRegistrationLease.AcquireAsync(
             _options.LocksDirectory,
-            context.Manifest.Launch.RhinoVersion,
+            context.Contract.Launch.RhinoVersion,
             driver.Registration.PluginId,
             driver.PluginPath,
             cancellationToken);
@@ -218,7 +219,7 @@ internal sealed class LaunchCoordinator
                 "-ExecutionPolicy",
                 "Bypass",
                 "-File",
-                context.Manifest.ResolveDriverPath(context.WorktreePath),
+                context.DriverPath,
                 "-RequestPath",
                 requestPath
             },
@@ -315,7 +316,7 @@ internal sealed class LaunchCoordinator
     {
         ProcessStartInfo startInfo = new ProcessStartInfo
         {
-            FileName = _options.RhinoExecutableResolver(context.Manifest.Launch.RhinoVersion),
+            FileName = _options.RhinoExecutableResolver(context.Contract.Launch.RhinoVersion),
             WorkingDirectory = context.WorktreePath,
             UseShellExecute = false
         };
@@ -415,7 +416,7 @@ internal sealed class LaunchCoordinator
         object value,
         CancellationToken cancellationToken)
     {
-        string line = JsonSerializer.Serialize(value, JsonDefaults.Write) + Environment.NewLine;
+        string line = JsonSerializer.Serialize(value, LogJson) + Environment.NewLine;
         await File.AppendAllTextAsync(path, line, cancellationToken);
     }
 

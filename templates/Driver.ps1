@@ -26,7 +26,7 @@ try
 
     # Replace this block with the repository's deterministic build command and artifact paths.
     # Include rhinoRuntime = 'netfx' or 'netcore' in the successful result when required.
-    throw 'Driver template not configured. Replace the build block in tools/rhino-worktree/Driver.ps1.'
+    throw 'Driver template not configured. Replace the build block in the app-local project Driver.ps1.'
 }
 catch
 {

@@ -39,65 +39,26 @@ public sealed class ContextResolver
             SamePath(candidate.GitCommonDirectory, gitCommonDirectory));
         if (registration is null)
         {
-            string candidateManifestPath = Path.Combine(worktreePath, ProjectManifest.DefaultFileName);
-            if (IsCompatibleManifest(candidateManifestPath))
-            {
-                return CommandResult<ResolvedContext>.Failure(new Diagnostic(
-                    "project_registration_required",
-                    $"This is a compatible RWL repository but it is not registered. Run `rwl project register \"{worktreePath}\"` and review the repository-owned driver before approving that trust decision."));
-            }
             return CommandResult<ResolvedContext>.Failure(new Diagnostic(
-                "project_not_registered",
-                $"The Git repository containing '{path}' is not registered."));
-        }
-
-        string manifestPath = Path.Combine(worktreePath, registration.ManifestRelativePath);
-        ProjectManifest manifest;
-        try
-        {
-            manifest = ProjectManifest.Load(manifestPath);
-        }
-        catch (Exception exception)
-        {
-            return CommandResult<ResolvedContext>.Failure(new Diagnostic(
-                "worktree_contract_unavailable",
-                $"The selected worktree contract could not be loaded: {exception.Message}"));
-        }
-
-        if (!string.Equals(manifest.ProjectId, registration.ProjectId, StringComparison.OrdinalIgnoreCase))
-        {
-            return CommandResult<ResolvedContext>.Failure(new Diagnostic(
-                "project_identity_mismatch",
-                $"Worktree manifest projectId '{manifest.ProjectId}' does not match registered project '{registration.ProjectId}'."));
+                "project_registration_required",
+                $"The Git repository containing '{path}' is not registered. Add it in RWL or run `rwl project register \"{worktreePath}\"`."));
         }
 
         return CommandResult<ResolvedContext>.Success(new ResolvedContext(
             registration.ProjectId,
-            manifest.DisplayName,
+            registration.DisplayName,
             registration.GitCommonDirectory,
             registration.PrimaryCheckout,
             worktreePath,
             SamePath(worktreePath, registration.PrimaryCheckout),
-            manifest));
+            registration.Contract,
+            registration.ResolveDriverPath()));
     }
 
     private static string ResolveExistingDirectory(string path)
     {
         string fullPath = Path.GetFullPath(path);
         return File.Exists(fullPath) ? Path.GetDirectoryName(fullPath)! : fullPath;
-    }
-
-    private static bool IsCompatibleManifest(string manifestPath)
-    {
-        try
-        {
-            _ = ProjectManifest.Load(manifestPath);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     internal static bool SamePath(string left, string right) => string.Equals(

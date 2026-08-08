@@ -11,7 +11,8 @@ public sealed class LaunchBackendTests
     {
         string driver = """
             param([string]$RequestPath)
-            $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+            $request = Get-Content -Raw -LiteralPath $RequestPath | ConvertFrom-Json
+            $root = [IO.Path]::GetFullPath($request.worktreePath)
             $package = Join-Path $root 'artifacts\package'
             New-Item -ItemType Directory -Force -Path $package | Out-Null
             $plugin = Join-Path $package 'Sample.rhp'
@@ -82,6 +83,13 @@ public sealed class LaunchBackendTests
             Path.GetFullPath(temporary.PathFor("repository/artifacts/package")),
             launched!.Environment["RHINO_PACKAGE_DIRS"]!.TrimEnd(Path.DirectorySeparatorChar));
         Assert.True(File.Exists(result.Value.DiagnosticsLogPath));
+        string[] logLines = await File.ReadAllLinesAsync(result.Value.DiagnosticsLogPath);
+        Assert.NotEmpty(logLines);
+        Assert.All(logLines, line =>
+        {
+            using JsonDocument record = JsonDocument.Parse(line);
+            Assert.Equal("progress", record.RootElement.GetProperty("type").GetString());
+        });
     }
 
     [Fact]
@@ -89,7 +97,8 @@ public sealed class LaunchBackendTests
     {
         string driver = """
             param([string]$RequestPath)
-            $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+            $request = Get-Content -Raw -LiteralPath $RequestPath | ConvertFrom-Json
+            $root = [IO.Path]::GetFullPath($request.worktreePath)
             $package = Join-Path $root 'artifacts\package'
             New-Item -ItemType Directory -Force -Path $package | Out-Null
             $plugin = Join-Path $package 'Sample.rhp'
@@ -161,7 +170,8 @@ public sealed class LaunchBackendTests
     {
         string driver = """
             param([string]$RequestPath)
-            $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+            $request = Get-Content -Raw -LiteralPath $RequestPath | ConvertFrom-Json
+            $root = [IO.Path]::GetFullPath($request.worktreePath)
             $package = Join-Path $root 'artifacts\package'
             New-Item -ItemType Directory -Force -Path $package | Out-Null
             $plugin = Join-Path $package 'Sample.rhp'
@@ -371,7 +381,9 @@ public sealed class LaunchBackendTests
     }
 
     private const string SuccessfulDriver = """
-        $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+        param([string]$RequestPath)
+        $request = Get-Content -Raw -LiteralPath $RequestPath | ConvertFrom-Json
+        $root = [IO.Path]::GetFullPath($request.worktreePath)
         $package = Join-Path $root 'artifacts\package'
         New-Item -ItemType Directory -Force -Path $package | Out-Null
         $plugin = Join-Path $package 'Sample.rhp'

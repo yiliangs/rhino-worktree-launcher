@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace RhinoWorktreeLauncher;
 
 public enum DiagnosticSeverity
@@ -39,18 +41,37 @@ public enum ProjectAvailability
 
 public sealed record ProjectRegistration(
     string ProjectId,
+    string DisplayName,
     string GitCommonDirectory,
     string PrimaryCheckout,
-    string ManifestRelativePath);
+    DriverContract Driver,
+    LaunchContract Launch,
+    string DriverPath)
+{
+    [JsonIgnore]
+    public ProjectContract Contract => new ProjectContract
+    {
+        ProjectId = ProjectId,
+        DisplayName = DisplayName,
+        Driver = Driver,
+        Launch = Launch
+    };
+
+    public string ResolveDriverPath() => Path.GetFullPath(DriverPath);
+}
+
+public sealed record ProjectDriverCreation(
+    string RepositoryRoot,
+    string DriverPath,
+    bool DriverCreated);
 
 public sealed record ProjectSnapshot(
     ProjectRegistration Registration,
-    ProjectManifest? Manifest,
     ProjectAvailability Availability,
     IReadOnlyList<Diagnostic> Diagnostics)
 {
     public string ProjectId => Registration.ProjectId;
-    public string DisplayName => Manifest?.DisplayName ?? Registration.ProjectId;
+    public string DisplayName => Registration.DisplayName;
 }
 
 public sealed record ResolvedContext(
@@ -60,7 +81,8 @@ public sealed record ResolvedContext(
     string PrimaryCheckout,
     string WorktreePath,
     bool IsPrimary,
-    ProjectManifest Manifest);
+    ProjectContract Contract,
+    string DriverPath);
 
 public sealed record ProjectWorktrees(
     ProjectSnapshot Project,
@@ -69,7 +91,7 @@ public sealed record ProjectWorktrees(
 public sealed record WorktreeInspection(
     string ProjectId,
     string WorktreePath,
-    string ManifestPath,
+    string ConfigurationPath,
     string DriverPath,
     string RhinoExecutablePath,
     bool IsPrimary,
@@ -90,11 +112,11 @@ public sealed record WorktreeSnapshot(
     bool IsPrimary,
     bool CanLaunch)
 {
-    public bool IsFresh => CanLaunch;
+    public bool HasDriver => CanLaunch;
     public bool HasPullRequest => PullRequestNumber.HasValue;
     public bool HasLocalState => true;
     public bool HasGitState => true;
-    public string FreshnessLabel => IsFresh ? "FRESH" : "STALE";
+    public string DriverStatusLabel => HasDriver ? "DRIVER READY" : "DRIVER MISSING";
     public string PullRequestLabel => HasPullRequest ? $"PR #{PullRequestNumber}" : string.Empty;
     public string RelativeActivityLabel => FormatRelativeActivity(LastActivityAt, DateTimeOffset.Now);
     public double BehindBarWidth { get; set; }

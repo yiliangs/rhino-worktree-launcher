@@ -22,7 +22,7 @@ internal static class Program
                 ["project", "register", string path] => await WriteAsync(
                     await backend.RegisterProjectAsync(path, CancellationToken.None),
                     arguments.Json,
-                    value => $"Registered '{value.ProjectId}'. This repository and each worktree's driver are trusted to execute local build scripts."),
+                    value => $"Registered '{value.ProjectId}'. Its app-local driver can execute build commands against selected worktrees."),
                 ["project", "remove", string projectId] => await WriteAsync(
                     await backend.RemoveProjectAsync(projectId, CancellationToken.None),
                     arguments.Json,
@@ -254,7 +254,7 @@ internal static class SessionContextWriter
 
                 await WriteContextAsync(
                     output,
-                    registration.Message + " Do not execute the repository driver until registration succeeds.");
+                    registration.Message + " Do not execute an app-local project driver until registration succeeds.");
                 return 0;
             }
 

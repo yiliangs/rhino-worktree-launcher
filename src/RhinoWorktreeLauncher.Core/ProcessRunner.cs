@@ -22,7 +22,7 @@ internal static class ProcessRunner
         foreach (string argument in arguments)
             startInfo.ArgumentList.Add(argument);
 
-        using Process process = ProcessLaunchGate.Start(() => Process.Start(startInfo)) ??
+        using Process process = Process.Start(startInfo) ??
             throw new InvalidOperationException($"Could not start {fileName}.");
         try
         {
@@ -65,7 +65,7 @@ internal static class ProcessRunner
         foreach (string argument in arguments)
             startInfo.ArgumentList.Add(argument);
 
-        using Process process = ProcessLaunchGate.Start(() => Process.Start(startInfo)) ??
+        using Process process = Process.Start(startInfo) ??
             throw new InvalidOperationException($"Could not start {fileName}.");
         try
         {
