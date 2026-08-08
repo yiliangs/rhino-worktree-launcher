@@ -54,7 +54,7 @@ jobs:
           $checksum = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
           "$checksum *$([IO.Path]::GetFileName($archive))" | Set-Content -LiteralPath "$archive.sha256" -Encoding ascii
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: RhinoWorktreeLauncher-${{ env.RWL_VERSION }}-win-x64
           path: |
