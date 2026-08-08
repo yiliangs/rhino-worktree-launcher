@@ -1,6 +1,9 @@
-using System.Text.Json;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using RhinoWorktreeLauncher;
 using Rwl.Mcp;
+using System.Diagnostics;
+using System.Text.Json;
 
 namespace RhinoWorktreeLauncher.Tests;
 
@@ -16,28 +19,12 @@ public sealed class McpServerTests
             LogsDirectory = temporary.PathFor("launcher/logs"),
             GitExecutable = temporary.PathFor("missing-git.exe")
         });
-        string request = JsonSerializer.Serialize(new
-        {
-            jsonrpc = "2.0",
-            id = 1,
-            method = "tools/call",
-            @params = new
-            {
-                name = "rhino_worktree_doctor",
-                arguments = new { }
-            }
-        });
-        using StringReader input = new StringReader(request + Environment.NewLine);
-        using StringWriter output = new StringWriter();
-        McpServer server = new McpServer(backend, input, output);
+        RwlTools tools = new RwlTools(backend);
 
-        await server.RunAsync(CancellationToken.None);
+        CallToolResult result = await tools.DoctorAsync(CancellationToken.None);
 
-        using JsonDocument response = JsonDocument.Parse(output.ToString());
-        JsonElement toolResult = response.RootElement.GetProperty("result");
-        Assert.True(toolResult.GetProperty("isError").GetBoolean());
-        Assert.False(toolResult
-            .GetProperty("structuredContent")
+        Assert.True(result.IsError);
+        Assert.False(result.StructuredContent!.Value
             .GetProperty("value")
             .GetProperty("healthy")
             .GetBoolean());
@@ -55,30 +42,121 @@ public sealed class McpServerTests
         await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),
             CancellationToken.None);
-        string request = JsonSerializer.Serialize(new
-        {
-            jsonrpc = "2.0",
-            id = 1,
-            method = "tools/call",
-            @params = new
-            {
-                name = "rhino_worktree_resolve_context",
-                arguments = new { cwd = temporary.PathFor("repository") }
-            }
-        });
-        using StringReader input = new StringReader(request + Environment.NewLine);
-        using StringWriter output = new StringWriter();
-        McpServer server = new McpServer(backend, input, output);
+        RwlTools tools = new RwlTools(backend);
 
-        await server.RunAsync(CancellationToken.None);
+        CallToolResult result = await tools.ResolveContextAsync(
+            temporary.PathFor("repository"),
+            CancellationToken.None);
 
-        using JsonDocument response = JsonDocument.Parse(output.ToString());
-        JsonElement structured = response.RootElement
-            .GetProperty("result")
-            .GetProperty("structuredContent");
-        Assert.True(structured.GetProperty("succeeded").GetBoolean());
+        Assert.False(result.IsError);
+        Assert.True(result.StructuredContent!.Value.GetProperty("succeeded").GetBoolean());
         Assert.Equal(
             "repository",
-            structured.GetProperty("value").GetProperty("projectId").GetString());
+            result.StructuredContent.Value
+                .GetProperty("value")
+                .GetProperty("projectId")
+                .GetString());
     }
+
+    [Fact]
+    public async Task List_requires_an_explicit_project_or_directory_context()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        RwlTools tools = new RwlTools(new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs")
+        }));
+
+        CallToolResult result = await tools.ListWorktreesAsync(
+            projectId: null,
+            cwd: null,
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Equal(
+            "project_context_required",
+            result.StructuredContent!.Value
+                .GetProperty("diagnostics")[0]
+                .GetProperty("code")
+                .GetString());
+    }
+
+    [Fact]
+    public void Tool_annotations_distinguish_local_reads_remote_refresh_and_launch()
+    {
+        McpServerToolAttribute list = AttributeFor(nameof(RwlTools.ListWorktreesAsync));
+        McpServerToolAttribute refresh = AttributeFor(nameof(RwlTools.RefreshWorktreesAsync));
+        McpServerToolAttribute launch = AttributeFor(nameof(RwlTools.LaunchAsync));
+
+        Assert.True(list.ReadOnly);
+        Assert.False(list.OpenWorld);
+        Assert.False(refresh.ReadOnly);
+        Assert.True(refresh.OpenWorld);
+        Assert.False(refresh.Destructive);
+        Assert.False(launch.ReadOnly);
+        Assert.True(launch.Destructive);
+    }
+
+    [Fact]
+    public async Task Stdio_server_negotiates_and_publishes_instructions_annotations_and_schemas()
+    {
+        string executable = Path.Combine(AppContext.BaseDirectory, "rwl-mcp.exe");
+        ProcessStartInfo startInfo = new ProcessStartInfo
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        using Process process = Process.Start(startInfo)!;
+        Task<string> errorOutput = process.StandardError.ReadToEndAsync();
+        using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            await process.StandardInput.WriteLineAsync(
+                """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"rwl-test","version":"1.0.0"}}}""");
+            await process.StandardInput.FlushAsync(timeout.Token);
+            using JsonDocument initialize = JsonDocument.Parse(
+                await process.StandardOutput.ReadLineAsync(timeout.Token) ?? string.Empty);
+            Assert.Equal(
+                "2025-11-25",
+                initialize.RootElement.GetProperty("result").GetProperty("protocolVersion").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(
+                initialize.RootElement.GetProperty("result").GetProperty("instructions").GetString()));
+
+            await process.StandardInput.WriteLineAsync(
+                """{"jsonrpc":"2.0","method":"notifications/initialized"}""");
+            await process.StandardInput.WriteLineAsync(
+                """{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}""");
+            await process.StandardInput.FlushAsync(timeout.Token);
+            using JsonDocument listed = JsonDocument.Parse(
+                await process.StandardOutput.ReadLineAsync(timeout.Token) ?? string.Empty);
+            JsonElement[] tools = listed.RootElement
+                .GetProperty("result")
+                .GetProperty("tools")
+                .EnumerateArray()
+                .ToArray();
+            Assert.Equal(6, tools.Length);
+            JsonElement launch = Assert.Single(
+                tools,
+                tool => tool.GetProperty("name").GetString() == "rhino_worktree_launch");
+            Assert.True(launch.GetProperty("annotations").GetProperty("destructiveHint").GetBoolean());
+            Assert.Equal("object", launch.GetProperty("outputSchema").GetProperty("type").GetString());
+        }
+        finally
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+            await errorOutput;
+        }
+    }
+
+    private static McpServerToolAttribute AttributeFor(string methodName) =>
+        Assert.Single(typeof(RwlTools)
+            .GetMethod(methodName)!
+            .GetCustomAttributes(typeof(McpServerToolAttribute), inherit: false)
+            .Cast<McpServerToolAttribute>());
 }

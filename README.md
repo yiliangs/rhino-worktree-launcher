@@ -40,12 +40,23 @@ The launched plug-in does not need to expose an RWL command, callback, or receip
 
 ## Install
 
-Double-click `Install.bat`, or run:
+### End users
+
+Download `RhinoWorktreeLauncher-<version>-win-x64.zip` from a GitHub release, extract it, and double-click `Install.bat`. The package is self-contained, so the user does not need the .NET SDK. It installs a versioned payload and the stable `%LOCALAPPDATA%\RhinoWorktreeLauncher\bootstrap\rwl.exe`, then opens the desktop application.
+
+Each release publishes a SHA-256 checksum beside the archive. The binaries are not yet Authenticode-signed, so Windows SmartScreen may warn until a signing certificate is added to the release pipeline.
+
+Use **MCP setup** in the desktop application to configure Claude Code or Codex. RWL updates only its owned client entry, creates a `.rwl-backup` beside an existing client configuration before changing it, and reports whether the stable bootstrap is available. Restart the client after setup.
+
+### Developers
+
+From a source checkout, double-click `Install.bat`, or run:
 
 ```powershell
 pwsh -NoProfile -File src/RhinoWorktreeLauncher/Install-RhinoWorktreeLauncher.ps1 `
   -ProjectRoot C:\path\to\rhino-worktree-launcher `
   -InstallClaudeIntegration `
+  -InstallCodexIntegration `
   -Launch
 ```
 
@@ -61,9 +72,12 @@ rwl worktree list --project <id> [--local-only] --json
 rwl worktree inspect --path <path> --json
 rwl launch --path <path> --timeout <seconds> --json
 rwl doctor --json
-rwl integration install claude
-rwl integration remove claude
+rwl integration status [claude|codex] --json
+rwl integration install <claude|codex> [--no-session-context]
+rwl integration remove <claude|codex>
 ```
+
+Claude Code can optionally receive a SessionStart message resolving the exact registered worktree. This hook supplies situational context only. The MCP server independently publishes tool descriptions, JSON schemas, server instructions, side-effect annotations, cancellation behavior, and backend-enforced project grants. Codex uses the same stable MCP bootstrap and receives a 300-second tool timeout for verified Rhino launches.
 
 The desktop Project Settings surface is currently the place to change a saved build mode, replace an imported driver, revoke or restore remote reads, and clear rebuildable RWL caches.
 
@@ -72,6 +86,14 @@ The desktop Project Settings surface is currently the place to change a saved bu
 ```powershell
 dotnet build RhinoWorktreeLauncher.slnx -c Debug
 dotnet test tests/RhinoWorktreeLauncher.Tests/RhinoWorktreeLauncher.Tests.csproj
+```
+
+To produce the same self-contained package used by releases:
+
+```powershell
+pwsh -NoProfile -File eng/New-RwlPackage.ps1 `
+  -OutputPath artifacts/RhinoWorktreeLauncher `
+  -Version 1.0.0
 ```
 
 The WPF application remains a fixed 720 x 1000 native surface with embedded IBM Plex Sans and Geist Mono fonts. Backend code is in `RhinoWorktreeLauncher.Core`; WPF, CLI, and MCP projects contain presentation or transport logic only.

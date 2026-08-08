@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore and build
+        shell: pwsh
+        run: |
+          dotnet restore RhinoWorktreeLauncher.slnx
+          dotnet build RhinoWorktreeLauncher.slnx -c Release --no-restore
+
+      - name: Test
+        shell: pwsh
+        run: |
+          dotnet vstest tests/RhinoWorktreeLauncher.Tests/bin/Release/net8.0/RhinoWorktreeLauncher.Tests.dll
