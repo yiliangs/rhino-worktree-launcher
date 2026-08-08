@@ -32,9 +32,10 @@ internal sealed class McpServer
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
-        List<Task> handlers = new List<Task>();
+        HashSet<Task> handlers = new HashSet<Task>();
         while (!cancellationToken.IsCancellationRequested)
         {
+            handlers.RemoveWhere(handler => handler.IsCompleted);
             string? line = await _input.ReadLineAsync(cancellationToken);
             if (line is null)
                 break;
