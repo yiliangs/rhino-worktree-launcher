@@ -25,7 +25,7 @@ public sealed class SessionContextTests
     [Fact]
     public async Task Compatible_unregistered_repository_requests_registration_without_running_driver()
     {
-        using TemporaryDirectory temporary = RepositoryFixture.Create("throw 'driver must not run'");
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
         LauncherBackend backend = CreateBackend(temporary);
         StringWriter output = new StringWriter();
 
@@ -44,7 +44,9 @@ public sealed class SessionContextTests
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         LauncherBackend backend = CreateBackend(temporary);
-        await backend.RegisterProjectAsync(temporary.PathFor("repository"), CancellationToken.None);
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),
+            CancellationToken.None);
         StringWriter output = new StringWriter();
 
         await SessionContextWriter.WriteAsync(

@@ -13,6 +13,7 @@ $sourceRoot = Split-Path $PSScriptRoot -Parent
 $cliProject = Join-Path $sourceRoot 'Rwl.Cli\Rwl.Cli.csproj'
 $mcpProject = Join-Path $sourceRoot 'Rwl.Mcp\Rwl.Mcp.csproj'
 $bootstrapProject = Join-Path $sourceRoot 'Rwl.Bootstrap\Rwl.Bootstrap.csproj'
+$verifierProject = Join-Path $sourceRoot 'Rwl.RhinoVerifier\Rwl.RhinoVerifier.csproj'
 $dataRoot = Join-Path $env:LOCALAPPDATA 'RhinoWorktreeLauncher'
 $releaseId = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $installRoot = Join-Path $dataRoot "releases\$releaseId"
@@ -46,6 +47,8 @@ function Move-AtomicReplace([string]$Source, [string]$Destination)
 }
 
 Write-Host 'Publishing Rhino Worktree Launcher...' -ForegroundColor Cyan
+& dotnet build $verifierProject -c Release
+if ($LASTEXITCODE -ne 0) { throw "Rhino verifier build failed with exit code $LASTEXITCODE." }
 & dotnet publish $desktopProject -c Release -r win-x64 --self-contained true -o $desktopRoot
 if ($LASTEXITCODE -ne 0) { throw "Desktop publish failed with exit code $LASTEXITCODE." }
 & dotnet publish $cliProject -c Release -r win-x64 --self-contained true -o $cliRoot
@@ -57,6 +60,10 @@ if ($LASTEXITCODE -ne 0)
 {
     throw "Bootstrap publish failed with exit code $LASTEXITCODE."
 }
+$verifierOutput = Join-Path $sourceRoot 'Rwl.RhinoVerifier\bin\Release\net48\Rwl.RhinoVerifier.rhp'
+Copy-Item -LiteralPath $verifierOutput -Destination $desktopRoot -Force
+Copy-Item -LiteralPath $verifierOutput -Destination $cliRoot -Force
+Copy-Item -LiteralPath $verifierOutput -Destination $mcpRoot -Force
 
 $desktopExecutable = Join-Path $desktopRoot 'RhinoWorktreeLauncher.exe'
 $cliExecutable = Join-Path $cliRoot 'rwl-cli.exe'

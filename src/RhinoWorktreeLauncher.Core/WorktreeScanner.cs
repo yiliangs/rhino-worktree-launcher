@@ -6,8 +6,13 @@ namespace RhinoWorktreeLauncher;
 internal sealed class WorktreeScanner
 {
     private readonly LauncherBackendOptions _options;
+    private readonly RemoteMirrorStore _remoteMirrors;
 
-    public WorktreeScanner(LauncherBackendOptions options) => _options = options;
+    public WorktreeScanner(LauncherBackendOptions options)
+    {
+        _options = options;
+        _remoteMirrors = new RemoteMirrorStore(options);
+    }
 
     public async Task<CommandResult<ProjectWorktrees>> ScanAsync(
         ProjectSnapshot project,
@@ -17,11 +22,19 @@ internal sealed class WorktreeScanner
         List<Diagnostic> diagnostics = new List<Diagnostic>();
         string primary = project.Registration.PrimaryCheckout;
 
-        if (includeRemote)
+        RemoteMirror? remoteMirror = null;
+        if (includeRemote && !project.Registration.Access.ReadRemote)
+        {
+            diagnostics.Add(new Diagnostic(
+                "remote_read_not_granted",
+                "Remote refresh is disabled for this project. Enable remote read in project settings to synchronize remote metadata.",
+                DiagnosticSeverity.Warning));
+        }
+        else if (includeRemote)
         {
             try
             {
-                _ = await RunGitAsync(primary, new[] { "fetch", "--prune", "--quiet" }, cancellationToken);
+                remoteMirror = await _remoteMirrors.RefreshAsync(project, cancellationToken);
             }
             catch (Exception exception)
             {
@@ -32,7 +45,7 @@ internal sealed class WorktreeScanner
             }
         }
 
-        Dictionary<string, PullRequestRecord> pullRequests = includeRemote
+        Dictionary<string, PullRequestRecord> pullRequests = includeRemote && project.Registration.Access.ReadRemote
             ? await LoadPullRequestsAsync(primary, diagnostics, cancellationToken)
             : new Dictionary<string, PullRequestRecord>(StringComparer.OrdinalIgnoreCase);
 
@@ -42,14 +55,13 @@ internal sealed class WorktreeScanner
                 primary,
                 new[] { "worktree", "list", "--porcelain" },
                 cancellationToken);
-            string comparisonCommit = await ResolveComparisonCommitAsync(primary, cancellationToken);
             List<WorktreeSnapshot> worktrees = new List<WorktreeSnapshot>();
             foreach (WorktreeDescriptor descriptor in Parse(listing))
             {
                 WorktreeSnapshot snapshot = await CreateSnapshotAsync(
                     project,
                     descriptor,
-                    comparisonCommit,
+                    remoteMirror,
                     pullRequests,
                     cancellationToken);
                 worktrees.Add(snapshot);
@@ -75,17 +87,19 @@ internal sealed class WorktreeScanner
     private async Task<WorktreeSnapshot> CreateSnapshotAsync(
         ProjectSnapshot project,
         WorktreeDescriptor descriptor,
-        string comparisonCommit,
+        RemoteMirror? remoteMirror,
         IReadOnlyDictionary<string, PullRequestRecord> pullRequests,
         CancellationToken cancellationToken)
     {
         string path = Path.GetFullPath(descriptor.Path);
         bool isPrimary = ContextResolver.SamePath(path, project.Registration.PrimaryCheckout);
         (int added, int deleted) = await GetLocalDiffAsync(path, cancellationToken);
-        (int ahead, int behind) = await GetDivergenceAsync(path, comparisonCommit, cancellationToken);
+        (int ahead, int behind) = remoteMirror is null
+            ? (0, 0)
+            : await _remoteMirrors.GetDivergenceAsync(remoteMirror, path, cancellationToken);
         DateTimeOffset lastActivity = await GetLastActivityAsync(path, cancellationToken);
         _ = pullRequests.TryGetValue(descriptor.Branch, out PullRequestRecord? pullRequest);
-        bool canLaunch = File.Exists(project.Registration.ResolveDriverPath());
+        bool canLaunch = project.Registration.BuildProfile.IsConfigured;
 
         return new WorktreeSnapshot(
             project.ProjectId,
@@ -136,27 +150,6 @@ internal sealed class WorktreeScanner
         }
     }
 
-    private async Task<string> ResolveComparisonCommitAsync(
-        string primary,
-        CancellationToken cancellationToken)
-    {
-        string comparisonRef = "HEAD";
-        try
-        {
-            string remoteHead = (await RunGitAsync(
-                primary,
-                new[] { "symbolic-ref", "--short", "refs/remotes/origin/HEAD" },
-                cancellationToken)).Trim();
-            if (!string.IsNullOrWhiteSpace(remoteHead))
-                comparisonRef = remoteHead;
-        }
-        catch
-        {
-            // A local repository without origin compares against its current HEAD.
-        }
-        return (await RunGitAsync(primary, new[] { "rev-parse", comparisonRef }, cancellationToken)).Trim();
-    }
-
     private async Task<(int Added, int Deleted)> GetLocalDiffAsync(
         string path,
         CancellationToken cancellationToken)
@@ -177,23 +170,6 @@ internal sealed class WorktreeScanner
         return (added, deleted);
     }
 
-    private async Task<(int Ahead, int Behind)> GetDivergenceAsync(
-        string path,
-        string comparisonCommit,
-        CancellationToken cancellationToken)
-    {
-        string output = await RunGitAsync(
-            path,
-            new[] { "rev-list", "--left-right", "--count", $"{comparisonCommit}...HEAD" },
-            cancellationToken);
-        string[] values = output.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        return values.Length == 2 &&
-            int.TryParse(values[0], out int behind) &&
-            int.TryParse(values[1], out int ahead)
-            ? (ahead, behind)
-            : (0, 0);
-    }
-
     private async Task<DateTimeOffset> GetLastActivityAsync(
         string path,
         CancellationToken cancellationToken)
@@ -210,7 +186,7 @@ internal sealed class WorktreeScanner
         CancellationToken cancellationToken) => ProcessRunner.RunAsync(
             _options.GitExecutable,
             workingDirectory,
-            new[] { "-C", workingDirectory }.Concat(arguments),
+            new[] { "--no-optional-locks", "-C", workingDirectory }.Concat(arguments),
             cancellationToken);
 
     private static IEnumerable<WorktreeDescriptor> Parse(string output)

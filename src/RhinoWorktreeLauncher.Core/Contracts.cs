@@ -39,31 +39,30 @@ public enum ProjectAvailability
     Degraded
 }
 
+public sealed record ProjectAccessGrant(bool ReadProject, bool ReadRemote)
+{
+    public static ProjectAccessGrant Full { get; } = new ProjectAccessGrant(true, true);
+}
+
+public sealed record ProjectRegistrationRequest(
+    string RepositoryPath,
+    ProjectAccessGrant Access,
+    string? ImportedDriverPath = null);
+
+public sealed record ProjectSettingsRequest(
+    string ProjectId,
+    bool ReadRemote,
+    BuildMode BuildMode,
+    string? ImportedDriverPath = null);
+
 public sealed record ProjectRegistration(
     string ProjectId,
     string DisplayName,
     string GitCommonDirectory,
     string PrimaryCheckout,
-    DriverContract Driver,
-    LaunchContract Launch,
-    string DriverPath)
-{
-    [JsonIgnore]
-    public ProjectContract Contract => new ProjectContract
-    {
-        ProjectId = ProjectId,
-        DisplayName = DisplayName,
-        Driver = Driver,
-        Launch = Launch
-    };
-
-    public string ResolveDriverPath() => Path.GetFullPath(DriverPath);
-}
-
-public sealed record ProjectDriverCreation(
-    string RepositoryRoot,
-    string DriverPath,
-    bool DriverCreated);
+    int RhinoVersion,
+    ProjectAccessGrant Access,
+    BuildProfile BuildProfile);
 
 public sealed record ProjectSnapshot(
     ProjectRegistration Registration,
@@ -81,18 +80,34 @@ public sealed record ResolvedContext(
     string PrimaryCheckout,
     string WorktreePath,
     bool IsPrimary,
-    ProjectContract Contract,
-    string DriverPath);
+    int RhinoVersion,
+    BuildProfile BuildProfile);
 
 public sealed record ProjectWorktrees(
     ProjectSnapshot Project,
     IReadOnlyList<WorktreeSnapshot> Worktrees);
 
+public sealed record WorktreeWorkspace(
+    string ProjectId,
+    string WorktreeId,
+    string SourcePath,
+    string BuildPath);
+
+public sealed record BuildProgress(string Stage, string Message, DateTimeOffset Timestamp);
+
+public sealed record PreparedLaunchArtifacts(
+    Guid PluginId,
+    string PackageDirectory,
+    string PluginPath,
+    string RhinoRuntime,
+    IReadOnlyList<VerifiedDependency> CriticalDependencies,
+    WorktreeWorkspace Workspace);
+
 public sealed record WorktreeInspection(
     string ProjectId,
     string WorktreePath,
     string ConfigurationPath,
-    string DriverPath,
+    string WorkspacesDirectory,
     string RhinoExecutablePath,
     bool IsPrimary,
     bool CanLaunch);
@@ -112,11 +127,11 @@ public sealed record WorktreeSnapshot(
     bool IsPrimary,
     bool CanLaunch)
 {
-    public bool HasDriver => CanLaunch;
+    public bool HasBuildProfile => CanLaunch;
     public bool HasPullRequest => PullRequestNumber.HasValue;
     public bool HasLocalState => true;
     public bool HasGitState => true;
-    public string DriverStatusLabel => HasDriver ? "DRIVER READY" : "DRIVER MISSING";
+    public string BuildStatusLabel => HasBuildProfile ? "BUILD READY" : "SETUP NEEDED";
     public string PullRequestLabel => HasPullRequest ? $"PR #{PullRequestNumber}" : string.Empty;
     public string RelativeActivityLabel => FormatRelativeActivity(LastActivityAt, DateTimeOffset.Now);
     public double BehindBarWidth { get; set; }

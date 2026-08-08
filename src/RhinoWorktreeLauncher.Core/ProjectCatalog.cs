@@ -5,7 +5,7 @@ namespace RhinoWorktreeLauncher;
 
 public sealed class ProjectCatalog
 {
-    private const int CurrentSchemaVersion = 4;
+    private const int CurrentSchemaVersion = 5;
     private const int LockAttempts = 20;
     private static readonly TimeSpan LockRetryDelay = TimeSpan.FromMilliseconds(50);
     private readonly string _catalogPath;
@@ -33,52 +33,49 @@ public sealed class ProjectCatalog
         await EnsureMigratedAsync(cancellationToken);
         return (await ReadCurrentFileAsync(cancellationToken)).Projects
             .Where(record => record.IsComplete)
-            .Select(record => record.ToRegistration(_applicationRoot))
+            .Select(record => record.ToRegistration())
             .ToArray();
     }
 
     public async Task<ProjectRegistration> RegisterAsync(
         string repositoryPath,
+        ProjectAccessGrant access,
+        string? importedDriverPath,
         CancellationToken cancellationToken)
     {
         string selectedPath = Path.GetFullPath(repositoryPath);
-        string repositoryRoot = Path.GetFullPath((await ProcessRunner.RunAsync(
-            "git",
+        string repositoryRoot = Path.GetFullPath((await RunGitReadOnlyAsync(
             selectedPath,
-            new[] { "-C", selectedPath, "rev-parse", "--show-toplevel" },
+            new[] { "rev-parse", "--show-toplevel" },
             cancellationToken)).Trim());
-        string gitCommonDirectory = Path.GetFullPath((await ProcessRunner.RunAsync(
-            "git",
+        string gitCommonDirectory = Path.GetFullPath((await RunGitReadOnlyAsync(
             repositoryRoot,
-            new[] { "-C", repositoryRoot, "rev-parse", "--path-format=absolute", "--git-common-dir" },
+            new[] { "rev-parse", "--path-format=absolute", "--git-common-dir" },
             cancellationToken)).Trim());
         string primaryCheckout = Path.GetFullPath(Path.GetDirectoryName(gitCommonDirectory)!);
 
         await EnsureMigratedAsync(cancellationToken);
         ProjectRegistration? existing = (await ReadCurrentFileAsync(cancellationToken)).Projects
             .Where(record => record.IsComplete)
-            .Select(record => record.ToRegistration(_applicationRoot))
+            .Select(record => record.ToRegistration())
             .FirstOrDefault(registration => ContextResolver.SamePath(
                 registration.GitCommonDirectory,
                 gitCommonDirectory));
-        ProjectContract contract = existing?.Contract ?? ProjectContract.CreateDefault(primaryCheckout);
-        contract.Validate(_applicationRoot);
-        string driverPath = contract.ResolveDriverPath(_applicationRoot);
-        await ProjectDriverScaffolder.CreateAsync(
-            repositoryRoot,
-            driverPath,
-            contract.Driver.Entrypoint,
-            contract.ProjectId,
-            cancellationToken);
-
+        ProjectIdentity identity = existing is null
+            ? ProjectIdentity.Create(primaryCheckout)
+            : new ProjectIdentity(existing.ProjectId, existing.DisplayName);
+        BuildProfile buildProfile = string.IsNullOrWhiteSpace(importedDriverPath)
+            ? existing?.BuildProfile ?? BuildProfileDiscovery.Discover(repositoryRoot)
+            : await ImportDriverAsync(identity.ProjectId, importedDriverPath, cancellationToken);
         ProjectRegistration registration = new ProjectRegistration(
-            contract.ProjectId,
-            contract.DisplayName,
+            identity.ProjectId,
+            identity.DisplayName,
             gitCommonDirectory,
             primaryCheckout,
-            contract.Driver,
-            contract.Launch,
-            driverPath);
+            existing?.RhinoVersion ?? 8,
+            access,
+            buildProfile);
+
         await ModifyAsync(file =>
         {
             file.Projects.RemoveAll(record =>
@@ -98,6 +95,99 @@ public sealed class ProjectCatalog
             StringComparison.OrdinalIgnoreCase)),
         cancellationToken);
 
+    public async Task<ProjectRegistration> UpdateSettingsAsync(
+        ProjectSettingsRequest request,
+        CancellationToken cancellationToken)
+    {
+        ProjectRegistration current = (await LoadRegistrationsAsync(cancellationToken))
+            .FirstOrDefault(registration => string.Equals(
+                registration.ProjectId,
+                request.ProjectId,
+                StringComparison.OrdinalIgnoreCase)) ??
+            throw new InvalidOperationException($"Project '{request.ProjectId}' is not registered.");
+        BuildProfile profile;
+        if (request.BuildMode == BuildMode.Typed)
+        {
+            profile = BuildProfileDiscovery.Discover(current.PrimaryCheckout);
+        }
+        else if (!string.IsNullOrWhiteSpace(request.ImportedDriverPath))
+        {
+            profile = await ImportDriverAsync(
+                current.ProjectId,
+                request.ImportedDriverPath,
+                cancellationToken);
+        }
+        else if (current.BuildProfile.Mode == BuildMode.ImportedDriver)
+        {
+            profile = current.BuildProfile;
+        }
+        else
+        {
+            throw new InvalidOperationException("Choose the custom driver RWL should import.");
+        }
+
+        ProjectRegistration updated = current with
+        {
+            Access = new ProjectAccessGrant(true, request.ReadRemote),
+            BuildProfile = profile
+        };
+        await ModifyAsync(file =>
+        {
+            int index = file.Projects.FindIndex(record => string.Equals(
+                record.ProjectId,
+                current.ProjectId,
+                StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+                throw new InvalidOperationException($"Project '{current.ProjectId}' is not registered.");
+            file.Projects[index] = CatalogRegistrationRecord.From(updated);
+        }, cancellationToken);
+        return updated;
+    }
+
+    private async Task<BuildProfile> ImportDriverAsync(
+        string projectId,
+        string selectedPath,
+        CancellationToken cancellationToken)
+    {
+        string source = Path.GetFullPath(selectedPath);
+        if (!File.Exists(source))
+            throw new FileNotFoundException("The selected custom driver was not found.", source);
+
+        string relativePath = Path.Combine("projects", projectId, "drivers", "Driver.ps1");
+        string destination = ResolveApplicationPath(relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        string temporaryPath = $"{destination}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await using (FileStream input = new FileStream(
+                source,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read))
+            await using (FileStream output = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None))
+            {
+                await input.CopyToAsync(output, cancellationToken);
+                await output.FlushAsync(cancellationToken);
+            }
+            File.Move(temporaryPath, destination, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
+
+        return new BuildProfile(
+            BuildMode.ImportedDriver,
+            Array.Empty<BuildStep>(),
+            BuildProfile.Unconfigured.Artifacts,
+            relativePath);
+    }
+
     private ProjectSnapshot LoadSnapshot(CatalogRegistrationRecord record, int index)
     {
         if (!record.IsComplete)
@@ -107,46 +197,62 @@ public sealed class ProjectCatalog
                 record.DisplayName ?? record.ProjectId ?? $"Legacy project {index + 1}",
                 record.GitCommonDirectory ?? string.Empty,
                 record.PrimaryCheckout ?? string.Empty,
-                record.Driver ?? new DriverContract(),
-                record.Launch ?? new LaunchContract(),
-                string.Empty);
-            return Degraded(invalid, "catalog_registration_invalid", "The migrated project registration is incomplete and must be added again.");
+                record.RhinoVersion,
+                record.Access ?? ProjectAccessGrant.Full,
+                record.BuildProfile ?? BuildProfile.Unconfigured);
+            return Degraded(
+                invalid,
+                "catalog_registration_invalid",
+                "The migrated project registration is incomplete and must be added again.");
         }
 
-        ProjectRegistration registration = record.ToRegistration(_applicationRoot);
+        ProjectRegistration registration = record.ToRegistration();
         try
         {
-            registration.Contract.Validate(_applicationRoot);
-            if (!Directory.Exists(registration.PrimaryCheckout))
+            Validate(registration);
+            List<Diagnostic> diagnostics = new List<Diagnostic>();
+            if (!registration.BuildProfile.IsConfigured)
             {
-                return Degraded(
-                    registration,
-                    "primary_checkout_missing",
-                    $"Primary checkout was not found at '{registration.PrimaryCheckout}'.");
+                diagnostics.Add(new Diagnostic(
+                    "build_profile_incomplete",
+                    "RWL could not fully detect this project's build profile. Edit the app-owned profile before launching.",
+                    DiagnosticSeverity.Warning));
             }
-
-            string driverPath = registration.ResolveDriverPath();
-            IReadOnlyList<Diagnostic> diagnostics = File.Exists(driverPath)
-                ? Array.Empty<Diagnostic>()
-                : new[]
-                {
-                    new Diagnostic(
-                        "application_driver_missing",
-                        $"The app-owned project driver was not found at '{driverPath}'. Add the project again to restore it.",
-                        DiagnosticSeverity.Warning)
-                };
+            else if (registration.BuildProfile.Mode == BuildMode.ImportedDriver &&
+                !File.Exists(ResolveApplicationPath(registration.BuildProfile.ImportedDriverPath!)))
+            {
+                diagnostics.Add(new Diagnostic(
+                    "imported_driver_missing",
+                    "The imported driver copy is missing. Re-import it in project settings.",
+                    DiagnosticSeverity.Warning));
+            }
             return new ProjectSnapshot(registration, ProjectAvailability.Available, diagnostics);
         }
         catch (Exception exception) when (exception is IOException or
             UnauthorizedAccessException or
             ArgumentException or
-            NotSupportedException)
-        {
-            return Degraded(registration, "project_configuration_unreadable", exception.Message);
-        }
-        catch (InvalidDataException exception)
+            NotSupportedException or
+            InvalidDataException)
         {
             return Degraded(registration, "project_configuration_invalid", exception.Message);
+        }
+    }
+
+    private static void Validate(ProjectRegistration registration)
+    {
+        if (string.IsNullOrWhiteSpace(registration.ProjectId) ||
+            string.IsNullOrWhiteSpace(registration.DisplayName))
+        {
+            throw new InvalidDataException("ProjectId and DisplayName are required.");
+        }
+        if (registration.RhinoVersion != 8)
+            throw new InvalidDataException($"Unsupported Rhino version {registration.RhinoVersion}; expected 8.");
+        if (!registration.Access.ReadProject)
+            throw new InvalidDataException("A registered project must retain its project-read grant.");
+        if (!Directory.Exists(registration.PrimaryCheckout))
+        {
+            throw new DirectoryNotFoundException(
+                $"Primary checkout was not found at '{registration.PrimaryCheckout}'.");
         }
     }
 
@@ -162,7 +268,6 @@ public sealed class ProjectCatalog
     {
         if (!File.Exists(_catalogPath))
             return;
-
         int schemaVersion = await ReadSchemaVersionAsync(cancellationToken);
         if (schemaVersion > CurrentSchemaVersion)
         {
@@ -175,115 +280,107 @@ public sealed class ProjectCatalog
         Directory.CreateDirectory(Path.GetDirectoryName(_catalogPath)!);
         await using FileStream fileLock = await AcquireLockAsync(cancellationToken);
         schemaVersion = await ReadSchemaVersionAsync(cancellationToken);
-        if (schemaVersion > CurrentSchemaVersion)
-        {
-            throw new InvalidDataException(
-                $"Unsupported project catalog schema version {schemaVersion}; expected {CurrentSchemaVersion}.");
-        }
         if (schemaVersion == CurrentSchemaVersion)
             return;
 
         string json = await File.ReadAllTextAsync(_catalogPath, cancellationToken);
-        CatalogFile previous = JsonSerializer.Deserialize<CatalogFile>(json, JsonDefaults.Read) ?? new CatalogFile();
-        LegacyCatalogFile legacy = JsonSerializer.Deserialize<LegacyCatalogFile>(json, JsonDefaults.Read) ??
-            new LegacyCatalogFile();
-        CatalogFile migrated = new CatalogFile
+        List<CatalogRegistrationRecord> projects;
+        if (schemaVersion >= 3)
         {
-            SchemaVersion = CurrentSchemaVersion,
-            Projects = schemaVersion == 3
-                ? previous.Projects.Select(MigrateSchemaThree).ToList()
-                : legacy.Projects.Select(MigrateLegacy).ToList()
-        };
-        foreach (CatalogRegistrationRecord record in migrated.Projects.Where(record => record.IsComplete))
-        {
-            CatalogRegistrationRecord? oldRecord = previous.Projects.FirstOrDefault(candidate =>
-                string.Equals(candidate.ProjectId, record.ProjectId, StringComparison.OrdinalIgnoreCase));
-            ProjectRegistration registration = record.ToRegistration(_applicationRoot);
-            await ProjectDriverScaffolder.CreateAsync(
-                registration.PrimaryCheckout,
-                registration.DriverPath,
-                oldRecord?.Driver?.Entrypoint ?? ProjectDriverScaffolder.LegacyDriverRelativePath,
-                registration.ProjectId,
-                cancellationToken);
+            LegacyVersionedCatalogFile previous = JsonSerializer.Deserialize<LegacyVersionedCatalogFile>(
+                json,
+                JsonDefaults.Read) ?? new LegacyVersionedCatalogFile();
+            projects = previous.Projects.Select(MigrateVersioned).ToList();
         }
+        else
+        {
+            LegacyCatalogFile previous = JsonSerializer.Deserialize<LegacyCatalogFile>(json, JsonDefaults.Read) ??
+                new LegacyCatalogFile();
+            projects = previous.Projects.Select(MigrateLegacy).ToList();
+        }
+
         string backupPath = Path.Combine(
             Path.GetDirectoryName(_catalogPath)!,
             $"projects.schema{schemaVersion}.backup.json");
         if (!File.Exists(backupPath))
             File.Copy(_catalogPath, backupPath);
-        await WriteCurrentFileAsync(migrated, cancellationToken);
+        await WriteCurrentFileAsync(new CatalogFile
+        {
+            SchemaVersion = CurrentSchemaVersion,
+            Projects = projects
+        }, cancellationToken);
     }
 
-    private CatalogRegistrationRecord MigrateSchemaThree(CatalogRegistrationRecord previous)
+    private static CatalogRegistrationRecord MigrateVersioned(LegacyVersionedRegistrationRecord previous)
     {
-        ProjectContract defaults = ProjectContract.CreateDefault(
-            previous.PrimaryCheckout ?? Environment.CurrentDirectory,
+        ProjectIdentity identity = ProjectIdentity.Create(
+            string.IsNullOrWhiteSpace(previous.PrimaryCheckout)
+                ? Environment.CurrentDirectory
+                : previous.PrimaryCheckout,
             previous.ProjectId);
         return new CatalogRegistrationRecord
         {
-            ProjectId = previous.ProjectId,
-            DisplayName = previous.DisplayName ?? defaults.DisplayName,
+            ProjectId = previous.ProjectId ?? identity.ProjectId,
+            DisplayName = previous.DisplayName ?? identity.DisplayName,
             GitCommonDirectory = previous.GitCommonDirectory,
             PrimaryCheckout = previous.PrimaryCheckout,
-            Driver = defaults.Driver,
-            Launch = previous.Launch ?? defaults.Launch
+            RhinoVersion = previous.RhinoVersion ?? previous.Launch?.RhinoVersion ?? 8,
+            Access = previous.Access ?? ProjectAccessGrant.Full,
+            BuildProfile = previous.BuildProfile ?? DiscoverProfile(previous.PrimaryCheckout)
         };
     }
 
-    private CatalogRegistrationRecord MigrateLegacy(LegacyCatalogRegistrationRecord legacy)
+    private static CatalogRegistrationRecord MigrateLegacy(LegacyCatalogRegistrationRecord previous)
     {
-        string primaryCheckout = legacy.PrimaryCheckout ??
-            (string.IsNullOrWhiteSpace(legacy.ManifestPath)
+        string primaryCheckout = previous.PrimaryCheckout ??
+            (string.IsNullOrWhiteSpace(previous.ManifestPath)
                 ? string.Empty
-                : Path.GetDirectoryName(Path.GetFullPath(legacy.ManifestPath))!);
-        ProjectContract previous = TryLoadLegacyContract(legacy, primaryCheckout) ??
-            ProjectContract.CreateDefault(
-                string.IsNullOrWhiteSpace(primaryCheckout) ? Environment.CurrentDirectory : primaryCheckout,
-                legacy.ProjectId);
-        ProjectContract contract = new ProjectContract
-        {
-            ProjectId = previous.ProjectId,
-            DisplayName = previous.DisplayName,
-            Driver = ProjectContract.CreateDefault(primaryCheckout, previous.ProjectId).Driver,
-            Launch = previous.Launch
-        };
+                : Path.GetDirectoryName(Path.GetFullPath(previous.ManifestPath))!);
+        LegacyProjectManifest? manifest = TryLoadLegacyManifest(previous, primaryCheckout);
+        ProjectIdentity identity = ProjectIdentity.Create(
+            string.IsNullOrWhiteSpace(primaryCheckout) ? Environment.CurrentDirectory : primaryCheckout,
+            previous.ProjectId ?? manifest?.ProjectId);
         return new CatalogRegistrationRecord
         {
-            ProjectId = contract.ProjectId,
-            DisplayName = contract.DisplayName,
-            GitCommonDirectory = legacy.GitCommonDirectory,
+            ProjectId = previous.ProjectId ?? manifest?.ProjectId ?? identity.ProjectId,
+            DisplayName = manifest?.DisplayName ?? identity.DisplayName,
+            GitCommonDirectory = previous.GitCommonDirectory,
             PrimaryCheckout = primaryCheckout,
-            Driver = contract.Driver,
-            Launch = contract.Launch
+            RhinoVersion = manifest?.Launch?.RhinoVersion ?? 8,
+            Access = ProjectAccessGrant.Full,
+            BuildProfile = DiscoverProfile(primaryCheckout)
         };
     }
 
-    private static ProjectContract? TryLoadLegacyContract(
-        LegacyCatalogRegistrationRecord legacy,
+    private static LegacyProjectManifest? TryLoadLegacyManifest(
+        LegacyCatalogRegistrationRecord previous,
         string primaryCheckout)
     {
-        string? manifestPath = !string.IsNullOrWhiteSpace(legacy.ManifestPath)
-            ? legacy.ManifestPath
+        string? manifestPath = !string.IsNullOrWhiteSpace(previous.ManifestPath)
+            ? previous.ManifestPath
             : string.IsNullOrWhiteSpace(primaryCheckout)
                 ? null
                 : Path.Combine(
                     primaryCheckout,
-                    legacy.ManifestRelativePath ?? ".rhino-worktree-launcher.json");
+                    previous.ManifestRelativePath ?? ".rhino-worktree-launcher.json");
         if (manifestPath is null || !File.Exists(manifestPath))
             return null;
-
         try
         {
-            ProjectContract? contract = JsonSerializer.Deserialize<ProjectContract>(
+            return JsonSerializer.Deserialize<LegacyProjectManifest>(
                 File.ReadAllText(manifestPath),
                 JsonDefaults.Read);
-            return contract;
         }
         catch
         {
             return null;
         }
     }
+
+    private static BuildProfile DiscoverProfile(string? primaryCheckout) =>
+        !string.IsNullOrWhiteSpace(primaryCheckout) && Directory.Exists(primaryCheckout)
+            ? BuildProfileDiscovery.Discover(primaryCheckout)
+            : BuildProfile.Unconfigured;
 
     private async Task ModifyAsync(Action<CatalogFile> modification, CancellationToken cancellationToken)
     {
@@ -355,7 +452,27 @@ public sealed class ProjectCatalog
                 await Task.Delay(LockRetryDelay, cancellationToken);
             }
         }
-        throw new IOException($"Could not acquire the project catalog lock at '{lockPath}'.");
+        throw new IOException($"Could not acquire the project catalog lock at '{_catalogPath}.lock'.");
+    }
+
+    private Task<string> RunGitReadOnlyAsync(
+        string workingDirectory,
+        IEnumerable<string> arguments,
+        CancellationToken cancellationToken) => ProcessRunner.RunAsync(
+        "git",
+        workingDirectory,
+        new[] { "--no-optional-locks", "-C", workingDirectory }.Concat(arguments),
+        cancellationToken);
+
+    private string ResolveApplicationPath(string relativePath)
+    {
+        if (Path.IsPathRooted(relativePath))
+            throw new InvalidDataException("Application-owned paths must be relative.");
+        string path = Path.GetFullPath(Path.Combine(_applicationRoot, relativePath));
+        string rootPrefix = _applicationRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!path.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The application-owned path escaped RWL storage.");
+        return path;
     }
 
     private sealed class CatalogFile
@@ -370,8 +487,9 @@ public sealed class ProjectCatalog
         public string? DisplayName { get; init; }
         public string? GitCommonDirectory { get; init; }
         public string? PrimaryCheckout { get; init; }
-        public DriverContract? Driver { get; init; }
-        public LaunchContract? Launch { get; init; }
+        public int RhinoVersion { get; init; }
+        public ProjectAccessGrant? Access { get; init; }
+        public BuildProfile? BuildProfile { get; init; }
 
         [JsonIgnore]
         public bool IsComplete =>
@@ -379,23 +497,18 @@ public sealed class ProjectCatalog
             !string.IsNullOrWhiteSpace(DisplayName) &&
             !string.IsNullOrWhiteSpace(GitCommonDirectory) &&
             !string.IsNullOrWhiteSpace(PrimaryCheckout) &&
-            Driver is not null &&
-            Launch is not null;
+            RhinoVersion > 0 &&
+            Access is not null &&
+            BuildProfile is not null;
 
-        public ProjectRegistration ToRegistration(string applicationRoot) => new ProjectRegistration(
+        public ProjectRegistration ToRegistration() => new ProjectRegistration(
             ProjectId!,
             DisplayName!,
             GitCommonDirectory!,
             PrimaryCheckout!,
-            Driver!,
-            Launch!,
-            new ProjectContract
-            {
-                ProjectId = ProjectId!,
-                DisplayName = DisplayName!,
-                Driver = Driver!,
-                Launch = Launch!
-            }.ResolveDriverPath(applicationRoot));
+            RhinoVersion,
+            Access!,
+            BuildProfile!);
 
         public static CatalogRegistrationRecord From(ProjectRegistration registration) => new CatalogRegistrationRecord
         {
@@ -403,14 +516,34 @@ public sealed class ProjectCatalog
             DisplayName = registration.DisplayName,
             GitCommonDirectory = registration.GitCommonDirectory,
             PrimaryCheckout = registration.PrimaryCheckout,
-            Driver = registration.Driver,
-            Launch = registration.Launch
+            RhinoVersion = registration.RhinoVersion,
+            Access = registration.Access,
+            BuildProfile = registration.BuildProfile
         };
+    }
+
+    private sealed class LegacyVersionedCatalogFile
+    {
+        public List<LegacyVersionedRegistrationRecord> Projects { get; init; } =
+            new List<LegacyVersionedRegistrationRecord>();
+    }
+
+    private sealed class LegacyVersionedRegistrationRecord
+    {
+        public string? ProjectId { get; init; }
+        public string? DisplayName { get; init; }
+        public string? GitCommonDirectory { get; init; }
+        public string? PrimaryCheckout { get; init; }
+        public int? RhinoVersion { get; init; }
+        public LegacyLaunchContract? Launch { get; init; }
+        public ProjectAccessGrant? Access { get; init; }
+        public BuildProfile? BuildProfile { get; init; }
     }
 
     private sealed class LegacyCatalogFile
     {
-        public List<LegacyCatalogRegistrationRecord> Projects { get; init; } = new List<LegacyCatalogRegistrationRecord>();
+        public List<LegacyCatalogRegistrationRecord> Projects { get; init; } =
+            new List<LegacyCatalogRegistrationRecord>();
     }
 
     private sealed class LegacyCatalogRegistrationRecord
@@ -420,6 +553,18 @@ public sealed class ProjectCatalog
         public string? PrimaryCheckout { get; init; }
         public string? ManifestRelativePath { get; init; }
         public string? ManifestPath { get; init; }
+    }
+
+    private sealed class LegacyProjectManifest
+    {
+        public string? ProjectId { get; init; }
+        public string? DisplayName { get; init; }
+        public LegacyLaunchContract? Launch { get; init; }
+    }
+
+    private sealed class LegacyLaunchContract
+    {
+        public int RhinoVersion { get; init; }
     }
 }
 

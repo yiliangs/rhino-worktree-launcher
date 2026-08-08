@@ -250,12 +250,12 @@ internal static class ToolDefinitions
             Array.Empty<string>()),
         Tool(
             "rhino_worktree_inspect",
-            "Inspect whether a selected worktree has a valid contract, driver, and Rhino runtime.",
+            "Inspect whether a selected worktree has a configured build profile, launcher verifier, and Rhino runtime.",
             new { path = StringProperty("Path inside the selected worktree.") },
             new[] { "path" }),
         Tool(
             "rhino_worktree_launch",
-            "Build, launch Rhino 8, and block until the loaded plug-in receipt is verified or the timeout fails.",
+            "Build, launch Rhino 8, and block until the bundled verifier confirms the loaded binaries or the timeout fails.",
             new
             {
                 path = StringProperty("Path inside the selected worktree."),
@@ -264,7 +264,7 @@ internal static class ToolDefinitions
             new[] { "path" }),
         Tool(
             "rhino_worktree_doctor",
-            "Diagnose the local launcher, catalog, project contracts, and required executables.",
+            "Diagnose the local launcher, app-owned project configuration, and required executables.",
             new { },
             Array.Empty<string>())
     };

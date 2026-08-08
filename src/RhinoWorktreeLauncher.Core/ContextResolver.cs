@@ -51,8 +51,8 @@ public sealed class ContextResolver
             registration.PrimaryCheckout,
             worktreePath,
             SamePath(worktreePath, registration.PrimaryCheckout),
-            registration.Contract,
-            registration.ResolveDriverPath()));
+            registration.RhinoVersion,
+            registration.BuildProfile));
     }
 
     private static string ResolveExistingDirectory(string path)
