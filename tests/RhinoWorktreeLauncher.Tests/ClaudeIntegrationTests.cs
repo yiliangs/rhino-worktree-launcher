@@ -69,4 +69,23 @@ public sealed class ClaudeIntegrationTests
         Assert.True(removedState.RootElement.GetProperty("mcpServers").TryGetProperty("existing-server", out _));
         Assert.False(removedState.RootElement.GetProperty("mcpServers").TryGetProperty("rhino-worktree-launcher", out _));
     }
+
+    [Fact]
+    public async Task Remove_deletes_empty_containers_created_by_installation()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string settingsPath = temporary.PathFor(".claude/settings.json");
+        string statePath = temporary.PathFor(".claude.json");
+        temporary.WriteFile(".claude/settings.json", "{}");
+        temporary.WriteFile(".claude.json", "{}");
+        ClaudeIntegrationManager manager = new ClaudeIntegrationManager(settingsPath, statePath);
+
+        await manager.InstallAsync(temporary.PathFor("bootstrap/rwl.exe"), CancellationToken.None);
+        await manager.RemoveAsync(CancellationToken.None);
+
+        using JsonDocument settings = JsonDocument.Parse(await File.ReadAllTextAsync(settingsPath));
+        Assert.False(settings.RootElement.TryGetProperty("hooks", out _));
+        using JsonDocument state = JsonDocument.Parse(await File.ReadAllTextAsync(statePath));
+        Assert.False(state.RootElement.TryGetProperty("mcpServers", out _));
+    }
 }

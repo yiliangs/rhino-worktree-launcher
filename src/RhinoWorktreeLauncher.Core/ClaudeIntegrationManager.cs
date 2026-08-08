@@ -22,7 +22,7 @@ public sealed class ClaudeIntegrationManager
         JsonObject settings = await ReadObjectAsync(_settingsPath, cancellationToken);
         JsonObject hooks = GetOrCreateObject(settings, "hooks");
         JsonArray sessionStart = GetOrCreateArray(hooks, "SessionStart");
-        RemoveOwnedHooks(sessionStart);
+        _ = RemoveOwnedHooks(sessionStart);
         sessionStart.Add(new JsonObject
         {
             ["hooks"] = new JsonArray
@@ -52,25 +52,38 @@ public sealed class ClaudeIntegrationManager
     {
         JsonObject settings = await ReadObjectAsync(_settingsPath, cancellationToken);
         if (settings["hooks"] is JsonObject hooks &&
-            hooks["SessionStart"] is JsonArray sessionStart)
+            hooks["SessionStart"] is JsonArray sessionStart &&
+            RemoveOwnedHooks(sessionStart) > 0)
         {
-            RemoveOwnedHooks(sessionStart);
+            if (sessionStart.Count == 0)
+                _ = hooks.Remove("SessionStart");
+            if (hooks.Count == 0)
+                _ = settings.Remove("hooks");
         }
         await WriteAtomicAsync(_settingsPath, settings, cancellationToken);
 
         JsonObject state = await ReadObjectAsync(_statePath, cancellationToken);
-        if (state["mcpServers"] is JsonObject mcpServers)
-            _ = mcpServers.Remove(McpServerName);
+        if (state["mcpServers"] is JsonObject mcpServers &&
+            mcpServers.Remove(McpServerName) &&
+            mcpServers.Count == 0)
+        {
+            _ = state.Remove("mcpServers");
+        }
         await WriteAtomicAsync(_statePath, state, cancellationToken);
     }
 
-    private static void RemoveOwnedHooks(JsonArray sessionStart)
+    private static int RemoveOwnedHooks(JsonArray sessionStart)
     {
+        int removed = 0;
         for (int index = sessionStart.Count - 1; index >= 0; index--)
         {
-            if (IsOwnedHook(sessionStart[index]))
-                sessionStart.RemoveAt(index);
+            if (!IsOwnedHook(sessionStart[index]))
+                continue;
+
+            sessionStart.RemoveAt(index);
+            removed++;
         }
+        return removed;
     }
 
     private static bool IsOwnedHook(JsonNode? node)
