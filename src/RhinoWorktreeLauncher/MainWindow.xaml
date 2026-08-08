@@ -6,7 +6,7 @@
         Title="Rhino Worktree Launcher"
         Width="720"
         Height="1000"
-        ResizeMode="NoResize"
+        ResizeMode="CanMinimize"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource WindowBrush}"
         Foreground="{DynamicResource TextBodyBrush}"
