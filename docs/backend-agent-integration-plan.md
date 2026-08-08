@@ -1,6 +1,6 @@
 # Backend and Agent Integration Plan
 
-Status: implemented for review under issue #2. Automated backend, CLI, MCP, catalog, routing, receipt, distribution, and live Rhino gates are in place. Live testing proved that `RHINO_PACKAGE_DIRS` works for unregistered output but does not reliably override a conventionally registered plug-in with the same GUID. Natalie therefore uses the serialized registry-lease transport described below.
+Status: launcher implementation is under final review for issue #2. Automated backend, CLI, MCP, catalog, routing, receipt, distribution, and live Rhino gates are in place. The August 7, 2026 audit corrected agent-hosted Rhino startup with an interactive-shell bootstrap broker, corrected JSONL diagnostics, and reconfirmed the serialized registry-lease transport described below. Natalie adoption exists on `codex/issue-2-rwl-v2-natalie` but remains unmerged, so the machine's primary checkout and older Natalie worktrees do not yet expose the contract.
 
 ## Decision summary
 
@@ -14,7 +14,7 @@ The system will expose one backend through three adapters:
 - MCP tools for agents.
 - A CLI for scripting, diagnostics, installation, and fallback use.
 
-Compatible plug-in repositories opt in through a committed manifest, a repository-owned driver, and an in-plug-in receipt writer. They do not need launcher-specific instructions in `AGENTS.md` or `CLAUDE.md`. A machine-level session hook will tell an agent when its current checkout belongs to a registered project and when to use the MCP tools.
+Compatible plug-in repositories are registered in the app-local catalog. Project-specific executable integration lives in an app-local project driver; only the in-plug-in receipt writer remains repository code. Repositories need no RWL configuration, driver, or project-specific agent instructions. A machine-level session hook tells an agent when its current checkout belongs to a registered project and when to use the MCP tools.
 
 Rhino's `RHINO_PACKAGE_DIRS` environment variable is a candidate process-level plug-in discovery mechanism within the launch implementation. It is not the product architecture or the problem solver. The README should credit Dale Fugier's published Rhino development configuration while presenting Rhino Worktree Launcher as an independent orchestration tool.
 
@@ -25,7 +25,7 @@ Rhino Worktree Launcher owns:
 - Registering trusted Rhino plug-in repositories on the local machine.
 - Resolving the registered project and linked worktree from any path inside it.
 - Discovering worktrees and reporting local and remote status.
-- Invoking the repository-owned build and artifact-discovery contract.
+- Invoking the app-local build and artifact-discovery contract against the selected worktree.
 - Starting Rhino with the selected worktree's artifacts.
 - Verifying the loaded plug-in and critical dependency paths through the receipt handshake, then reporting one terminal launch result.
 - Writing per-launch diagnostics logs.
@@ -44,14 +44,16 @@ Rhino Worktree Launcher does not own:
 ## System model
 
 ```text
+RWL application data
+  app-local project driver
+              |
+              v
 Rhino plug-in repository
-  .rhino-worktree-launcher.json
-  repository-owned driver
   in-plug-in receipt writer
               |
               v
 Rhino Worktree Launcher backend
-  project catalog
+  app-local project settings and catalog
   worktree resolver
   application commands
   Rhino process launch and receipt verification
@@ -65,27 +67,31 @@ The adapters contain transport and presentation logic only. They must not implem
 
 ## Project contract
 
-A compatible repository commits a root manifest:
+RWL stores the project contract in its app-local schema-v4 catalog:
 
 ```json
 {
-  "schemaVersion": 2,
-  "projectId": "example-plugin",
-  "displayName": "Example Plugin",
-  "driver": {
-    "protocolVersion": 1,
-    "entrypoint": "tools/rhino-worktree/Driver.ps1"
-  },
-  "launch": {
-    "rhinoVersion": 8,
-    "mode": "rhino-package-directory"
-  }
+  "schemaVersion": 4,
+  "projects": [{
+    "projectId": "example-plugin",
+    "displayName": "Example Plugin",
+    "gitCommonDirectory": "C:\\source\\example-plugin\\.git",
+    "primaryCheckout": "C:\\source\\example-plugin",
+    "driver": {
+      "protocolVersion": 1,
+      "entrypoint": "projects/example-plugin/Driver.ps1"
+    },
+    "launch": {
+      "rhinoVersion": 8,
+      "mode": "rhino-package-directory"
+    }
+  }]
 }
 ```
 
-Schema v2 is a hard cut. The only v1 manifest in existence is Natalie's, on a feature branch with no external adopters, so v1 parsing is deleted rather than maintained alongside v2.
+Repository manifests are not part of the current architecture. Existing schema-v2 and schema-v3 catalog registrations are imported once under the catalog lock and atomically rewritten as schema v4. A legacy worktree driver may be copied once into application data as migration input; runtime resolution never reads repository configuration or drivers.
 
-The repository-owned driver is responsible for project-specific work such as:
+The app-local project driver is responsible for project-specific work such as:
 
 - Preflight checks.
 - Building the selected worktree.
@@ -94,7 +100,7 @@ The repository-owned driver is responsible for project-specific work such as:
 - Declaring the receipt handshake surface: the request environment variables to set on the Rhino process and the receipt path to await.
 - Exposing optional project capabilities without teaching the generic launcher project-specific behavior.
 
-The driver communicates through versioned JSON requests, events, and terminal results. It must support noninteractive execution and deterministic exit behavior. When a worktree is launched, the selected worktree's copy of the driver executes; a branch may evolve its own build procedure.
+The driver communicates through versioned JSON requests, events, and terminal results. It must support noninteractive execution and deterministic exit behavior. RWL invokes one project driver and supplies the selected checkout as `worktreePath`; linked worktrees do not duplicate launch infrastructure.
 
 ### Receipt handshake
 
@@ -112,24 +118,34 @@ rwl project register C:\path\to\repository
 
 The WPF interface provides the equivalent Add Project action.
 
-The local catalog stores stable repository identity rather than a manifest path inside an expendable worktree:
+Add Project derives default identity and launch settings from the selected Git repository and saves them only in RWL's application directory. It creates an app-local driver automatically, importing a legacy driver from any existing worktree when available or installing a starter otherwise. It never writes or overwrites repository files. The starter fails with an actionable configuration message until its project build and artifact paths are configured.
+
+The local catalog stores stable repository identity and the project contract together:
 
 ```json
 {
   "projectId": "example-plugin",
+  "displayName": "Example Plugin",
   "gitCommonDirectory": "C:\\path\\to\\repository\\.git",
   "primaryCheckout": "C:\\path\\to\\repository",
-  "manifestRelativePath": ".rhino-worktree-launcher.json"
+  "driver": {
+    "protocolVersion": 1,
+    "entrypoint": "projects/example-plugin/Driver.ps1"
+  },
+  "launch": {
+    "rhinoVersion": 8,
+    "mode": "rhino-package-directory"
+  }
 }
 ```
 
-Registration validates the manifest and driver. Registering a repository is itself the trust decision: it permits the launcher to execute that repository's own driver and build scripts, including each worktree's copy of them. There is no separate trust prompt; the README and the `rwl project register` success output state this consequence in one sentence. New linked worktrees require no additional registration.
+Registration validates the app-local contract and provisions the app-local driver. The driver may execute build commands against the selected worktree, so registration remains the machine trust decision. New linked worktrees require no additional registration, configuration, or driver files.
 
 ### Catalog access rules
 
 The catalog is read by the WPF application, the CLI, and the MCP server as independent processes, so:
 
-- Reads never write. Loading the catalog is pure; a registration whose manifest fails to load surfaces as a degraded project entry rather than being pruned.
+- Ordinary reads never write. The sole exception is one-time schema-v2 migration, which runs under the same lock and atomically replaces the old catalog. An invalid registration surfaces as degraded rather than being pruned.
 - Removal happens only through the explicit `RemoveProject` command.
 - Writes use atomic temp-file replacement and re-read the current file under a short retry before modifying, so concurrent register and remove operations cannot clobber each other.
 
@@ -250,7 +266,7 @@ This candidate must be tested against:
 - Critical dependencies loaded from an unexpected checkout.
 - Supported Rhino versions and runtimes.
 
-The same-GUID test failed: with Natalie registered at the primary checkout, pointing `RHINO_PACKAGE_DIRS` at a linked worktree either blocked startup or failed to construct the selected plug-in. Natalie therefore declares `windows-registry-lease`, its plug-in GUID, and a demand-load command in the driver result. RWL serializes starts for that GUID behind a cross-process file lock, snapshots every existing HKLM/HKCU `PlugIn\\FileName`, redirects them to the selected `.rhp`, starts Rhino with the demand-load command, verifies the receipt, and restores the exact paths before returning. Already-started Rhino processes can then run concurrently; only their registration-sensitive startup windows serialize.
+The same-GUID candidate is unsafe. A fresh August 7, 2026 rerun loaded Natalie's selected linked-worktree binaries and passed the receipt three times, but Rhino silently rewrote the persistent HKLM `PlugIn\\FileName` from the primary checkout to the temporary worktree. Receipt success alone therefore cannot make `RHINO_PACKAGE_DIRS` safe for an already-registered GUID. Natalie declares `windows-registry-lease`, its plug-in GUID, and a demand-load command in the driver result. RWL serializes starts for that GUID behind a cross-process file lock, snapshots every existing HKLM/HKCU `PlugIn\\FileName` value and registry kind, redirects them to the selected `.rhp`, and asks the interactive Windows shell to open the installed bootstrap. That one-shot broker receives only the per-launch environment overrides through a current-user named pipe, starts Rhino with the demand-load command, and returns Rhino's actual PID. RWL verifies the receipt and restores the exact registry values before returning. Already-started Rhino processes can then run concurrently; only their registration-sensitive startup windows serialize.
 
 ## README attribution
 
@@ -270,8 +286,8 @@ The acknowledgement credits the existing Rhino configuration without implying th
 
 ### Phase 1: stabilize project identity and contracts
 
-- Finalize manifest schema v2 and delete v1 parsing.
-- Replace catalog manifest paths with canonical Git repository identity and adopt the catalog access rules.
+- Store the project contract and canonical Git repository identity together in the schema-v4 app-local catalog.
+- Import and remove schema-v2 manifest references during one-time catalog migration.
 - Define versioned driver request, event, and result DTOs, including the receipt handshake surface and receipt JSON schema.
 - Ship the copyable receipt-writer bootstrap template.
 - Add fixture repositories and parser tests.
@@ -310,7 +326,7 @@ The acknowledgement credits the existing Rhino configuration without implying th
 ### Phase 7: distribution and migration
 
 - Ship a per-user versioned installer with a stable bootstrap.
-- Migrate Natalie from its feature-branch manifest and driver into the supported project contract.
+- Migrate Natalie's settings into the app-local contract while retaining only its executable driver and receipt integration in the repository.
 - Register Natalie against its primary checkout rather than an expendable task worktree.
 - Document project onboarding, machine installation, update, rollback, and uninstall behavior.
 
@@ -323,7 +339,7 @@ The implementation is not complete until all of the following hold:
 - The WPF UI, CLI, and MCP return the same worktree state and the same launch result shape.
 - A launch result proves the selected `.rhp` and declared dependencies loaded from the selected worktree.
 - Overlapping launches do not corrupt Rhino's persistent registration state.
-- A transient manifest read failure never removes a registration from the catalog.
+- Repository JSON is never consulted during ordinary catalog, context, worktree, or launch operations.
 - Optional GitHub enrichment failure does not hide local worktrees.
 - Required build, launch, receipt, and timeout failures remain visible and machine-readable.
 - Installation preserves unrelated Claude Code settings and integrations.

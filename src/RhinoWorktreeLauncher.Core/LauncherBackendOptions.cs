@@ -20,8 +20,7 @@ public sealed class LauncherBackendOptions
         $"Rhino {version}",
         "System",
         "Rhino.exe");
-    public Func<ProcessStartInfo, Process> RhinoProcessStarter { get; init; } =
-        ShellRhinoProcessStarter.Start;
+    public Func<ProcessStartInfo, Process> RhinoProcessStarter { get; init; } = RhinoProcessBroker.Start;
 
     private static string ResolveGitHubCliPath()
     {

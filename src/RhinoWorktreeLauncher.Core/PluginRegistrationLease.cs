@@ -103,21 +103,33 @@ internal sealed class PluginRegistrationLease : IDisposable
         object? fileName = hadFileName
             ? writable.GetValue("FileName", null, RegistryValueOptions.DoNotExpandEnvironmentNames)
             : null;
-        registrations.Add(new Registration(writable, hadFileName, fileName));
+        RegistryValueKind? fileNameKind = hadFileName
+            ? writable.GetValueKind("FileName")
+            : null;
+        registrations.Add(new Registration(writable, hadFileName, fileName, fileNameKind));
     }
 
-    [SupportedOSPlatform("windows")]
     private static void RestoreAndDispose(IEnumerable<Registration> registrations)
     {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("Rhino registry launch leases require Windows.");
+
         Exception? restoreFailure = null;
         foreach (Registration registration in registrations)
         {
             try
             {
                 if (registration.HadFileName)
-                    registration.Key.SetValue("FileName", registration.FileName ?? string.Empty, RegistryValueKind.String);
+                {
+                    registration.Key.SetValue(
+                        "FileName",
+                        registration.FileName ?? string.Empty,
+                        registration.FileNameKind ?? RegistryValueKind.String);
+                }
                 else
+                {
                     registration.Key.DeleteValue("FileName", throwOnMissingValue: false);
+                }
             }
             catch (Exception exception)
             {
@@ -151,5 +163,9 @@ internal sealed class PluginRegistrationLease : IDisposable
         }
     }
 
-    private sealed record Registration(RegistryKey Key, bool HadFileName, object? FileName);
+    private sealed record Registration(
+        RegistryKey Key,
+        bool HadFileName,
+        object? FileName,
+        RegistryValueKind? FileNameKind);
 }

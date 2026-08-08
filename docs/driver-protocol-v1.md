@@ -1,32 +1,14 @@
 # Repository driver protocol v1
 
-Each registered repository commits `.rhino-worktree-launcher.json` at its root:
-
-```json
-{
-  "schemaVersion": 2,
-  "projectId": "example-plugin",
-  "displayName": "Example Plugin",
-  "driver": {
-    "protocolVersion": 1,
-    "entrypoint": "tools/rhino-worktree/Driver.ps1"
-  },
-  "launch": {
-    "rhinoVersion": 8,
-    "mode": "rhino-package-directory"
-  }
-}
-```
-
-Registration is the trust decision. RWL may execute the selected worktree's copy of the declared driver and any build scripts it invokes.
+Project identity, the driver mapping, Rhino launch settings, and the project driver live in RWL's application directory. No RWL configuration or driver file is required in a repository. RWL invokes one app-local driver for every worktree and supplies the selected checkout through `worktreePath` in the request.
 
 ## Invocation
 
-RWL invokes the selected worktree's driver noninteractively:
+RWL invokes the project's app-local driver noninteractively:
 
 ```powershell
 pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
-  -File tools/rhino-worktree/Driver.ps1 `
+  -File "$env:LOCALAPPDATA\RhinoWorktreeLauncher\projects\<project-id>\Driver.ps1" `
   -RequestPath <absolute-request-json>
 ```
 
@@ -49,7 +31,7 @@ The driver writes newline-delimited JSON to stdout. It may write progress events
 {"protocolVersion":1,"kind":"result","success":true,"packageDirectory":"C:\\source\\plugin-task\\Plugin\\bin\\Debug\\net481","pluginPath":"C:\\source\\plugin-task\\Plugin\\bin\\Debug\\net481\\Plugin.rhp","rhinoRuntime":"netfx","criticalDependencies":[{"name":"Plugin.Core","path":"C:\\source\\plugin-task\\Plugin\\bin\\Debug\\net481\\Plugin.Core.dll"}],"receipt":{"launchIdEnvironmentVariable":"RWL_LAUNCH_ID","receiptPathEnvironmentVariable":"RWL_RECEIPT_PATH"},"registration":{"mode":"windows-registry-lease","pluginId":"f3cf4a28-ea9e-4e08-baba-5fc6645a5d72","startupCommand":"_MyPluginCommand"}}
 ```
 
-A failed result sets `success` to `false` and supplies stable `errorCode` and human-readable `errorMessage`. A successful result must report existing absolute paths. The package directory, `.rhp`, and every critical dependency must be inside the selected worktree. `rhinoRuntime` is optional and, when supplied, is `netfx` or `netcore`; RWL maps it to Rhino's process runtime switch. `registration` is optional. Use `windows-registry-lease` only when the plug-in GUID is already registered at another checkout; RWL serializes starts for that GUID, redirects every existing HKLM/HKCU registration path, runs `startupCommand` to demand-load the selected plug-in, and restores the previous paths after receipt verification.
+A failed result sets `success` to `false` and supplies stable `errorCode` and human-readable `errorMessage`. A successful result must report existing absolute paths. The package directory, `.rhp`, and every critical dependency must be inside the selected worktree. `rhinoRuntime` is optional and, when supplied, is `netfx` or `netcore`; RWL maps it to Rhino's process runtime switch. `registration` is optional only for a plug-in GUID that is not already registered. When the same GUID is registered at another checkout, the driver must declare `windows-registry-lease`; `RHINO_PACKAGE_DIRS` can otherwise rewrite Rhino's persistent registration even when the selected-worktree receipt succeeds. RWL serializes starts for that GUID, preserves every existing HKLM/HKCU registration value and registry kind, redirects the paths, runs `startupCommand` to demand-load the selected plug-in, and restores the previous values after receipt verification.
 
 ## Loaded-binary receipt schema v1
 

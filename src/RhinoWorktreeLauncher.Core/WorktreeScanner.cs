@@ -15,7 +15,6 @@ internal sealed class WorktreeScanner
         CancellationToken cancellationToken)
     {
         List<Diagnostic> diagnostics = new List<Diagnostic>();
-        ProjectManifest manifest = project.Manifest!;
         string primary = project.Registration.PrimaryCheckout;
 
         if (includeRemote)
@@ -86,20 +85,7 @@ internal sealed class WorktreeScanner
         (int ahead, int behind) = await GetDivergenceAsync(path, comparisonCommit, cancellationToken);
         DateTimeOffset lastActivity = await GetLastActivityAsync(path, cancellationToken);
         _ = pullRequests.TryGetValue(descriptor.Branch, out PullRequestRecord? pullRequest);
-        string manifestPath = Path.Combine(path, project.Registration.ManifestRelativePath);
-        bool canLaunch = false;
-        try
-        {
-            ProjectManifest selectedManifest = ProjectManifest.Load(manifestPath);
-            canLaunch = string.Equals(
-                selectedManifest.ProjectId,
-                project.ProjectId,
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            // Readiness is represented by CanLaunch; Inspect reports the exact contract failure.
-        }
+        bool canLaunch = File.Exists(project.Registration.ResolveDriverPath());
 
         return new WorktreeSnapshot(
             project.ProjectId,

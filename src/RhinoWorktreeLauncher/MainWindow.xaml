@@ -785,7 +785,7 @@
                                                                             Effect="{DynamicResource ChipShadowEffect}"
                                                                             HighlightBrush="{DynamicResource ChipHighlightBrush}">
                                                     <local:TrackingTextBlock x:Name="FreshnessText"
-                                                               Text="{Binding FreshnessLabel}"
+                                                               Text="{Binding DriverStatusLabel}"
                                                                Tracking="0.1"
                                                                LineHeight="9"
                                                                Foreground="{DynamicResource FreshTextBrush}"
@@ -895,7 +895,7 @@
                                         </Grid>
                                     </Grid>
                                     <DataTemplate.Triggers>
-                                        <DataTrigger Binding="{Binding IsFresh}" Value="False">
+                                        <DataTrigger Binding="{Binding HasDriver}" Value="False">
                                             <Setter TargetName="FreshnessBadge" Property="Background" Value="{DynamicResource StaleBackgroundBrush}" />
                                             <Setter TargetName="FreshnessBadge" Property="BorderBrush" Value="{DynamicResource StaleBorderBrush}" />
                                             <Setter TargetName="FreshnessText" Property="Foreground" Value="{DynamicResource StaleTextBrush}" />

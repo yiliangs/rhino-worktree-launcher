@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 
 namespace Rwl.Bootstrap;
@@ -11,6 +13,9 @@ internal static class Program
         try
         {
             string mode = args.FirstOrDefault()?.ToLowerInvariant() ?? "desktop";
+            if (mode == "rhino-broker")
+                return await RunRhinoBrokerAsync(args);
+
             if (mode is not "desktop" and not "mcp" &&
                 !Console.IsOutputRedirected)
             {
@@ -90,6 +95,75 @@ internal static class Program
 
     private const uint AttachParentProcess = 0xffffffff;
 
+    private static async Task<int> RunRhinoBrokerAsync(string[] args)
+    {
+        string pipeName = RequiredOption(args, "--pipe");
+        using NamedPipeClientStream pipe = new NamedPipeClientStream(
+            ".",
+            pipeName,
+            PipeDirection.InOut,
+            PipeOptions.Asynchronous);
+        using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await pipe.ConnectAsync(timeout.Token);
+
+        using StreamReader reader = new StreamReader(pipe, Encoding.UTF8, false, leaveOpen: true);
+        using StreamWriter writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true)
+        {
+            AutoFlush = true
+        };
+        try
+        {
+            string? requestLine = await reader.ReadLineAsync(timeout.Token);
+            RhinoLaunchRequest request = requestLine is null
+                ? throw new InvalidDataException("The launcher closed without providing a Rhino launch request.")
+                : JsonSerializer.Deserialize<RhinoLaunchRequest>(
+                    requestLine,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ??
+                    throw new InvalidDataException("The Rhino launch request was empty.");
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = request.Executable,
+                WorkingDirectory = request.WorkingDirectory,
+                UseShellExecute = false
+            };
+            foreach (string argument in request.Arguments)
+                startInfo.ArgumentList.Add(argument);
+            foreach (KeyValuePair<string, string?> variable in request.Environment)
+            {
+                if (variable.Value is null)
+                    startInfo.Environment.Remove(variable.Key);
+                else
+                    startInfo.Environment[variable.Key] = variable.Value;
+            }
+
+            Process process = Process.Start(startInfo) ??
+                throw new InvalidOperationException($"Could not start '{request.Executable}'.");
+            int processId = process.Id;
+            process.Dispose();
+            await writer.WriteLineAsync(JsonSerializer.Serialize(new RhinoLaunchResponse
+            {
+                ProcessId = processId
+            })).WaitAsync(timeout.Token);
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            await writer.WriteLineAsync(JsonSerializer.Serialize(new RhinoLaunchResponse
+            {
+                Error = exception.Message
+            }));
+            return 1;
+        }
+    }
+
+    private static string RequiredOption(string[] args, string option)
+    {
+        int index = Array.FindIndex(args, value => value.Equals(option, StringComparison.OrdinalIgnoreCase));
+        if (index < 0 || index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
+            throw new ArgumentException($"Missing required option '{option}'.");
+        return args[index + 1];
+    }
+
     private static async Task PumpInputAsync(Process process)
     {
         try
@@ -115,4 +189,19 @@ internal static class Program
         public string Cli { get; init; } = string.Empty;
         public string Mcp { get; init; } = string.Empty;
     }
+
+    private sealed class RhinoLaunchRequest
+    {
+        public string Executable { get; init; } = string.Empty;
+        public string WorkingDirectory { get; init; } = string.Empty;
+        public string[] Arguments { get; init; } = Array.Empty<string>();
+        public Dictionary<string, string?> Environment { get; init; } = new Dictionary<string, string?>();
+    }
+
+    private sealed class RhinoLaunchResponse
+    {
+        public int ProcessId { get; init; }
+        public string? Error { get; init; }
+    }
+
 }

@@ -4,4 +4,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\templates\Driver.ps1"
+                      Link="Templates\Driver.ps1"
+                      LogicalName="RhinoWorktreeLauncher.Templates.Driver.ps1" />
+    <EmbeddedResource Include="..\..\templates\Natalie.Driver.ps1"
+                      Link="Templates\Natalie.Driver.ps1"
+                      LogicalName="RhinoWorktreeLauncher.Templates.Natalie.Driver.ps1" />
+  </ItemGroup>
 </Project>

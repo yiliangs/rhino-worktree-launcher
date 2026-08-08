@@ -76,7 +76,7 @@ public sealed class McpServerTests
             .GetProperty("structuredContent");
         Assert.True(structured.GetProperty("succeeded").GetBoolean());
         Assert.Equal(
-            "sample-plugin",
+            "repository",
             structured.GetProperty("value").GetProperty("projectId").GetString());
     }
 }

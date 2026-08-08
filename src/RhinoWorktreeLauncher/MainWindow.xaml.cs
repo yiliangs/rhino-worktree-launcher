@@ -193,16 +193,17 @@ public partial class MainWindow : Window
                 CancellationToken.None);
             if (!result.Succeeded)
                 throw new InvalidOperationException(result.Diagnostics[0].Message);
+
             await ReloadProjectsAsync(result.Value!.ProjectId);
         }
         catch (Exception ex)
         {
-            _hint = "Project not supported";
+            _hint = "Project could not be added";
             UpdateState();
             MessageBox.Show(
                 this,
                 ex.Message,
-                "Project not supported",
+                "Project could not be added",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
@@ -234,12 +235,12 @@ public partial class MainWindow : Window
         if (WorktreeList.SelectedItem is not WorktreeSnapshot worktree)
             return;
 
-        ProcessLaunchGate.Start(() => Process.Start(new ProcessStartInfo
+        _ = Process.Start(new ProcessStartInfo
         {
             FileName = "explorer.exe",
             ArgumentList = { worktree.Path },
             UseShellExecute = true
-        }));
+        });
     }
 
     private void Launch_Click(object sender, RoutedEventArgs e)

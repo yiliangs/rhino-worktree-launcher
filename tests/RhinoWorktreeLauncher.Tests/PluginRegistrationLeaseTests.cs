@@ -42,6 +42,43 @@ public sealed class PluginRegistrationLeaseTests
     }
 
     [Fact]
+    public async Task Lease_restores_the_original_registry_value_kind()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string pluginId = Guid.NewGuid().ToString("D");
+        string keyPath = PluginKeyPath(pluginId);
+        const string original = @"%TEMP%\Sample\Sample.rhp";
+        string selected = temporary.PathFor("selected/Sample.rhp");
+        using (RegistryKey existing = Registry.CurrentUser.CreateSubKey(keyPath, writable: true)!)
+            existing.SetValue("FileName", original, RegistryValueKind.ExpandString);
+
+        try
+        {
+            using (await PluginRegistrationLease.AcquireAsync(
+                temporary.CreateDirectory("locks"),
+                8,
+                pluginId,
+                selected,
+                CancellationToken.None))
+            {
+            }
+
+            using RegistryKey restored = Registry.CurrentUser.OpenSubKey(keyPath)!;
+            Assert.Equal(RegistryValueKind.ExpandString, restored.GetValueKind("FileName"));
+            Assert.Equal(
+                original,
+                restored.GetValue("FileName", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
+        }
+        finally
+        {
+            Registry.CurrentUser.DeleteSubKeyTree(PluginRootKeyPath(pluginId), throwOnMissingSubKey: false);
+        }
+    }
+
+    [Fact]
     public async Task Same_plugin_leases_serialize_across_callers()
     {
         if (!OperatingSystem.IsWindows())
