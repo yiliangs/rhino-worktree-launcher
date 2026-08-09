@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:RhinoWorktreeLauncher"
         Title="Project settings"
         Width="720"
-        Height="620"
+        Height="680"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
@@ -40,6 +40,11 @@
         <SolidColorBrush x:Key="ControlTextBrush" Color="#B2B8C0" />
         <SolidColorBrush x:Key="AccentBrush" Color="#8FAE8B" />
         <SolidColorBrush x:Key="ToggleOnBrush" Color="#5F8A5C" />
+        <SolidColorBrush x:Key="ToggleOnBorderBrush" Color="#537A51" />
+        <SolidColorBrush x:Key="ToggleOffBrush" Color="#24272C" />
+        <SolidColorBrush x:Key="ToggleOffBorderBrush" Color="#31353B" />
+        <SolidColorBrush x:Key="ToggleKnobBrush" Color="#F0F2F5" />
+        <SolidColorBrush x:Key="ToggleKnobOffBrush" Color="#7D848D" />
         <SolidColorBrush x:Key="PatternBrush" Color="#1AB2C0D3" />
         <SolidColorBrush x:Key="PrimaryBrush" Color="#F0F2F5" />
         <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#FFFFFF" />
@@ -86,45 +91,58 @@
             </DrawingBrush.Drawing>
         </DrawingBrush>
 
-        <Style x:Key="SettingsSwitch" TargetType="CheckBox">
-            <Setter Property="Width" Value="34" />
-            <Setter Property="Height" Value="19" />
+        <Style x:Key="SettingsToggleRow" TargetType="CheckBox">
+            <Setter Property="Padding" Value="20,15" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
-                        <Border x:Name="FocusRing"
-                                Background="Transparent"
-                                BorderBrush="Transparent"
-                                BorderThickness="1"
-                                CornerRadius="11">
-                            <Border x:Name="Track"
-                                    Margin="1"
-                                    Background="{DynamicResource TrackBrush}"
-                                    BorderBrush="{DynamicResource TrackCenterBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="10">
-                                <Ellipse x:Name="Knob"
-                                         Width="15"
-                                         Height="15"
-                                         Margin="1"
-                                         HorizontalAlignment="Left"
-                                         Fill="{DynamicResource TextSecondaryBrush}" />
-                            </Border>
+                        <Border Padding="{TemplateBinding Padding}" Background="Transparent">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="14" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter VerticalAlignment="Center" />
+                                <Grid x:Name="ToggleVisual"
+                                      Grid.Column="2"
+                                      Width="34"
+                                      Height="20"
+                                      VerticalAlignment="Center">
+                                    <Border x:Name="Track"
+                                            Background="{DynamicResource ToggleOffBrush}"
+                                            BorderBrush="{DynamicResource ToggleOffBorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10" />
+                                    <Ellipse x:Name="Knob"
+                                             Width="14"
+                                             Height="14"
+                                             Margin="3"
+                                             HorizontalAlignment="Left"
+                                             Fill="{DynamicResource ToggleKnobOffBrush}" />
+                                    <Border x:Name="FocusRing"
+                                            Background="Transparent"
+                                            BorderBrush="Transparent"
+                                            BorderThickness="1"
+                                            CornerRadius="10" />
+                                </Grid>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="Track" Property="Background" Value="{DynamicResource ToggleOnBrush}" />
-                                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource ToggleOnBorderBrush}" />
                                 <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
-                                <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource TextStrongBrush}" />
+                                <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource ToggleKnobBrush}" />
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ControlHoverBorderBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.5" />
+                                <Setter TargetName="ToggleVisual" Property="Opacity" Value="0.5" />
                                 <Setter Property="Cursor" Value="Arrow" />
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -334,8 +352,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel Margin="26,0">
+        <StackPanel Margin="26,0">
                 <Grid Margin="0,26,0,22">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="50" />
@@ -384,12 +401,10 @@
                                                      FontSize="10.5"
                                                      FontWeight="Medium" />
                         </Border>
-                        <Grid Margin="20,15">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="14" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+                        <CheckBox IsChecked="True"
+                                  IsEnabled="False"
+                                  AutomationProperties.Name="Project files, required"
+                                  Style="{StaticResource SettingsToggleRow}">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock VerticalAlignment="Center"
@@ -416,56 +431,23 @@
                                            LineHeight="18"
                                            TextWrapping="Wrap" />
                             </StackPanel>
-                            <CheckBox Grid.Column="2"
-                                      VerticalAlignment="Center"
-                                      IsChecked="True"
-                                      IsEnabled="False"
-                                      Style="{StaticResource SettingsSwitch}" />
-                        </Grid>
+                        </CheckBox>
                         <Border Height="1" Margin="20,0" Background="{DynamicResource DividerBrush}" />
                         <CheckBox x:Name="RemoteReadToggle"
-                                  Padding="20,15"
-                                  HorizontalContentAlignment="Stretch"
-                                  Background="Transparent"
-                                  BorderThickness="0"
                                   IsChecked="True"
-                                  Cursor="Hand"
-                                  FocusVisualStyle="{x:Null}">
-                            <CheckBox.Template>
-                                <ControlTemplate TargetType="CheckBox">
-                                    <Border x:Name="RemoteRow" Padding="{TemplateBinding Padding}" Background="Transparent">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="14" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel>
-                                                <TextBlock Text="Remote status"
-                                                           Foreground="{DynamicResource TextStrongBrush}"
-                                                           FontSize="13.5" />
-                                                <TextBlock Margin="0,5,0,0"
-                                                           Text="Fetches remote branches and pull requests into RWL storage."
-                                                           Foreground="{DynamicResource TextMutedBrush}"
-                                                           FontSize="12"
-                                                           LineHeight="18"
-                                                           TextWrapping="Wrap" />
-                                            </StackPanel>
-                                            <CheckBox x:Name="InnerSwitch"
-                                                      Grid.Column="2"
-                                                      VerticalAlignment="Center"
-                                                      IsHitTestVisible="False"
-                                                      IsChecked="{Binding IsChecked, RelativeSource={RelativeSource TemplatedParent}}"
-                                                      Style="{StaticResource SettingsSwitch}" />
-                                        </Grid>
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="RemoteRow" Property="Background" Value="{DynamicResource RowHoverBrush}" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </CheckBox.Template>
+                                  AutomationProperties.Name="Remote status"
+                                  Style="{StaticResource SettingsToggleRow}">
+                            <StackPanel>
+                                <TextBlock Text="Remote status"
+                                           Foreground="{DynamicResource TextStrongBrush}"
+                                           FontSize="13.5" />
+                                <TextBlock Margin="0,5,0,0"
+                                           Text="Fetches remote branches and pull requests into RWL storage."
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="12"
+                                           LineHeight="18"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
                         </CheckBox>
                     </StackPanel>
                 </Border>
@@ -553,8 +535,7 @@
                         </StackPanel>
                     </StackPanel>
                 </Border>
-            </StackPanel>
-        </ScrollViewer>
+        </StackPanel>
 
         <Border Grid.Row="1"
                 Padding="26,14,26,18"

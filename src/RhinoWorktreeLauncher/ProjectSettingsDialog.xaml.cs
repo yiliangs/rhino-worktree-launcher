@@ -185,8 +185,8 @@ public partial class ProjectSettingsDialog : Window
         }
 
         CopyOwnerResource("AheadTextBrush", "AccentBrush");
-        CopyOwnerResource("AheadFillBrush", "ToggleOnBrush");
         CopyOwnerResource("BehindTextBrush", "ValidationBrush");
+        ApplyToggleTheme();
         Resources["LogoShadowEffect"] = CreateLogoShadow();
     }
 
@@ -197,9 +197,26 @@ public partial class ProjectSettingsDialog : Window
             Resources[localKey] = resource;
     }
 
+    private void ApplyToggleTheme()
+    {
+        bool isLight = IsLightTheme();
+        Resources["ToggleOnBrush"] = CreateBrush(isLight ? "#6BA36F" : "#5F8A5C");
+        Resources["ToggleOnBorderBrush"] = CreateBrush(isLight ? "#5D9161" : "#537A51");
+        Resources["ToggleOffBrush"] = CreateBrush(isLight ? "#E2E5EA" : "#24272C");
+        Resources["ToggleOffBorderBrush"] = CreateBrush(isLight ? "#D0D4DA" : "#31353B");
+        Resources["ToggleKnobBrush"] = CreateBrush(isLight ? "#FFFFFF" : "#F0F2F5");
+        Resources["ToggleKnobOffBrush"] = CreateBrush(isLight ? "#FFFFFF" : "#7D848D");
+    }
+
+    private bool IsLightTheme() =>
+        ((SolidColorBrush)FindResource("WindowBrush")).Color.R > 128;
+
+    private static SolidColorBrush CreateBrush(string value) =>
+        new SolidColorBrush((Color)ColorConverter.ConvertFromString(value));
+
     private DropShadowEffect CreateLogoShadow()
     {
-        bool isLight = ((SolidColorBrush)FindResource("WindowBrush")).Color.R > 128;
+        bool isLight = IsLightTheme();
         return new DropShadowEffect
         {
             BlurRadius = isLight ? 10 : 12,
