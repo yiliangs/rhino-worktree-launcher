@@ -82,14 +82,14 @@ public partial class AddProjectDialog : Window
             "TextBodyBrush",
             "TextSecondaryBrush",
             "TextMutedBrush",
+            "AccentBrush",
             "PrimaryBrush",
-            "PrimaryTextBrush",
-            "AheadTextBrush"
+            "PrimaryTextBrush"
         })
         {
             object? resource = Owner.TryFindResource(key);
             if (resource is not null)
-                Resources[key == "AheadTextBrush" ? "AccentBrush" : key] = resource;
+                Resources[key] = resource;
         }
     }
 }

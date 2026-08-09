@@ -170,6 +170,7 @@ public partial class ProjectSettingsDialog : Window
             "TextMutedBrush",
             "TextBadgeBrush",
             "ControlTextBrush",
+            "AccentBrush",
             "PatternBrush",
             "PrimaryBrush",
             "PrimaryHoverBrush",
@@ -184,7 +185,6 @@ public partial class ProjectSettingsDialog : Window
                 Resources[key] = resource;
         }
 
-        CopyOwnerResource("AheadTextBrush", "AccentBrush");
         CopyOwnerResource("BehindTextBrush", "ValidationBrush");
         ApplyToggleTheme();
         Resources["LogoShadowEffect"] = CreateLogoShadow();

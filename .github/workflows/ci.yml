@@ -25,4 +25,6 @@ jobs:
       - name: Test
         shell: pwsh
         run: |
-          dotnet vstest tests/RhinoWorktreeLauncher.Tests/bin/Release/net8.0/RhinoWorktreeLauncher.Tests.dll
+          dotnet vstest `
+            tests/RhinoWorktreeLauncher.Tests/bin/Release/net8.0/RhinoWorktreeLauncher.Tests.dll `
+            tests/RhinoWorktreeLauncher.UiTests/bin/Release/net8.0-windows/RhinoWorktreeLauncher.UiTests.dll

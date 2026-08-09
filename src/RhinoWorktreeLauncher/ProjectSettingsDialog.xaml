@@ -221,55 +221,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="FooterCheckBox" TargetType="CheckBox">
-            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-            <Setter Property="FontSize" Value="12.5" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="CheckBox">
-                        <Grid Background="Transparent">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="15" />
-                                <ColumnDefinition Width="9" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="Box"
-                                    Width="15"
-                                    Height="15"
-                                    Background="Transparent"
-                                    BorderBrush="{DynamicResource ControlHoverBorderBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="4">
-                                <Path x:Name="CheckMark"
-                                      Width="8"
-                                      Height="6"
-                                      Data="M 0.5,3 L 2.8,5.3 L 7.5,0.5"
-                                      Stretch="Fill"
-                                      Stroke="{DynamicResource WindowBrush}"
-                                      StrokeThickness="1.4"
-                                      StrokeEndLineCap="Round"
-                                      StrokeStartLineCap="Round"
-                                      Visibility="Collapsed" />
-                            </Border>
-                            <ContentPresenter Grid.Column="2" VerticalAlignment="Center" />
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentBrush}" />
-                                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource TextStrongBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <Style x:Key="SecondaryButton" TargetType="Button">
             <Setter Property="Padding" Value="20,12" />
             <Setter Property="Background" Value="{DynamicResource ControlBrush}" />
@@ -552,7 +503,7 @@
                 <CheckBox x:Name="ClearCacheToggle"
                           VerticalAlignment="Center"
                           Content="Clear build and remote caches"
-                          Style="{StaticResource FooterCheckBox}" />
+                          Style="{StaticResource StandardCheckBox}" />
                 <Button Grid.Column="1"
                         Content="Cancel"
                         IsCancel="True"

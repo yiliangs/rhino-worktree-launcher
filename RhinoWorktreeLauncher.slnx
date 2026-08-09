@@ -9,5 +9,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RhinoWorktreeLauncher.Tests/RhinoWorktreeLauncher.Tests.csproj" />
+    <Project Path="tests/RhinoWorktreeLauncher.UiTests/RhinoWorktreeLauncher.UiTests.csproj" />
   </Folder>
 </Solution>
