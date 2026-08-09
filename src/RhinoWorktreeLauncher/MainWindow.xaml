@@ -49,6 +49,7 @@
         <SolidColorBrush x:Key="TextFaintBrush" Color="#5D646C" />
         <SolidColorBrush x:Key="TextBadgeBrush" Color="#A5AEBA" />
         <SolidColorBrush x:Key="ControlTextBrush" Color="#B2B8C0" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#7FAE7A" />
         <SolidColorBrush x:Key="AheadTextBrush" Color="#7FAE7A" />
         <SolidColorBrush x:Key="BehindTextBrush" Color="#C07D76" />
         <SolidColorBrush x:Key="ZeroTextBrush" Color="#484E56" />
@@ -1078,7 +1079,8 @@
                                           IsChecked="True"
                                           Content="Inject exact worktree context at SessionStart"
                                           Foreground="{DynamicResource TextBodyBrush}"
-                                          FontSize="11" />
+                                          FontSize="11"
+                                          Style="{StaticResource StandardCheckBox}" />
                             </StackPanel>
                             <Button Grid.Column="1"
                                     Height="34"
