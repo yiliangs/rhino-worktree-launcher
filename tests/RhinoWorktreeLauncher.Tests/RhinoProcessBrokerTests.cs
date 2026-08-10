@@ -71,6 +71,45 @@ public sealed class RhinoProcessBrokerTests
         Assert.Null(Environment.GetEnvironmentVariable(variable));
     }
 
+    [Fact]
+    public async Task Broker_does_not_capture_the_callers_synchronization_context()
+    {
+        string variable = "RWL_TEST_" + Guid.NewGuid().ToString("N");
+        TaskCompletionSource<Process> completion = new TaskCompletionSource<Process>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Thread caller = new Thread(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new NonPumpingSynchronizationContext());
+            try
+            {
+                Process child = RhinoProcessBroker.Start(
+                    CreateConfiguredStart(variable, "ui-thread"),
+                    "test-bootstrap.exe",
+                    (_bootstrapPath, pipeName) =>
+                    {
+                        _ = Task.Run(() => RunFakeBrokerAsync(pipeName));
+                        return NoopDisposable.Instance;
+                    });
+                completion.SetResult(child);
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        })
+        {
+            IsBackground = true
+        };
+        caller.Start();
+
+        Task finished = await Task.WhenAny(completion.Task, Task.Delay(TimeSpan.FromSeconds(3)));
+
+        Assert.Same(completion.Task, finished);
+        using Process child = await completion.Task;
+        await child.WaitForExitAsync();
+        Assert.Equal(0, child.ExitCode);
+    }
+
     private static ProcessStartInfo CreateConfiguredStart(string variable, string value)
     {
         ProcessStartInfo configured = new ProcessStartInfo
@@ -141,6 +180,13 @@ public sealed class RhinoProcessBrokerTests
         public static NoopDisposable Instance { get; } = new NoopDisposable();
 
         public void Dispose()
+        {
+        }
+    }
+
+    private sealed class NonPumpingSynchronizationContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback callback, object? state)
         {
         }
     }
