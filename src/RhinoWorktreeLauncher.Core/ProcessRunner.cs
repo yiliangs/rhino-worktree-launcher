@@ -26,6 +26,7 @@ internal static class ProcessRunner
         {
             FileName = fileName,
             WorkingDirectory = workingDirectory,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -41,6 +42,7 @@ internal static class ProcessRunner
 
         using Process process = Process.Start(startInfo) ??
             throw new InvalidOperationException($"Could not start {fileName}.");
+        process.StandardInput.Close();
         try
         {
             Task<string> outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
@@ -88,6 +90,7 @@ internal static class ProcessRunner
         {
             FileName = fileName,
             WorkingDirectory = workingDirectory,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -103,6 +106,7 @@ internal static class ProcessRunner
 
         using Process process = Process.Start(startInfo) ??
             throw new InvalidOperationException($"Could not start {fileName}.");
+        process.StandardInput.Close();
         try
         {
             Task<string> errorTask = process.StandardError.ReadToEndAsync(cancellationToken);

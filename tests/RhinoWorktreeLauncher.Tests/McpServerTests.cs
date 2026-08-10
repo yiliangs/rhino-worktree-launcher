@@ -169,6 +169,52 @@ public sealed class McpServerTests
         }
     }
 
+    [Fact]
+    public async Task Stdio_doctor_completes_without_inheriting_the_protocol_stream()
+    {
+        string executable = Path.Combine(AppContext.BaseDirectory, "rwl-mcp.exe");
+        ProcessStartInfo startInfo = new ProcessStartInfo
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        using Process process = Process.Start(startInfo)!;
+        Task<string> errorOutput = process.StandardError.ReadToEndAsync();
+        using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            await process.StandardInput.WriteLineAsync(
+                """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"rwl-test","version":"1.0.0"}}}""");
+            await process.StandardInput.FlushAsync(timeout.Token);
+            _ = await process.StandardOutput.ReadLineAsync(timeout.Token);
+
+            await process.StandardInput.WriteLineAsync(
+                """{"jsonrpc":"2.0","method":"notifications/initialized"}""");
+            await process.StandardInput.WriteLineAsync(
+                """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"rhino_worktree_doctor","arguments":{}}}""");
+            await process.StandardInput.FlushAsync(timeout.Token);
+            using JsonDocument response = JsonDocument.Parse(
+                await process.StandardOutput.ReadLineAsync(timeout.Token) ?? string.Empty);
+
+            Assert.Equal(2, response.RootElement.GetProperty("id").GetInt32());
+            Assert.True(response.RootElement
+                .GetProperty("result")
+                .GetProperty("structuredContent")
+                .GetProperty("succeeded")
+                .GetBoolean());
+        }
+        finally
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+            await errorOutput;
+        }
+    }
+
     private static McpServerToolAttribute AttributeFor(string methodName) =>
         Assert.Single(typeof(RwlTools)
             .GetMethod(methodName)!
