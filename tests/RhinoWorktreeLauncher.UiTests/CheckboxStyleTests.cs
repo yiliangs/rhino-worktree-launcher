@@ -1,166 +1,205 @@
-using System.Runtime.ExceptionServices;
-using System.Threading;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Interop;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using System.Diagnostics;
+using System.IO;
+using System.Xml.Linq;
 
 namespace RhinoWorktreeLauncher.UiTests;
 
 public sealed class CheckboxStyleTests
 {
+    private static readonly XNamespace Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+    private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
     [Fact]
-    public void McpSessionContextMatchesProjectSettingsCheckboxAppearance() =>
-        RunInSta(() =>
-        {
-            App app = new App();
-            app.InitializeComponent();
-
-            MainWindow mainWindow = new MainWindow(new LauncherBackend());
-            _ = new WindowInteropHelper(mainWindow).EnsureHandle();
-            ProjectSettingsDialog settingsWindow = new ProjectSettingsDialog(new ProjectRegistration(
-                    "project-id",
-                    "Project",
-                    @"C:\repo\.git",
-                    @"C:\repo",
-                    8,
-                    ProjectAccessGrant.Full,
-                    BuildProfile.Unconfigured))
-            {
-                Owner = mainWindow
-            };
-            settingsWindow.Show();
-            settingsWindow.Hide();
-
-            CheckBox mcpCheckBox = Assert.IsType<CheckBox>(
-                mainWindow.FindName("ClaudeSessionContextCheckBox"));
-            CheckBox settingsCheckBox = Assert.IsType<CheckBox>(
-                settingsWindow.FindName("ClearCacheToggle"));
-
-            mcpCheckBox.IsChecked = true;
-            settingsCheckBox.IsChecked = true;
-
-            AssertGlyphsMatch(
-                RenderGlyph(settingsCheckBox),
-                RenderGlyph(mcpCheckBox));
-
-            settingsWindow.Close();
-            mainWindow.Close();
-            app.Shutdown();
-        });
-
-    private static (int Width, int Height, byte[] Pixels) RenderGlyph(CheckBox checkBox)
+    public void Application_opens_when_only_SystemRoot_is_inherited()
     {
-        checkBox.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        checkBox.Arrange(new Rect(checkBox.DesiredSize));
-        checkBox.UpdateLayout();
-
-        DpiScale dpi = VisualTreeHelper.GetDpi(checkBox);
-        int width = (int)Math.Ceiling(24 * dpi.DpiScaleX);
-        int height = (int)Math.Ceiling(24 * dpi.DpiScaleY);
-        int stride = width * 4;
-        RenderTargetBitmap bitmap = new RenderTargetBitmap(
-            width,
-            height,
-            dpi.PixelsPerInchX,
-            dpi.PixelsPerInchY,
-            PixelFormats.Pbgra32);
-
-        DrawingVisual visual = new DrawingVisual();
-        using (DrawingContext context = visual.RenderOpen())
+        string executable = Path.Combine(
+            RepositoryRoot(),
+            "src",
+            "RhinoWorktreeLauncher",
+            "bin",
+            "Debug",
+            "net8.0-windows",
+            "win-x64",
+            "RhinoWorktreeLauncher.exe");
+        ProcessStartInfo startInfo = new ProcessStartInfo
         {
-            VisualBrush brush = new VisualBrush(checkBox)
+            FileName = executable,
+            UseShellExecute = false
+        };
+        _ = startInfo.Environment.Remove("windir");
+        startInfo.Environment["SystemRoot"] = Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows";
+
+        using Process process = Process.Start(startInfo) ??
+            throw new InvalidOperationException("Could not start the WPF application.");
+        try
+        {
+            Assert.True(SpinWait.SpinUntil(() =>
             {
-                AlignmentX = AlignmentX.Left,
-                AlignmentY = AlignmentY.Top,
-                Stretch = Stretch.None,
-                Viewbox = new Rect(0, 0, 24, 24),
-                ViewboxUnits = BrushMappingMode.Absolute
-            };
-            context.DrawRectangle(brush, null, new Rect(0, 0, 24, 24));
+                process.Refresh();
+                return process.HasExited || process.MainWindowHandle != IntPtr.Zero;
+            }, TimeSpan.FromSeconds(5)));
+            Assert.False(process.HasExited);
+            Assert.NotEqual(IntPtr.Zero, process.MainWindowHandle);
         }
-
-        bitmap.Render(visual);
-
-        byte[] pixels = new byte[height * stride];
-        bitmap.CopyPixels(pixels, stride, 0);
-        return TrimTransparentPadding(width, height, pixels);
-    }
-
-    private static (int Width, int Height, byte[] Pixels) TrimTransparentPadding(
-        int width,
-        int height,
-        byte[] pixels)
-    {
-        int minimumX = width;
-        int minimumY = height;
-        int maximumX = -1;
-        int maximumY = -1;
-
-        for (int y = 0; y < height; y++)
+        finally
         {
-            for (int x = 0; x < width; x++)
+            if (!process.HasExited)
             {
-                if (pixels[((y * width) + x) * 4 + 3] == 0)
-                    continue;
-
-                minimumX = Math.Min(minimumX, x);
-                minimumY = Math.Min(minimumY, y);
-                maximumX = Math.Max(maximumX, x);
-                maximumY = Math.Max(maximumY, y);
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit();
             }
         }
-
-        if (maximumX < minimumX || maximumY < minimumY)
-            throw new InvalidOperationException("The checkbox glyph rendered no visible pixels.");
-
-        int trimmedWidth = maximumX - minimumX + 1;
-        int trimmedHeight = maximumY - minimumY + 1;
-        int trimmedStride = trimmedWidth * 4;
-        byte[] trimmedPixels = new byte[trimmedHeight * trimmedStride];
-
-        for (int y = 0; y < trimmedHeight; y++)
-        {
-            Buffer.BlockCopy(
-                pixels,
-                (((minimumY + y) * width) + minimumX) * 4,
-                trimmedPixels,
-                y * trimmedStride,
-                trimmedStride);
-        }
-
-        return (trimmedWidth, trimmedHeight, trimmedPixels);
     }
 
-    private static void AssertGlyphsMatch(
-        (int Width, int Height, byte[] Pixels) expected,
-        (int Width, int Height, byte[] Pixels) actual)
+    [Fact]
+    public void Desktop_deployment_includes_solution_parser_runtime_dependency()
     {
-        Assert.Equal(expected.Width, actual.Width);
-        Assert.Equal(expected.Height, actual.Height);
-        Assert.Equal(expected.Pixels, actual.Pixels);
+        string assembly = Path.Combine(
+            RepositoryRoot(),
+            "src",
+            "RhinoWorktreeLauncher",
+            "bin",
+            "Debug",
+            "net8.0-windows",
+            "win-x64",
+            "Microsoft.VisualStudio.SolutionPersistence.dll");
+
+        Assert.True(File.Exists(assembly), $"Missing desktop runtime dependency: {assembly}");
     }
 
-    private static void RunInSta(Action action)
+    [Fact]
+    public void Main_window_exposes_global_settings_and_project_config_without_selected_indicator()
     {
-        Exception? failure = null;
-        Thread thread = new Thread(() =>
-        {
-            try
-            {
-                action();
-            }
-            catch (Exception exception)
-            {
-                failure = exception;
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
+        XDocument document = LoadXaml("MainWindow.xaml");
 
-        if (failure is not null)
-            ExceptionDispatchInfo.Capture(failure).Throw();
+        Assert.Equal("Settings", Named(document, "GlobalSettingsButton").Attribute("Content")?.Value);
+        Assert.Equal("Config", Named(document, "ProjectConfigButton").Attribute("Content")?.Value);
+        Assert.Null(FindNamed(document, "SelectedWorktreeText"));
+        Assert.NotNull(FindNamed(document, "GlobalSettingsOverlay"));
+    }
+
+    [Fact]
+    public void Project_config_exposes_canonical_build_selection_and_launch_mode_only()
+    {
+        XDocument document = LoadXaml("ProjectConfigDialog.xaml");
+
+        Assert.NotNull(FindNamed(document, "PluginProjectComboBox"));
+        Assert.NotNull(FindNamed(document, "SolutionComboBox"));
+        Assert.NotNull(FindNamed(document, "BuildConfigurationComboBox"));
+        Assert.NotNull(FindNamed(document, "BuildBeforeLaunchToggle"));
+        Assert.Equal("0,15", FindNamed(document, "BuildBeforeLaunchToggle")?.Attribute("Padding")?.Value);
+        Assert.NotNull(FindNamed(document, "ClearRemoteCacheToggle"));
+        Assert.Null(FindNamed(document, "CustomDriverChoice"));
+        Assert.Contains(document.Descendants(Presentation + "Button"), element =>
+            string.Equals(element.Attribute("Content")?.Value, "Save config", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Project_config_keeps_panels_above_the_fixed_footer()
+    {
+        XDocument document = LoadXaml("ProjectConfigDialog.xaml");
+        XElement window = document.Root ?? throw new InvalidOperationException("Project config root is missing.");
+        XElement contentScroller = Named(document, "ConfigContentScrollViewer");
+        XElement footer = Named(document, "ConfigFooter");
+
+        Assert.Equal("820", window.Attribute("Height")?.Value);
+        Assert.Equal("0", contentScroller.Attribute("Grid.Row")?.Value);
+        Assert.Equal("Auto", contentScroller.Attribute("VerticalScrollBarVisibility")?.Value);
+        Assert.Equal("1", footer.Attribute("Grid.Row")?.Value);
+    }
+
+    [Fact]
+    public void Dropdowns_share_the_handoff_component_standard()
+    {
+        XDocument application = LoadXaml("App.xaml");
+        XDocument dropdowns = LoadXaml(Path.Combine("Themes", "DropdownStyles.xaml"));
+
+        Assert.Contains(application.Descendants(Presentation + "ResourceDictionary"), element =>
+            string.Equals(
+                element.Attribute("Source")?.Value,
+                "Themes/DropdownStyles.xaml",
+                StringComparison.Ordinal));
+
+        XElement comboStyle = Keyed(dropdowns, "Style", "BuildCombo");
+        Assert.Contains(comboStyle.Elements(Presentation + "Setter"), setter =>
+            string.Equals(setter.Attribute("Property")?.Value, "Height", StringComparison.Ordinal) &&
+            string.Equals(setter.Attribute("Value")?.Value, "38", StringComparison.Ordinal));
+
+        XElement itemStyle = Keyed(dropdowns, "Style", "DropdownItem");
+        Assert.Contains(itemStyle.Elements(Presentation + "Setter"), setter =>
+            string.Equals(setter.Attribute("Property")?.Value, "Height", StringComparison.Ordinal) &&
+            string.Equals(setter.Attribute("Value")?.Value, "32", StringComparison.Ordinal));
+
+        XElement popup = dropdowns.Descendants(Presentation + "Popup").Single();
+        Assert.Equal("6", popup.Attribute("VerticalOffset")?.Value);
+        Assert.Equal("False", popup.Attribute("StaysOpen")?.Value);
+        Assert.NotNull(FindNamed(dropdowns, "DropdownCaret"));
+        Assert.NotNull(FindNamed(dropdowns, "SelectedTexture"));
+        Assert.NotNull(FindNamed(dropdowns, "SelectedCheck"));
+        Assert.Equal(
+            "{Binding PluginProjectPath}",
+            Keyed(dropdowns, "DataTemplate", "PluginProjectDropdownValue")
+                .Descendants(Presentation + "TextBlock")
+                .Single()
+                .Attribute("Text")?.Value);
+        Assert.Equal(
+            "{Binding SolutionPath}",
+            Keyed(dropdowns, "DataTemplate", "SolutionDropdownValue")
+                .Descendants(Presentation + "TextBlock")
+                .Single()
+                .Attribute("Text")?.Value);
+        Assert.Equal(
+            "{Binding DisplayName}",
+            Keyed(dropdowns, "DataTemplate", "BuildConfigurationDropdownValue")
+                .Descendants(Presentation + "TextBlock")
+                .Single()
+                .Attribute("Text")?.Value);
+    }
+
+    [Fact]
+    public void Mcp_and_project_config_checkboxes_use_the_same_standard_style()
+    {
+        XDocument main = LoadXaml("MainWindow.xaml");
+        XDocument config = LoadXaml("ProjectConfigDialog.xaml");
+
+        string? mcpStyle = Named(main, "ClaudeSessionContextCheckBox").Attribute("Style")?.Value;
+        string? configStyle = Named(config, "ClearRemoteCacheToggle").Attribute("Style")?.Value;
+
+        Assert.Equal("{StaticResource StandardCheckBox}", mcpStyle);
+        Assert.Equal(mcpStyle, configStyle);
+    }
+
+    private static XElement Named(XDocument document, string name) =>
+        FindNamed(document, name) ?? throw new InvalidOperationException($"XAML element '{name}' was not found.");
+
+    private static XElement Keyed(XDocument document, string elementName, string key) => document
+        .Descendants(Presentation + elementName)
+        .FirstOrDefault(element => string.Equals(element.Attribute(Xaml + "Key")?.Value, key, StringComparison.Ordinal)) ??
+        throw new InvalidOperationException($"XAML resource '{key}' was not found.");
+
+    private static XElement? FindNamed(XDocument document, string name) => document
+        .Descendants()
+        .FirstOrDefault(element => string.Equals(
+            element.Attribute(Xaml + "Name")?.Value,
+            name,
+            StringComparison.Ordinal));
+
+    private static XDocument LoadXaml(string fileName)
+    {
+        return XDocument.Load(Path.Combine(
+            RepositoryRoot(),
+            "src",
+            "RhinoWorktreeLauncher",
+            fileName));
+    }
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "RhinoWorktreeLauncher.slnx")))
+            directory = directory.Parent;
+        if (directory is null)
+            throw new DirectoryNotFoundException("Repository root was not found from the UI test output directory.");
+        return directory.FullName;
     }
 }

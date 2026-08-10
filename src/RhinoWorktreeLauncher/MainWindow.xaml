@@ -40,6 +40,14 @@
         <SolidColorBrush x:Key="DividerBrush" Color="#232629" />
         <SolidColorBrush x:Key="ControlBorderBrush" Color="#2E3238" />
         <SolidColorBrush x:Key="ControlHoverBorderBrush" Color="#464C54" />
+        <SolidColorBrush x:Key="DropdownMenuBrush" Color="#202329" />
+        <SolidColorBrush x:Key="DropdownMenuBorderBrush" Color="#33383F" />
+        <SolidColorBrush x:Key="DropdownOpenBorderBrush" Color="#5A616B" />
+        <SolidColorBrush x:Key="DropdownDisabledBrush" Color="#191B1E" />
+        <SolidColorBrush x:Key="DropdownDisabledBorderBrush" Color="#25282C" />
+        <SolidColorBrush x:Key="DropdownFocusRingBrush" Color="#2E8FAE8B" />
+        <SolidColorBrush x:Key="DropdownSelectedBorderBrush" Color="#2B3037" />
+        <SolidColorBrush x:Key="DropdownAccentBrush" Color="#8FAE8B" />
         <SolidColorBrush x:Key="BadgeBorderBrush" Color="#333941" />
         <SolidColorBrush x:Key="DiffBoxBorderBrush" Color="#282C31" />
         <SolidColorBrush x:Key="TextStrongBrush" Color="#F0F2F5" />
@@ -80,6 +88,18 @@
                           Direction="270"
                           ShadowDepth="1"
                           Opacity="0.3"
+                          Color="#000000" />
+        <DropShadowEffect x:Key="DropdownControlShadowEffect"
+                          BlurRadius="2"
+                          Direction="270"
+                          ShadowDepth="1"
+                          Opacity="0.3"
+                          Color="#000000" />
+        <DropShadowEffect x:Key="DropdownMenuShadowEffect"
+                          BlurRadius="20"
+                          Direction="270"
+                          ShadowDepth="8"
+                          Opacity="0.6"
                           Color="#000000" />
         <DropShadowEffect x:Key="ChipShadowEffect"
                           BlurRadius="2"
@@ -587,15 +607,11 @@
                            SizeChanged="RepositoryPathText_SizeChanged" />
 
                 <StackPanel Grid.Column="3" Margin="8,0,0,0" Orientation="Horizontal">
-                    <Button Margin="0,0,4,0"
-                            Style="{StaticResource GhostButton}"
-                            Content="MCP setup"
-                            Click="McpSetup_Click" />
-                    <Button x:Name="ProjectSettingsButton"
+                    <Button x:Name="ProjectConfigButton"
                             Margin="0,0,4,0"
                             Style="{StaticResource GhostButton}"
-                            Content="Settings"
-                            Click="ProjectSettings_Click" />
+                            Content="Config"
+                            Click="ProjectConfig_Click" />
                     <Button Style="{StaticResource GhostButton}"
                             Content="＋ Add project"
                             Click="AddProject_Click" />
@@ -785,7 +801,7 @@
                                                     <ColumnDefinition Width="9" />
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
-                                                <local:InsetHighlightBorder x:Name="FreshnessBadge"
+                                                <local:InsetHighlightBorder x:Name="LaunchModeBadge"
                                                                             Grid.Column="0"
                                                                             Padding="6,3"
                                                                             Background="{DynamicResource FreshBackgroundBrush}"
@@ -794,8 +810,8 @@
                                                                             CornerRadius="{StaticResource SmallCornerRadius}"
                                                                             Effect="{DynamicResource ChipShadowEffect}"
                                                                             HighlightBrush="{DynamicResource ChipHighlightBrush}">
-                                                    <local:TrackingTextBlock x:Name="FreshnessText"
-                                                               Text="{Binding BuildStatusLabel}"
+                                                    <local:TrackingTextBlock x:Name="LaunchModeText"
+                                                               Text="{Binding LaunchModeLabel}"
                                                                Tracking="0.1"
                                                                LineHeight="9"
                                                                Foreground="{DynamicResource FreshTextBrush}"
@@ -905,10 +921,10 @@
                                         </Grid>
                                     </Grid>
                                     <DataTemplate.Triggers>
-                                        <DataTrigger Binding="{Binding HasBuildProfile}" Value="False">
-                                            <Setter TargetName="FreshnessBadge" Property="Background" Value="{DynamicResource StaleBackgroundBrush}" />
-                                            <Setter TargetName="FreshnessBadge" Property="BorderBrush" Value="{DynamicResource StaleBorderBrush}" />
-                                            <Setter TargetName="FreshnessText" Property="Foreground" Value="{DynamicResource StaleTextBrush}" />
+                                        <DataTrigger Binding="{Binding HasBuildConfiguration}" Value="False">
+                                            <Setter TargetName="LaunchModeBadge" Property="Background" Value="{DynamicResource StaleBackgroundBrush}" />
+                                            <Setter TargetName="LaunchModeBadge" Property="BorderBrush" Value="{DynamicResource StaleBorderBrush}" />
+                                            <Setter TargetName="LaunchModeText" Property="Foreground" Value="{DynamicResource StaleTextBrush}" />
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsPullRequestDraft}" Value="True">
                                             <Setter TargetName="PullRequestBadge" Property="Background" Value="{DynamicResource StaleBackgroundBrush}" />
@@ -979,24 +995,15 @@
                     <ColumnDefinition Width="164" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                    <local:TrackingTextBlock Text="SELECTED"
-                               Tracking="0.12"
-                               LineHeight="10"
-                               Foreground="{DynamicResource TextFaintBrush}"
-                               FontSize="10" />
-                    <TextBlock x:Name="SelectedWorktreeText"
-                               Margin="0,5,0,0"
-                               Text="No worktree selected"
-                               TextTrimming="CharacterEllipsis"
-                               TextWrapping="NoWrap"
-                               Foreground="{DynamicResource TextStrongBrush}"
-                               FontFamily="{StaticResource MonoFont}"
-                               FontSize="12.5"
-                               LineHeight="15"
-                               LineStackingStrategy="BlockLineHeight"
-                               FontWeight="Medium" />
-                </StackPanel>
+                <Button x:Name="GlobalSettingsButton"
+                        Grid.Column="0"
+                        Width="164"
+                        Height="48"
+                        HorizontalAlignment="Left"
+                        Style="{StaticResource ControlButton}"
+                        Content="Settings"
+                        FontSize="13"
+                        Click="GlobalSettings_Click" />
 
                 <Button x:Name="OpenFolderButton"
                         Grid.Column="2"
@@ -1018,7 +1025,7 @@
             </Grid>
         </Border>
 
-        <Grid x:Name="McpSetupOverlay"
+        <Grid x:Name="GlobalSettingsOverlay"
               Grid.RowSpan="2"
               Panel.ZIndex="20"
               Background="#B0000000"
@@ -1038,14 +1045,14 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock VerticalAlignment="Center"
-                                   Text="MCP CLIENT SETUP"
+                                   Text="SETTINGS"
                                    Foreground="{DynamicResource TextStrongBrush}"
                                    FontSize="18"
                                    FontWeight="Medium" />
                         <Button Grid.Column="1"
                                 Style="{StaticResource GhostButton}"
                                 Content="Close"
-                                Click="McpSetupClose_Click" />
+                                Click="GlobalSettingsClose_Click" />
                     </Grid>
                     <TextBlock Margin="0,0,0,20"
                                Text="Connect AI clients to the stable RWL bootstrap. Existing client settings are preserved and backed up before changes."

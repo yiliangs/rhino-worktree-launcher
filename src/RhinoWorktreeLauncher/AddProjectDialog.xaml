@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Add project"
         Width="590"
-        Height="650"
+        Height="710"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
@@ -114,55 +114,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="BuildChoice" TargetType="RadioButton">
-            <Setter Property="Margin" Value="0,0,0,8" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Card"
-                                Padding="14,12"
-                                Background="{DynamicResource ControlBrush}"
-                                BorderBrush="{DynamicResource PanelBorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="8">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="18" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Ellipse x:Name="Ring"
-                                         Width="12"
-                                         Height="12"
-                                         VerticalAlignment="Top"
-                                         Margin="0,3,0,0"
-                                         Stroke="{DynamicResource TextMutedBrush}"
-                                         StrokeThickness="1.5" />
-                                <Ellipse x:Name="Dot"
-                                         Grid.Column="0"
-                                         Width="6"
-                                         Height="6"
-                                         VerticalAlignment="Top"
-                                         Margin="0,6,0,0"
-                                         Fill="{DynamicResource AccentBrush}"
-                                         Visibility="Collapsed" />
-                                <ContentPresenter Grid.Column="1" />
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource AccentBrush}" />
-                                <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Card" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </Window.Resources>
 
     <Grid Margin="28,24,28,22">
@@ -226,7 +177,7 @@
                         </Border>
                     </DockPanel>
                     <TextBlock Margin="0,4,16,0"
-                               Text="Read this Git project and all of its worktrees. RWL does not write to them."
+                               Text="Read this Git project and build the selected solution in its worktrees."
                                TextWrapping="Wrap"
                                Foreground="{DynamicResource TextSecondaryBrush}"
                                FontSize="11.5" />
@@ -256,47 +207,34 @@
         </Border>
 
         <StackPanel Grid.Row="4">
-            <TextBlock Text="BUILD SETUP"
+            <TextBlock Text="CANONICAL BUILD"
                        Margin="2,0,0,9"
                        Foreground="{DynamicResource TextMutedBrush}"
                        FontFamily="{StaticResource MonoFont}"
                        FontSize="10" />
-            <RadioButton x:Name="DetectedBuildChoice"
-                         GroupName="BuildMode"
-                         IsChecked="True"
-                         Style="{StaticResource BuildChoice}"
-                         Checked="BuildChoice_Changed">
-                <StackPanel>
-                    <TextBlock Text="Use the detected setup" Foreground="{DynamicResource TextStrongBrush}" FontWeight="Medium" />
-                    <TextBlock Margin="0,3,0,0" Text="RWL finds the plug-in project and creates an editable app-owned profile."
-                               TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5" />
-                </StackPanel>
-            </RadioButton>
-            <RadioButton x:Name="CustomDriverChoice"
-                         GroupName="BuildMode"
-                         Style="{StaticResource BuildChoice}"
-                         Checked="BuildChoice_Changed">
-                <StackPanel>
-                    <TextBlock Text="Import my own driver" Foreground="{DynamicResource TextStrongBrush}" FontWeight="Medium" />
-                    <TextBlock Margin="0,3,0,0" Text="Advanced: RWL copies your PowerShell driver into its own storage."
-                               TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5" />
-                </StackPanel>
-            </RadioButton>
-            <Grid x:Name="DriverPicker" Margin="20,0,0,0" Visibility="Collapsed">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="8" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <Border Padding="11,9" Background="{DynamicResource ControlBrush}"
-                        BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="1" CornerRadius="7">
-                    <TextBlock x:Name="DriverPathText" Text="No driver selected" TextTrimming="CharacterEllipsis"
-                               Foreground="{DynamicResource TextMutedBrush}" FontFamily="{StaticResource MonoFont}" FontSize="10.5" />
-                </Border>
-                <Button Grid.Column="2" Height="36" Padding="13,0" Content="Choose file"
-                        Style="{StaticResource QuietButton}" Click="ChooseDriver_Click" />
-            </Grid>
-            <TextBlock x:Name="ValidationText" Margin="20,7,0,0" Foreground="#C07D76" FontSize="11" Visibility="Collapsed" />
+            <TextBlock Text="Rhino plug-in project" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5" />
+            <ComboBox x:Name="PluginProjectComboBox"
+                      Margin="0,7,0,16"
+                      ItemTemplate="{StaticResource PluginProjectDropdownValue}"
+                      SelectionChanged="PluginProject_SelectionChanged"
+                      Tag="Select a plug-in project"
+                      Style="{StaticResource BuildCombo}" />
+            <TextBlock Text="Solution" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5" />
+            <ComboBox x:Name="SolutionComboBox"
+                      Margin="0,7,0,16"
+                      ItemTemplate="{StaticResource SolutionDropdownValue}"
+                      IsEnabled="False"
+                      SelectionChanged="Solution_SelectionChanged"
+                      Tag="Select a plug-in project first"
+                      Style="{StaticResource BuildCombo}" />
+            <TextBlock Text="Configuration" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5" />
+            <ComboBox x:Name="BuildConfigurationComboBox"
+                      Margin="0,7,0,0"
+                      ItemTemplate="{StaticResource BuildConfigurationDropdownValue}"
+                      IsEnabled="False"
+                      Tag="Select a solution first"
+                      Style="{StaticResource BuildCombo}" />
+            <TextBlock x:Name="ValidationText" Margin="0,7,0,0" Foreground="#C07D76" FontSize="11" Visibility="Collapsed" />
         </StackPanel>
 
         <Grid Grid.Row="6">
@@ -307,7 +245,7 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel VerticalAlignment="Center">
-                <TextBlock Text="No repository files will be created or changed."
+                <TextBlock Text="Build outputs are written by the selected solution."
                            Foreground="{DynamicResource TextMutedBrush}"
                            FontSize="10.5" />
             </StackPanel>

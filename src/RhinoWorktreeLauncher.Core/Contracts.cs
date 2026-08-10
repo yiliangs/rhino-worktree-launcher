@@ -47,13 +47,18 @@ public sealed record ProjectAccessGrant(bool ReadProject, bool ReadRemote)
 public sealed record ProjectRegistrationRequest(
     string RepositoryPath,
     ProjectAccessGrant Access,
-    string? ImportedDriverPath = null);
+    string? PluginProjectPath = null,
+    string? SolutionPath = null,
+    BuildConfiguration? BuildConfiguration = null,
+    LaunchMode LaunchMode = LaunchMode.BuildAndLaunch);
 
-public sealed record ProjectSettingsRequest(
+public sealed record ProjectConfigRequest(
     string ProjectId,
     bool ReadRemote,
-    BuildMode BuildMode,
-    string? ImportedDriverPath = null);
+    string PluginProjectPath,
+    string SolutionPath,
+    BuildConfiguration BuildConfiguration,
+    LaunchMode LaunchMode);
 
 public sealed record ProjectRegistration(
     string ProjectId,
@@ -87,12 +92,6 @@ public sealed record ProjectWorktrees(
     ProjectSnapshot Project,
     IReadOnlyList<WorktreeSnapshot> Worktrees);
 
-public sealed record WorktreeWorkspace(
-    string ProjectId,
-    string WorktreeId,
-    string SourcePath,
-    string BuildPath);
-
 public sealed record BuildProgress(string Stage, string Message, DateTimeOffset Timestamp);
 
 public sealed record PreparedLaunchArtifacts(
@@ -101,13 +100,12 @@ public sealed record PreparedLaunchArtifacts(
     string PluginPath,
     string RhinoRuntime,
     IReadOnlyList<VerifiedDependency> CriticalDependencies,
-    WorktreeWorkspace Workspace);
+    string WorktreePath);
 
 public sealed record WorktreeInspection(
     string ProjectId,
     string WorktreePath,
     string ConfigurationPath,
-    string WorkspacesDirectory,
     string RhinoExecutablePath,
     bool IsPrimary,
     bool CanLaunch);
@@ -125,13 +123,15 @@ public sealed record WorktreeSnapshot(
     int? PullRequestNumber,
     bool IsPullRequestDraft,
     bool IsPrimary,
-    bool CanLaunch)
+    LaunchMode LaunchMode,
+    bool HasBuildConfiguration)
 {
-    public bool HasBuildProfile => CanLaunch;
     public bool HasPullRequest => PullRequestNumber.HasValue;
     public bool HasLocalState => true;
     public bool HasGitState => true;
-    public string BuildStatusLabel => HasBuildProfile ? "BUILD READY" : "SETUP NEEDED";
+    public string LaunchModeLabel => HasBuildConfiguration
+        ? LaunchMode == LaunchMode.BuildAndLaunch ? "BUILD & LAUNCH" : "DIRECT LAUNCH"
+        : "CONFIG NEEDED";
     public string PullRequestLabel => HasPullRequest ? $"PR #{PullRequestNumber}" : string.Empty;
     public string RelativeActivityLabel => FormatRelativeActivity(LastActivityAt, DateTimeOffset.Now);
     public double BehindBarWidth { get; set; }

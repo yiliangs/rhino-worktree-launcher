@@ -5,17 +5,12 @@ namespace RhinoWorktreeLauncher;
 
 public sealed class ProjectCatalog
 {
-    private const int CurrentSchemaVersion = 5;
+    private const int CurrentSchemaVersion = 6;
     private const int LockAttempts = 20;
     private static readonly TimeSpan LockRetryDelay = TimeSpan.FromMilliseconds(50);
     private readonly string _catalogPath;
-    private readonly string _applicationRoot;
 
-    public ProjectCatalog(string catalogPath)
-    {
-        _catalogPath = Path.GetFullPath(catalogPath);
-        _applicationRoot = Path.GetDirectoryName(_catalogPath)!;
-    }
+    public ProjectCatalog(string catalogPath) => _catalogPath = Path.GetFullPath(catalogPath);
 
     public async Task<IReadOnlyList<ProjectSnapshot>> LoadAsync(CancellationToken cancellationToken)
     {
@@ -40,7 +35,10 @@ public sealed class ProjectCatalog
     public async Task<ProjectRegistration> RegisterAsync(
         string repositoryPath,
         ProjectAccessGrant access,
-        string? importedDriverPath,
+        string? pluginProjectPath,
+        string? solutionPath,
+        BuildConfiguration? buildConfiguration,
+        LaunchMode launchMode,
         CancellationToken cancellationToken)
     {
         string selectedPath = Path.GetFullPath(repositoryPath);
@@ -64,9 +62,28 @@ public sealed class ProjectCatalog
         ProjectIdentity identity = existing is null
             ? ProjectIdentity.Create(primaryCheckout)
             : new ProjectIdentity(existing.ProjectId, existing.DisplayName);
-        BuildProfile buildProfile = string.IsNullOrWhiteSpace(importedDriverPath)
-            ? existing?.BuildProfile ?? BuildProfileDiscovery.Discover(repositoryRoot)
-            : await ImportDriverAsync(identity.ProjectId, importedDriverPath, cancellationToken);
+        string? effectivePluginProject = pluginProjectPath ?? (existing?.BuildProfile.IsConfigured == true
+            ? existing.BuildProfile.PluginProjectPath
+            : null);
+        string? effectiveSolution = solutionPath ?? (existing?.BuildProfile.IsConfigured == true
+            ? existing.BuildProfile.SolutionPath
+            : null);
+        BuildConfiguration? effectiveConfiguration = buildConfiguration ??
+            (existing?.BuildProfile.IsConfigured == true
+                ? existing.BuildProfile.SelectedConfiguration
+                : null);
+        BuildProfile buildProfile = existing is not null &&
+            string.IsNullOrWhiteSpace(pluginProjectPath) &&
+            string.IsNullOrWhiteSpace(solutionPath) &&
+            buildConfiguration is null &&
+            launchMode == LaunchMode.BuildAndLaunch
+                ? existing.BuildProfile
+                : BuildProfileDiscovery.Discover(
+                    repositoryRoot,
+                    effectivePluginProject,
+                    effectiveSolution,
+                    effectiveConfiguration,
+                    launchMode);
         ProjectRegistration registration = new ProjectRegistration(
             identity.ProjectId,
             identity.DisplayName,
@@ -95,8 +112,8 @@ public sealed class ProjectCatalog
             StringComparison.OrdinalIgnoreCase)),
         cancellationToken);
 
-    public async Task<ProjectRegistration> UpdateSettingsAsync(
-        ProjectSettingsRequest request,
+    public async Task<ProjectRegistration> UpdateConfigAsync(
+        ProjectConfigRequest request,
         CancellationToken cancellationToken)
     {
         ProjectRegistration current = (await LoadRegistrationsAsync(cancellationToken))
@@ -105,26 +122,12 @@ public sealed class ProjectCatalog
                 request.ProjectId,
                 StringComparison.OrdinalIgnoreCase)) ??
             throw new InvalidOperationException($"Project '{request.ProjectId}' is not registered.");
-        BuildProfile profile;
-        if (request.BuildMode == BuildMode.Typed)
-        {
-            profile = BuildProfileDiscovery.Discover(current.PrimaryCheckout);
-        }
-        else if (!string.IsNullOrWhiteSpace(request.ImportedDriverPath))
-        {
-            profile = await ImportDriverAsync(
-                current.ProjectId,
-                request.ImportedDriverPath,
-                cancellationToken);
-        }
-        else if (current.BuildProfile.Mode == BuildMode.ImportedDriver)
-        {
-            profile = current.BuildProfile;
-        }
-        else
-        {
-            throw new InvalidOperationException("Choose the custom driver RWL should import.");
-        }
+        BuildProfile profile = BuildProfileDiscovery.Discover(
+            current.PrimaryCheckout,
+            request.PluginProjectPath,
+            request.SolutionPath,
+            request.BuildConfiguration,
+            request.LaunchMode);
 
         ProjectRegistration updated = current with
         {
@@ -142,50 +145,6 @@ public sealed class ProjectCatalog
             file.Projects[index] = CatalogRegistrationRecord.From(updated);
         }, cancellationToken);
         return updated;
-    }
-
-    private async Task<BuildProfile> ImportDriverAsync(
-        string projectId,
-        string selectedPath,
-        CancellationToken cancellationToken)
-    {
-        string source = Path.GetFullPath(selectedPath);
-        if (!File.Exists(source))
-            throw new FileNotFoundException("The selected custom driver was not found.", source);
-
-        string relativePath = Path.Combine("projects", projectId, "drivers", "Driver.ps1");
-        string destination = ResolveApplicationPath(relativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        string temporaryPath = $"{destination}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
-        try
-        {
-            await using (FileStream input = new FileStream(
-                source,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read))
-            await using (FileStream output = new FileStream(
-                temporaryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None))
-            {
-                await input.CopyToAsync(output, cancellationToken);
-                await output.FlushAsync(cancellationToken);
-            }
-            File.Move(temporaryPath, destination, overwrite: true);
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath))
-                File.Delete(temporaryPath);
-        }
-
-        return new BuildProfile(
-            BuildMode.ImportedDriver,
-            Array.Empty<BuildStep>(),
-            BuildProfile.Unconfigured.Artifacts,
-            relativePath);
     }
 
     private ProjectSnapshot LoadSnapshot(CatalogRegistrationRecord record, int index)
@@ -214,16 +173,8 @@ public sealed class ProjectCatalog
             if (!registration.BuildProfile.IsConfigured)
             {
                 diagnostics.Add(new Diagnostic(
-                    "build_profile_incomplete",
-                    "RWL could not fully detect this project's build profile. Edit the app-owned profile before launching.",
-                    DiagnosticSeverity.Warning));
-            }
-            else if (registration.BuildProfile.Mode == BuildMode.ImportedDriver &&
-                !File.Exists(ResolveApplicationPath(registration.BuildProfile.ImportedDriverPath!)))
-            {
-                diagnostics.Add(new Diagnostic(
-                    "imported_driver_missing",
-                    "The imported driver copy is missing. Re-import it in project settings.",
+                    "build_configuration_incomplete",
+                    "Choose a canonical solution build configuration in Config before launching.",
                     DiagnosticSeverity.Warning));
             }
             return new ProjectSnapshot(registration, ProjectAvailability.Available, diagnostics);
@@ -326,7 +277,7 @@ public sealed class ProjectCatalog
             PrimaryCheckout = previous.PrimaryCheckout,
             RhinoVersion = previous.RhinoVersion ?? previous.Launch?.RhinoVersion ?? 8,
             Access = previous.Access ?? ProjectAccessGrant.Full,
-            BuildProfile = previous.BuildProfile ?? DiscoverProfile(previous.PrimaryCheckout)
+            BuildProfile = DiscoverProfile(previous.PrimaryCheckout)
         };
     }
 
@@ -377,10 +328,19 @@ public sealed class ProjectCatalog
         }
     }
 
-    private static BuildProfile DiscoverProfile(string? primaryCheckout) =>
-        !string.IsNullOrWhiteSpace(primaryCheckout) && Directory.Exists(primaryCheckout)
-            ? BuildProfileDiscovery.Discover(primaryCheckout)
-            : BuildProfile.Unconfigured;
+    private static BuildProfile DiscoverProfile(string? primaryCheckout)
+    {
+        if (string.IsNullOrWhiteSpace(primaryCheckout) || !Directory.Exists(primaryCheckout))
+            return BuildProfile.Unconfigured;
+        try
+        {
+            return BuildProfileDiscovery.Discover(primaryCheckout);
+        }
+        catch (InvalidDataException)
+        {
+            return BuildProfile.Unconfigured;
+        }
+    }
 
     private async Task ModifyAsync(Action<CatalogFile> modification, CancellationToken cancellationToken)
     {
@@ -464,17 +424,6 @@ public sealed class ProjectCatalog
         new[] { "--no-optional-locks", "-C", workingDirectory }.Concat(arguments),
         cancellationToken);
 
-    private string ResolveApplicationPath(string relativePath)
-    {
-        if (Path.IsPathRooted(relativePath))
-            throw new InvalidDataException("Application-owned paths must be relative.");
-        string path = Path.GetFullPath(Path.Combine(_applicationRoot, relativePath));
-        string rootPrefix = _applicationRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if (!path.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("The application-owned path escaped RWL storage.");
-        return path;
-    }
-
     private sealed class CatalogFile
     {
         public int SchemaVersion { get; set; } = CurrentSchemaVersion;
@@ -537,7 +486,7 @@ public sealed class ProjectCatalog
         public int? RhinoVersion { get; init; }
         public LegacyLaunchContract? Launch { get; init; }
         public ProjectAccessGrant? Access { get; init; }
-        public BuildProfile? BuildProfile { get; init; }
+        public JsonElement? BuildProfile { get; init; }
     }
 
     private sealed class LegacyCatalogFile

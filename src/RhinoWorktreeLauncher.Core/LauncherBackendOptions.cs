@@ -11,14 +11,12 @@ public sealed class LauncherBackendOptions
 
     public string CatalogPath { get; init; } = Path.Combine(DefaultDataRoot, "projects.json");
     public string LogsDirectory { get; init; } = Path.Combine(DefaultDataRoot, "logs");
+    public string LaunchStateDirectory { get; init; } = Path.Combine(DefaultDataRoot, "launches");
     public string LocksDirectory { get; init; } = Path.Combine(DefaultDataRoot, "locks");
-    public string WorkspacesDirectory { get; init; } = Path.Combine(DefaultDataRoot, "workspaces");
     public string RemotesDirectory { get; init; } = Path.Combine(DefaultDataRoot, "remotes");
     public string GitExecutable { get; init; } = "git";
     public string GitHubExecutable { get; init; } = ResolveGitHubCliPath();
-    public string PowerShellExecutable { get; init; } = "pwsh";
     public string DotNetExecutable { get; init; } = "dotnet";
-    public string NpmExecutable { get; init; } = "npm";
     public string VerifierPluginPath { get; init; } = Path.Combine(
         AppContext.BaseDirectory,
         "Rwl.RhinoVerifier.rhp");

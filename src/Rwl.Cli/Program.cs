@@ -21,14 +21,7 @@ internal static class Program
             LauncherBackend backend = new LauncherBackend();
             return arguments.Positionals switch
             {
-                ["project", "register", string path] => await WriteAsync(
-                    await backend.RegisterProjectAsync(
-                        new ProjectRegistrationRequest(
-                            path,
-                            new ProjectAccessGrant(true, !arguments.HasFlag("--no-remote"))),
-                        CancellationToken.None),
-                    arguments.Json,
-                    value => $"Registered '{value.ProjectId}' with an app-owned {value.BuildProfile.Mode} build profile."),
+                ["project", "register", string path] => await RegisterProjectAsync(backend, arguments, path),
                 ["project", "remove", string projectId] => await WriteAsync(
                     await backend.RemoveProjectAsync(projectId, CancellationToken.None),
                     arguments.Json,
@@ -75,6 +68,34 @@ internal static class Program
             Console.Error.WriteLine(exception.Message);
             return 1;
         }
+    }
+
+    private static async Task<int> RegisterProjectAsync(
+        LauncherBackend backend,
+        Arguments arguments,
+        string path)
+    {
+        string? configuration = arguments.OptionalOption("--configuration", null);
+        string? platform = arguments.OptionalOption("--platform", null);
+        if (string.IsNullOrWhiteSpace(configuration) != string.IsNullOrWhiteSpace(platform))
+            throw new ArgumentException("--configuration and --platform must be supplied together.");
+
+        BuildConfiguration? selection = configuration is null
+            ? null
+            : new BuildConfiguration(configuration, platform!);
+        return await WriteAsync(
+            await backend.RegisterProjectAsync(
+                new ProjectRegistrationRequest(
+                    path,
+                    new ProjectAccessGrant(true, !arguments.HasFlag("--no-remote")),
+                    arguments.OptionalOption("--plugin-project", null),
+                    arguments.OptionalOption("--solution", null),
+                    selection,
+                    arguments.HasFlag("--direct") ? LaunchMode.DirectLaunch : LaunchMode.BuildAndLaunch),
+                CancellationToken.None),
+            arguments.Json,
+            value => $"Registered '{value.ProjectId}' with {value.BuildProfile.SolutionPath} " +
+                $"({value.BuildProfile.SelectedConfiguration.DisplayName}, {value.BuildProfile.LaunchMode}).");
     }
 
     private static async Task<int> LaunchAsync(LauncherBackend backend, Arguments arguments)
@@ -209,7 +230,7 @@ internal static class Program
         Console.Error.WriteLine(
             """
             Usage:
-              rwl project register <path> [--no-remote] [--json]
+              rwl project register <path> [--plugin-project <path>] [--solution <path>] [--configuration <name> --platform <name>] [--direct] [--no-remote] [--json]
               rwl project remove <id> [--json]
               rwl context --cwd <path> [--json]
               rwl worktree list --project <id> [--local-only] [--json]
@@ -268,7 +289,11 @@ internal static class Program
             option.Equals("--project", StringComparison.OrdinalIgnoreCase) ||
             option.Equals("--path", StringComparison.OrdinalIgnoreCase) ||
             option.Equals("--timeout", StringComparison.OrdinalIgnoreCase) ||
-            option.Equals("--bootstrap", StringComparison.OrdinalIgnoreCase);
+            option.Equals("--bootstrap", StringComparison.OrdinalIgnoreCase) ||
+            option.Equals("--plugin-project", StringComparison.OrdinalIgnoreCase) ||
+            option.Equals("--solution", StringComparison.OrdinalIgnoreCase) ||
+            option.Equals("--configuration", StringComparison.OrdinalIgnoreCase) ||
+            option.Equals("--platform", StringComparison.OrdinalIgnoreCase);
     }
 }
 

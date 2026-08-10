@@ -45,7 +45,7 @@ public sealed class ProjectCatalogTests
         Assert.True(File.Exists(temporary.PathFor("launcher/projects.schema2.backup.json")));
         string current = await File.ReadAllTextAsync(temporary.PathFor("launcher/projects.json"));
         using JsonDocument json = JsonDocument.Parse(current);
-        Assert.Equal(5, json.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(6, json.RootElement.GetProperty("schemaVersion").GetInt32());
         JsonElement record = json.RootElement.GetProperty("projects")[0];
         Assert.False(record.TryGetProperty("manifestRelativePath", out _));
         Assert.False(record.TryGetProperty("driver", out _));
@@ -53,7 +53,7 @@ public sealed class ProjectCatalogTests
     }
 
     [Fact]
-    public async Task Schema_v4_catalog_replaces_legacy_driver_contract_with_detected_profile()
+    public async Task Schema_v4_catalog_replaces_legacy_driver_contract_with_solution_configuration()
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
@@ -78,8 +78,10 @@ public sealed class ProjectCatalogTests
         ProjectSnapshot project = Assert.Single(await new ProjectCatalog(
             temporary.PathFor("launcher/projects.json")).LoadAsync(CancellationToken.None));
 
-        Assert.Equal(BuildMode.Typed, project.Registration.BuildProfile.Mode);
-        Assert.Equal("Sample.rhp", project.Registration.BuildProfile.Artifacts.PluginFileName);
+        Assert.Equal("Sample.slnx", project.Registration.BuildProfile.SolutionPath);
+        Assert.Equal(new BuildConfiguration("Debug", "x64"), project.Registration.BuildProfile.SelectedConfiguration);
+        Assert.Equal(LaunchMode.BuildAndLaunch, project.Registration.BuildProfile.LaunchMode);
+        Assert.Equal("netfx", project.Registration.BuildProfile.Artifacts.RhinoRuntime);
         Assert.True(File.Exists(temporary.PathFor("launcher/projects.schema4.backup.json")));
         string current = await File.ReadAllTextAsync(temporary.PathFor("launcher/projects.json"));
         Assert.False(current.Contains("\"driver\"", StringComparison.OrdinalIgnoreCase));
@@ -144,8 +146,40 @@ public sealed class ProjectCatalogTests
         Assert.Equal("repository", Assert.Single(projects).ProjectId);
     }
 
+    [Fact]
+    public async Task Project_config_persists_solution_configuration_platform_and_direct_launch_mode()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        ProjectCatalog catalog = new ProjectCatalog(temporary.PathFor("launcher/projects.json"));
+        ProjectRegistration registered = await RegisterAsync(catalog, repository);
+
+        await catalog.UpdateConfigAsync(
+            new ProjectConfigRequest(
+                registered.ProjectId,
+                ReadRemote: false,
+                "Sample/Sample.csproj",
+                "Sample.slnx",
+                new BuildConfiguration("Release", "Any CPU"),
+                LaunchMode.DirectLaunch),
+            CancellationToken.None);
+
+        ProjectRegistration reloaded = Assert.Single(await catalog.LoadRegistrationsAsync(CancellationToken.None));
+        Assert.Equal("Sample.slnx", reloaded.BuildProfile.SolutionPath);
+        Assert.Equal(new BuildConfiguration("Release", "Any CPU"), reloaded.BuildProfile.SelectedConfiguration);
+        Assert.Equal(LaunchMode.DirectLaunch, reloaded.BuildProfile.LaunchMode);
+        Assert.False(reloaded.Access.ReadRemote);
+    }
+
     private static Task<ProjectRegistration> RegisterAsync(ProjectCatalog catalog, string repository) =>
-        catalog.RegisterAsync(repository, ProjectAccessGrant.Full, null, CancellationToken.None);
+        catalog.RegisterAsync(
+            repository,
+            ProjectAccessGrant.Full,
+            null,
+            null,
+            null,
+            LaunchMode.BuildAndLaunch,
+            CancellationToken.None);
 
     private static string GitCommonDirectory(TemporaryDirectory temporary, string repository) => temporary.Run(
         "git",
@@ -162,7 +196,7 @@ public sealed class ProjectCatalogTests
             $"{root}/Sample/Sample.csproj",
             """
             <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup><TargetFramework>net481</TargetFramework><TargetExt>.rhp</TargetExt></PropertyGroup>
+              <PropertyGroup><TargetFrameworkVersion>v4.8</TargetFrameworkVersion><TargetExt>.rhp</TargetExt></PropertyGroup>
               <ItemGroup><Reference Include="RhinoCommon" /></ItemGroup>
             </Project>
             """);
