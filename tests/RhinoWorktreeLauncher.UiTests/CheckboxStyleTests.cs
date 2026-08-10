@@ -12,15 +12,7 @@ public sealed class CheckboxStyleTests
     [Fact]
     public void Application_opens_when_only_SystemRoot_is_inherited()
     {
-        string executable = Path.Combine(
-            RepositoryRoot(),
-            "src",
-            "RhinoWorktreeLauncher",
-            "bin",
-            "Debug",
-            "net8.0-windows",
-            "win-x64",
-            "RhinoWorktreeLauncher.exe");
+        string executable = DesktopOutputPath("RhinoWorktreeLauncher.exe");
         ProcessStartInfo startInfo = new ProcessStartInfo
         {
             FileName = executable,
@@ -54,15 +46,7 @@ public sealed class CheckboxStyleTests
     [Fact]
     public void Desktop_deployment_includes_solution_parser_runtime_dependency()
     {
-        string assembly = Path.Combine(
-            RepositoryRoot(),
-            "src",
-            "RhinoWorktreeLauncher",
-            "bin",
-            "Debug",
-            "net8.0-windows",
-            "win-x64",
-            "Microsoft.VisualStudio.SolutionPersistence.dll");
+        string assembly = DesktopOutputPath("Microsoft.VisualStudio.SolutionPersistence.dll");
 
         Assert.True(File.Exists(assembly), $"Missing desktop runtime dependency: {assembly}");
     }
@@ -203,6 +187,22 @@ public sealed class CheckboxStyleTests
             "src",
             "RhinoWorktreeLauncher",
             fileName));
+    }
+
+    private static string DesktopOutputPath(string fileName)
+    {
+        DirectoryInfo testOutput = new DirectoryInfo(AppContext.BaseDirectory);
+        string configuration = testOutput.Parent?.Name ??
+            throw new DirectoryNotFoundException("The UI test build configuration was not found.");
+        return Path.Combine(
+            RepositoryRoot(),
+            "src",
+            "RhinoWorktreeLauncher",
+            "bin",
+            configuration,
+            "net8.0-windows",
+            "win-x64",
+            fileName);
     }
 
     private static string RepositoryRoot()
