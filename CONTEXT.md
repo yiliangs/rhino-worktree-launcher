@@ -13,8 +13,8 @@ The `.rhp` at the Rhino plug-in project's MSBuild `TargetPath` for the mapped pr
 _Avoid_: RWL artifact, copied plug-in
 
 **Launch mode**:
-The project-wide choice between Build & Launch and Direct Launch. Build & Launch builds the canonical solution before resolving its artifact. Direct Launch resolves and loads the existing artifact without building or claiming it is fresh.
-_Avoid_: freshness mode, build receipt
+The choice for one launch request between Build & Launch and Direct Launch. Desktop Config stores a project-specific default for mechanical launches; MCP agents choose explicitly per request. Build & Launch builds the canonical solution before resolving its artifact, while Direct Launch loads the existing artifact without building or claiming it is fresh.
+_Avoid_: project-wide launch mode, freshness mode, build receipt
 
 **Loaded-binary verification**:
 Proof produced inside Rhino that the expected plug-in and declared critical dependencies were loaded from their exact canonical paths. It does not claim plug-in authentication or application initialization succeeded.
@@ -33,7 +33,7 @@ An independently revocable project permission allowing RWL to read remote Git an
 _Avoid_: fetch permission, Git write permission
 
 **Config**:
-The project-specific desktop surface for canonical plug-in project and solution configuration, launch mode, and project grants.
+The project-specific desktop surface for canonical plug-in project and solution configuration, the desktop launch-mode default, and project grants.
 _Avoid_: global settings, MCP setup
 
 **Settings**:

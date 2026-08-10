@@ -8,13 +8,13 @@ RWL originally implemented JSON-RPC framing, MCP negotiation, cancellation, tool
 
 ## Decision
 
-RWL uses the Tier 1 official C# MCP SDK over local stdio. The SDK owns protocol negotiation, framing, cancellation, schema generation, and tool metadata. `LauncherBackend` remains the only owner of project grants, worktree resolution, build isolation, Rhino registration, launch, and binary verification.
+RWL uses the Tier 1 official C# MCP SDK over local stdio. The SDK owns protocol negotiation, framing, cancellation, schema generation, and tool metadata. `LauncherBackend` remains the only owner of project grants, worktree resolution, canonical solution execution, Rhino registration, launch, and binary verification.
 
 The tool surface separates local inspection from external refresh:
 
 - `rhino_worktree_list_worktrees` reads local Git state and cached metadata.
 - `rhino_worktree_refresh_worktrees` explicitly contacts the configured remote and updates RWL-owned cache state.
-- `rhino_worktree_launch` is marked destructive and long-running, reports progress, and preserves backend verification as the terminal authority.
+- `rhino_worktree_build_and_launch` and `rhino_worktree_launch_existing` are marked destructive and long-running, report progress, and preserve backend verification as the terminal authority. Their separate names make the per-request build choice explicit.
 
 All clients invoke `%LOCALAPPDATA%\RhinoWorktreeLauncher\bootstrap\rwl.exe mcp`. The bootstrap resolves the current versioned MCP executable from `current.json`, so application updates do not require client reconfiguration.
 

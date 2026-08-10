@@ -15,6 +15,7 @@ internal sealed class BuildCoordinator
 
     public async Task<CommandResult<PreparedLaunchArtifacts>> PrepareAsync(
         string path,
+        LaunchMode launchMode,
         IProgress<BuildProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -36,7 +37,7 @@ internal sealed class BuildCoordinator
                 context.BuildProfile.PluginProjectPath,
                 context.BuildProfile.SolutionPath,
                 context.BuildProfile.SelectedConfiguration,
-                context.BuildProfile.LaunchMode);
+                launchMode);
             BuildConfiguration projectConfiguration = BuildProfileDiscovery.ResolveProjectConfiguration(
                 context.WorktreePath,
                 profile);
@@ -80,7 +81,7 @@ internal sealed class BuildCoordinator
             if (!File.Exists(pluginPath))
             {
                 string action = profile.LaunchMode == LaunchMode.DirectLaunch
-                    ? "Build this configuration first or switch Config to Build & Launch."
+                    ? "Build this configuration first or use Build & Launch."
                     : "The solution build completed without producing it.";
                 throw new FileNotFoundException(
                     $"Canonical plug-in artifact '{pluginPath}' was not found. {action}",

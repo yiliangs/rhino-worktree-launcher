@@ -100,13 +100,26 @@ internal static class Program
 
     private static async Task<int> LaunchAsync(LauncherBackend backend, Arguments arguments)
     {
+        string path = arguments.RequiredOption("--path");
+        CommandResult<ResolvedContext> context = await backend.ResolveContextAsync(
+            path,
+            CancellationToken.None);
+        if (!context.Succeeded)
+        {
+            return await WriteAsync(
+                context,
+                arguments.Json,
+                value => $"{value.DisplayName}: {value.WorktreePath}");
+        }
+
         double timeoutSeconds = arguments.OptionalDouble("--timeout", 180);
         Progress<LaunchProgress>? progress = arguments.Json
             ? null
             : new Progress<LaunchProgress>(update => Console.Error.WriteLine($"[{update.Stage}] {update.Message}"));
         return await WriteAsync(
             await backend.LaunchAsync(
-                arguments.RequiredOption("--path"),
+                path,
+                context.Value!.BuildProfile.LaunchMode,
                 TimeSpan.FromSeconds(timeoutSeconds),
                 progress,
                 CancellationToken.None),

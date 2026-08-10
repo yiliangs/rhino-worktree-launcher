@@ -227,10 +227,12 @@ public sealed class LauncherBackend
 
     public Task<CommandResult<LaunchResult>> LaunchAsync(
         string path,
+        LaunchMode launchMode,
         TimeSpan timeout,
         IProgress<LaunchProgress>? progress,
         CancellationToken cancellationToken) => _launchCoordinator.LaunchAsync(
             path,
+            launchMode,
             timeout,
             progress,
             cancellationToken);

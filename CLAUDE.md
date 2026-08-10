@@ -16,13 +16,14 @@ The backend is a one-off bootstrapper, not a Rhino session monitor. Do not add d
 ## Contract invariants
 
 - Project settings belong only in `%LOCALAPPDATA%\RhinoWorktreeLauncher\projects.json`; never require or create repository configuration JSON.
-- Catalog schema v6 stores project identity, Git common directory, primary checkout, explicit grants, Rhino version, canonical plug-in project, solution Configuration and Platform, and launch mode. Repositories contain no RWL driver or configuration file.
+- Catalog schema v6 stores project identity, Git common directory, primary checkout, explicit grants, Rhino version, canonical plug-in project, solution Configuration and Platform, and the desktop launch-mode default. Repositories contain no RWL driver or configuration file.
 - Schema-v2 catalog data is imported once under the catalog lock and atomically replaced. Ordinary catalog reads never write or prune; invalid registrations remain visible as degraded until explicit removal or re-registration.
 - Catalog writes re-read while holding the file lock and replace atomically.
 - Remote failures are warnings and never hide local worktrees. Remote reads use an RWL-owned mirror and never fetch into a registered repository.
 - The selected Git worktree is the single source of truth. Do not create an app-owned source or build tree.
 - Config requires an explicit canonical plug-in project when a repository has more than one candidate; discovery must remain available so the UI can present that choice. Never infer project identity from existing `.rhp` outputs.
 - Build & Launch runs the selected solution and its Configuration and Platform in the selected worktree. Direct Launch skips the build. Both resolve the selected plug-in project's mapped MSBuild `TargetPath`; never guess, copy, or select an `.rhp` by filename.
+- Launch mode belongs to the invoking adapter. The desktop and CLI pass the saved Config default; MCP publishes separate Build & Launch and Launch Existing tools and never inherits the desktop default.
 - Rhino startup uses a serialized temporary HKCU plug-in path overlay and the app-owned verifier. Restore the exact previous current-user value before launch returns; never require elevation or modify HKLM.
 - Process creation is not success. Launch succeeds only after the verifier's launch ID, PID, `.rhp`, and every critical dependency path match. Timeout or mismatch terminates the unverified child.
 - Every launch writes inert JSONL diagnostics under `%LOCALAPPDATA%\RhinoWorktreeLauncher\logs`.
