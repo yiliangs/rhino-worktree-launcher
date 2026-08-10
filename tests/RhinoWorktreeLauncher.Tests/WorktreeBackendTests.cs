@@ -39,7 +39,49 @@ public sealed class WorktreeBackendTests
     }
 
     [Fact]
-    public async Task Registration_discovers_an_app_owned_typed_profile_without_scaffolding_a_driver()
+    public async Task Registration_requires_a_solution_containing_the_Rhino_plugin_project()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string repository = temporary.CreateDirectory("sample-plugin");
+        temporary.Run("git", repository, "init", "--quiet");
+        temporary.Run("git", repository, "config", "user.email", "tests@example.com");
+        temporary.Run("git", repository, "config", "user.name", "RWL Tests");
+        temporary.WriteFile(
+            "sample-plugin/Sample/Sample.csproj",
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net481</TargetFramework><TargetExt>.rhp</TargetExt></PropertyGroup>
+              <ItemGroup><Reference Include="RhinoCommon" /></ItemGroup>
+            </Project>
+            """);
+        temporary.WriteFile(
+            "sample-plugin/Sample/SamplePlugin.cs",
+            """
+            using System.Runtime.InteropServices;
+            using Rhino.PlugIns;
+            [assembly: Guid("ef680fd0-d674-41b5-9c08-5a5d6f925fd1")]
+            public sealed class SamplePlugin : PlugIn { }
+            """);
+        temporary.Run("git", repository, "add", ".");
+        temporary.Run("git", repository, "commit", "--quiet", "-m", "initial");
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs")
+        });
+
+        CommandResult<ProjectRegistration> result = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("registration_failed", Assert.Single(result.Diagnostics).Code);
+        Assert.Contains("solution", result.Diagnostics[0].Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(temporary.PathFor("launcher/projects.json")));
+    }
+
+    [Fact]
+    public async Task Registration_selects_the_canonical_solution_Debug_x64_configuration()
     {
         using TemporaryDirectory temporary = new TemporaryDirectory();
         string repository = temporary.CreateDirectory("sample-plugin");
@@ -67,6 +109,19 @@ public sealed class WorktreeBackendTests
             [assembly: Guid("ef680fd0-d674-41b5-9c08-5a5d6f925fd1")]
             public sealed class SamplePlugin : PlugIn { }
             """);
+        temporary.WriteFile(
+            "sample-plugin/Sample.slnx",
+            """
+            <Solution>
+              <Configurations>
+                <BuildType Name="Debug" />
+                <BuildType Name="Release" />
+                <Platform Name="Any CPU" />
+                <Platform Name="x64" />
+              </Configurations>
+              <Project Path="Sample/Sample.csproj" />
+            </Solution>
+            """);
         temporary.Run("git", repository, "add", ".");
         temporary.Run("git", repository, "commit", "--quiet", "-m", "initial");
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
@@ -79,144 +134,144 @@ public sealed class WorktreeBackendTests
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
             CancellationToken.None);
 
-        Assert.True(result.Succeeded);
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
         BuildProfile profile = result.Value!.BuildProfile;
-        Assert.Equal(BuildMode.Typed, profile.Mode);
-        BuildStep step = Assert.Single(profile.Steps);
-        Assert.Equal(BuildStepKind.DotNetBuild, step.Kind);
-        Assert.Equal(Path.Combine("Sample", "Sample.csproj"), step.Target);
-        Assert.Equal("Sample.rhp", profile.Artifacts.PluginFileName);
+        Assert.Equal("Sample.slnx", profile.SolutionPath);
+        Assert.Equal(Path.Combine("Sample", "Sample.csproj"), profile.PluginProjectPath);
+        Assert.Equal(new BuildConfiguration("Debug", "x64"), profile.SelectedConfiguration);
+        Assert.Equal(LaunchMode.BuildAndLaunch, profile.LaunchMode);
         Assert.Equal(Guid.Parse("ef680fd0-d674-41b5-9c08-5a5d6f925fd1"), profile.Artifacts.PluginId);
-        Assert.False(Directory.Exists(temporary.PathFor("launcher/projects/sample-plugin")));
     }
 
     [Fact]
-    public async Task Registration_can_import_a_custom_driver_without_linking_its_source_file()
+    public async Task Registration_requires_an_explicit_solution_when_multiple_solutions_contain_the_plugin()
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
-        string selectedDriver = temporary.PathFor("user-driver/Custom.ps1");
-        temporary.WriteFile("user-driver/Custom.ps1", "Write-Output 'custom build'");
+        string repository = temporary.PathFor("repository");
+        temporary.WriteFile(
+            "repository/Alternate.slnx",
+            """
+            <Solution>
+              <Configurations>
+                <BuildType Name="Debug" />
+                <Platform Name="x64" />
+              </Configurations>
+              <Project Path="Sample/Sample.csproj" />
+            </Solution>
+            """);
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs")
         });
 
-        CommandResult<ProjectRegistration> result = await backend.RegisterProjectAsync(
+        CommandResult<ProjectRegistration> ambiguous = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+        CommandResult<ProjectRegistration> selected = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(
-                temporary.PathFor("repository"),
+                repository,
                 ProjectAccessGrant.Full,
-                selectedDriver),
+                "Sample/Sample.csproj",
+                "Alternate.slnx",
+                new BuildConfiguration("Debug", "x64")),
             CancellationToken.None);
-        File.Delete(selectedDriver);
 
-        Assert.True(result.Succeeded);
-        Assert.Equal(BuildMode.ImportedDriver, result.Value!.BuildProfile.Mode);
-        string importedPath = Path.GetFullPath(Path.Combine(
-            temporary.PathFor("launcher"),
-            result.Value.BuildProfile.ImportedDriverPath!));
-        Assert.StartsWith(
-            Path.GetFullPath(temporary.PathFor("launcher")),
-            importedPath,
-            StringComparison.OrdinalIgnoreCase);
-        Assert.Equal("Write-Output 'custom build'", await File.ReadAllTextAsync(importedPath));
+        Assert.False(ambiguous.Succeeded);
+        Assert.Contains("More than one solution", ambiguous.Diagnostics[0].Message, StringComparison.Ordinal);
+        Assert.True(selected.Succeeded, selected.Diagnostics.FirstOrDefault()?.Message);
+        Assert.Equal("Alternate.slnx", selected.Value!.BuildProfile.SolutionPath);
     }
 
     [Fact]
-    public async Task Settings_persist_remote_consent_and_allow_switching_to_an_imported_driver()
+    public async Task Build_options_expose_multiple_Rhino_plugin_projects_for_Config_selection()
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
-        string driver = temporary.PathFor("drivers/Custom.ps1");
-        temporary.WriteFile("drivers/Custom.ps1", "Write-Output 'settings driver'");
+        string repository = temporary.PathFor("repository");
+        temporary.WriteFile(
+            "repository/Second/Second.csproj",
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net8.0</TargetFramework><TargetExt>.rhp</TargetExt></PropertyGroup>
+            </Project>
+            """);
+        temporary.WriteFile(
+            "repository/Second/SecondPlugin.cs",
+            """
+            using System.Runtime.InteropServices;
+            [Guid("25c3cc66-9a88-4e97-a9a5-650a7f63fb1a")]
+            public sealed class SecondPlugin : Rhino.PlugIns.PlugIn { }
+            """);
+        temporary.WriteFile(
+            "repository/Second.slnx",
+            """
+            <Solution>
+              <Configurations><BuildType Name="Debug" /><Platform Name="x64" /></Configurations>
+              <Project Path="Second/Second.csproj" />
+            </Solution>
+            """);
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs")
         });
-        await backend.RegisterProjectAsync(
-            new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),
+
+        CommandResult<ProjectBuildOptions> result = await backend.DiscoverProjectBuildOptionsAsync(
+            repository,
             CancellationToken.None);
 
-        CommandResult<ProjectRegistration> updated = await backend.UpdateProjectSettingsAsync(
-            new ProjectSettingsRequest("repository", false, BuildMode.ImportedDriver, driver),
-            CancellationToken.None);
-        File.Delete(driver);
-        ProjectSnapshot reloaded = Assert.Single((await backend.GetProjectsAsync(
-            CancellationToken.None)).Value!);
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.Equal(
+            new[]
+            {
+                Path.Combine("Sample", "Sample.csproj"),
+                Path.Combine("Second", "Second.csproj")
+            },
+            result.Value!.Plugins.Select(plugin => plugin.PluginProjectPath).ToArray());
+        Assert.Equal(
+            new[] { "Sample.slnx" },
+            result.Value.Plugins[0].Solutions.Select(solution => solution.SolutionPath).ToArray());
+        Assert.Equal(
+            new[] { "Second.slnx" },
+            result.Value.Plugins[1].Solutions.Select(solution => solution.SolutionPath).ToArray());
 
-        Assert.True(updated.Succeeded);
-        Assert.False(reloaded.Registration.Access.ReadRemote);
-        Assert.Equal(BuildMode.ImportedDriver, reloaded.Registration.BuildProfile.Mode);
-        string imported = Path.Combine(
-            temporary.PathFor("launcher"),
-            reloaded.Registration.BuildProfile.ImportedDriverPath!);
-        Assert.Equal("Write-Output 'settings driver'", await File.ReadAllTextAsync(imported));
+        CommandResult<ProjectRegistration> selected = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(
+                repository,
+                ProjectAccessGrant.Full,
+                "Second/Second.csproj",
+                "Second.slnx",
+                new BuildConfiguration("Debug", "x64")),
+            CancellationToken.None);
+
+        Assert.True(selected.Succeeded, selected.Diagnostics.FirstOrDefault()?.Message);
+        Assert.Equal(Path.Combine("Second", "Second.csproj"), selected.Value!.BuildProfile.PluginProjectPath);
+        Assert.Equal("Second.slnx", selected.Value.BuildProfile.SolutionPath);
     }
 
     [Fact]
-    public async Task Clearing_project_cache_deletes_only_project_owned_workspace_and_remote_mirror()
+    public async Task Clearing_remote_cache_does_not_touch_the_registered_project()
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
-        string workspaceFile = temporary.PathFor("launcher/workspaces/repository/cache.txt");
         string remoteFile = temporary.PathFor("launcher/remotes/repository.git/cache.txt");
-        string retainedFile = temporary.PathFor("launcher/projects/repository/drivers/Driver.ps1");
-        temporary.WriteFile("launcher/workspaces/repository/cache.txt", "workspace");
         temporary.WriteFile("launcher/remotes/repository.git/cache.txt", "remote");
-        temporary.WriteFile("launcher/projects/repository/drivers/Driver.ps1", "driver");
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
-            WorkspacesDirectory = temporary.PathFor("launcher/workspaces"),
             RemotesDirectory = temporary.PathFor("launcher/remotes")
         });
         await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),
             CancellationToken.None);
 
-        CommandResult<bool> result = await backend.ClearProjectCacheAsync(
+        CommandResult<bool> result = await backend.ClearRemoteCacheAsync(
             "repository",
             CancellationToken.None);
 
         Assert.True(result.Succeeded);
-        Assert.False(File.Exists(workspaceFile));
         Assert.False(File.Exists(remoteFile));
-        Assert.True(File.Exists(retainedFile));
         Assert.True(File.Exists(temporary.PathFor("repository/file.txt")));
-    }
-
-    [Fact]
-    public async Task Registration_stores_only_app_configuration_and_never_touches_the_repository()
-    {
-        using TemporaryDirectory temporary = new TemporaryDirectory();
-        string repository = temporary.CreateDirectory("clean-repository");
-        temporary.Run("git", repository, "init", "--quiet");
-        temporary.Run("git", repository, "config", "user.email", "tests@example.com");
-        temporary.Run("git", repository, "config", "user.name", "RWL Tests");
-        temporary.WriteFile("clean-repository/initial.txt", "initial");
-        temporary.Run("git", repository, "add", ".");
-        temporary.Run("git", repository, "commit", "--quiet", "-m", "initial");
-        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
-        {
-            CatalogPath = temporary.PathFor("launcher/projects.json"),
-            LogsDirectory = temporary.PathFor("launcher/logs")
-        });
-
-        CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
-            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
-            CancellationToken.None);
-        CommandResult<ProjectWorktrees> worktrees = await backend.GetWorktreeSnapshotAsync(
-            "clean-repository",
-            includeRemote: false,
-            CancellationToken.None);
-
-        Assert.True(registration.Succeeded);
-        Assert.Empty(registration.Diagnostics);
-        Assert.Equal(BuildProfile.Unconfigured, registration.Value!.BuildProfile);
-        Assert.True(worktrees.Succeeded);
-        Assert.False(Assert.Single(worktrees.Value!.Worktrees).CanLaunch);
-        Assert.Empty(Directory.EnumerateFiles(repository, "*.json", SearchOption.AllDirectories));
-        Assert.True(File.Exists(temporary.PathFor("launcher/projects.json")));
     }
 
     [Fact]
@@ -312,7 +367,7 @@ public sealed class WorktreeBackendTests
     }
 
     [Fact]
-    public async Task Inspection_reports_an_incomplete_build_profile_as_machine_readable_failure()
+    public async Task Inspection_reports_an_unavailable_build_configuration_as_machine_readable_failure()
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
@@ -326,6 +381,7 @@ public sealed class WorktreeBackendTests
         await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),
             CancellationToken.None);
+        File.Delete(temporary.PathFor("repository/Sample.slnx"));
 
         CommandResult<WorktreeInspection> result = await backend.InspectWorktreeAsync(
             temporary.PathFor("repository"),
@@ -333,7 +389,7 @@ public sealed class WorktreeBackendTests
 
         Assert.True(result.Succeeded);
         Assert.False(result.Value!.CanLaunch);
-        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "build_profile_incomplete");
+        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "build_configuration_unavailable");
         Assert.Equal(DiagnosticSeverity.Error, result.Diagnostics[0].Severity);
     }
 }
@@ -356,6 +412,38 @@ internal static class RepositoryFixture
         temporary.Run("git", repository, "config", "user.email", "tests@example.com");
         temporary.Run("git", repository, "config", "user.name", "RWL Tests");
         temporary.WriteFile($"{relativePath}/file.txt", "initial");
+        temporary.WriteFile(
+            $"{relativePath}/Sample/Sample.csproj",
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <TargetExt>.rhp</TargetExt>
+                <Platforms>AnyCPU;x64</Platforms>
+              </PropertyGroup>
+            </Project>
+            """);
+        temporary.WriteFile(
+            $"{relativePath}/Sample/SamplePlugin.cs",
+            """
+            using System.Runtime.InteropServices;
+            namespace Rhino.PlugIns { public class PlugIn { } }
+            [Guid("735b6a53-ddc2-46e9-a82c-c0cd86d0609a")]
+            public sealed class SamplePlugin : Rhino.PlugIns.PlugIn { }
+            """);
+        temporary.WriteFile(
+            $"{relativePath}/Sample.slnx",
+            """
+            <Solution>
+              <Configurations>
+                <BuildType Name="Debug" />
+                <BuildType Name="Release" />
+                <Platform Name="Any CPU" />
+                <Platform Name="x64" />
+              </Configurations>
+              <Project Path="Sample/Sample.csproj" />
+            </Solution>
+            """);
         temporary.Run("git", repository, "add", ".");
         temporary.Run("git", repository, "commit", "--quiet", "-m", "initial");
         return repository;

@@ -5,7 +5,6 @@ public sealed class LauncherBackend
     private readonly ProjectCatalog _catalog;
     private readonly ContextResolver _contextResolver;
     private readonly WorktreeScanner _scanner;
-    private readonly WorktreeWorkspaceManager _workspaceManager;
     private readonly BuildCoordinator _buildCoordinator;
     private readonly LaunchCoordinator _launchCoordinator;
 
@@ -15,8 +14,7 @@ public sealed class LauncherBackend
         _catalog = new ProjectCatalog(Options.CatalogPath);
         _contextResolver = new ContextResolver(_catalog);
         _scanner = new WorktreeScanner(Options);
-        _workspaceManager = new WorktreeWorkspaceManager(Options);
-        _buildCoordinator = new BuildCoordinator(Options, _contextResolver, _workspaceManager);
+        _buildCoordinator = new BuildCoordinator(Options, _contextResolver);
         _launchCoordinator = new LaunchCoordinator(Options, _contextResolver, _buildCoordinator);
     }
 
@@ -38,7 +36,10 @@ public sealed class LauncherBackend
             ProjectRegistration registration = await _catalog.RegisterAsync(
                 request.RepositoryPath,
                 request.Access,
-                request.ImportedDriverPath,
+                request.PluginProjectPath,
+                request.SolutionPath,
+                request.BuildConfiguration,
+                request.LaunchMode,
                 cancellationToken);
             return CommandResult<ProjectRegistration>.Success(registration);
         }
@@ -69,45 +70,24 @@ public sealed class LauncherBackend
         string path,
         CancellationToken cancellationToken) => _contextResolver.ResolveAsync(path, cancellationToken);
 
-    public async Task<CommandResult<WorktreeWorkspace>> PrepareWorktreeAsync(
-        string path,
-        CancellationToken cancellationToken)
-    {
-        CommandResult<ResolvedContext> context = await _contextResolver.ResolveAsync(path, cancellationToken);
-        if (!context.Succeeded)
-            return CommandResult<WorktreeWorkspace>.Failure(context.Diagnostics.ToArray());
-
-        try
-        {
-            return CommandResult<WorktreeWorkspace>.Success(
-                await _workspaceManager.PrepareAsync(context.Value!, cancellationToken));
-        }
-        catch (Exception exception)
-        {
-            return CommandResult<WorktreeWorkspace>.Failure(new Diagnostic(
-                "workspace_prepare_failed",
-                exception.Message));
-        }
-    }
-
-    public async Task<CommandResult<ProjectRegistration>> UpdateProjectSettingsAsync(
-        ProjectSettingsRequest request,
+    public async Task<CommandResult<ProjectRegistration>> UpdateProjectConfigAsync(
+        ProjectConfigRequest request,
         CancellationToken cancellationToken)
     {
         try
         {
             return CommandResult<ProjectRegistration>.Success(
-                await _catalog.UpdateSettingsAsync(request, cancellationToken));
+                await _catalog.UpdateConfigAsync(request, cancellationToken));
         }
         catch (Exception exception)
         {
             return CommandResult<ProjectRegistration>.Failure(new Diagnostic(
-                "project_settings_failed",
+                "project_config_failed",
                 exception.Message));
         }
     }
 
-    public async Task<CommandResult<bool>> ClearProjectCacheAsync(
+    public async Task<CommandResult<bool>> ClearRemoteCacheAsync(
         string projectId,
         CancellationToken cancellationToken)
     {
@@ -117,7 +97,6 @@ public sealed class LauncherBackend
 
         try
         {
-            DeleteOwnedDirectory(Options.WorkspacesDirectory, projectId);
             DeleteOwnedDirectory(Options.RemotesDirectory, projectId + ".git");
             return CommandResult<bool>.Success(true);
         }
@@ -127,13 +106,25 @@ public sealed class LauncherBackend
         }
     }
 
-    public Task<CommandResult<PreparedLaunchArtifacts>> BuildWorktreeAsync(
+    public async Task<CommandResult<ProjectBuildOptions>> DiscoverProjectBuildOptionsAsync(
         string path,
-        IProgress<BuildProgress>? progress,
-        CancellationToken cancellationToken) => _buildCoordinator.BuildAsync(
-        path,
-        progress,
-        cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ProjectBuildOptions options = await Task.Run(
+                () => Options.ProjectBuildOptionsDiscovery(path),
+                cancellationToken).ConfigureAwait(false);
+            return CommandResult<ProjectBuildOptions>.Success(options);
+        }
+        catch (Exception exception)
+        {
+            return CommandResult<ProjectBuildOptions>.Failure(new Diagnostic(
+                "build_configuration_discovery_failed",
+                exception.Message));
+        }
+    }
 
     public async Task<CommandResult<IReadOnlyList<ProjectSnapshot>>> GetProjectsAsync(
         CancellationToken cancellationToken)
@@ -197,7 +188,28 @@ public sealed class LauncherBackend
         string rhinoPath = Options.RhinoExecutableResolver(context.RhinoVersion);
         List<Diagnostic> diagnostics = new List<Diagnostic>();
         if (!context.BuildProfile.IsConfigured)
-            diagnostics.Add(new Diagnostic("build_profile_incomplete", "The app-owned build profile is incomplete."));
+        {
+            diagnostics.Add(new Diagnostic(
+                "build_configuration_incomplete",
+                "Choose a canonical solution build configuration in Config."));
+        }
+        else
+        {
+            try
+            {
+                BuildProfile current = BuildProfileDiscovery.Discover(
+                    context.WorktreePath,
+                    context.BuildProfile.PluginProjectPath,
+                    context.BuildProfile.SolutionPath,
+                    context.BuildProfile.SelectedConfiguration,
+                    context.BuildProfile.LaunchMode);
+                _ = BuildProfileDiscovery.ResolveProjectConfiguration(context.WorktreePath, current);
+            }
+            catch (Exception exception)
+            {
+                diagnostics.Add(new Diagnostic("build_configuration_unavailable", exception.Message));
+            }
+        }
         if (!File.Exists(Options.VerifierPluginPath))
             diagnostics.Add(new Diagnostic("verifier_missing", $"RWL's Rhino verifier was not found at '{Options.VerifierPluginPath}'."));
         if (!File.Exists(rhinoPath))
@@ -207,7 +219,6 @@ public sealed class LauncherBackend
             context.ProjectId,
             context.WorktreePath,
             Options.CatalogPath,
-            Options.WorkspacesDirectory,
             rhinoPath,
             context.IsPrimary,
             diagnostics.Count == 0);
@@ -228,10 +239,7 @@ public sealed class LauncherBackend
     {
         List<DoctorCheck> checks = new List<DoctorCheck>();
         await CheckProcessAsync("git", Options.GitExecutable, new[] { "--version" });
-        await CheckProcessAsync(
-            "powershell",
-            Options.PowerShellExecutable,
-            new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.ToString()" });
+        await CheckProcessAsync("dotnet", Options.DotNetExecutable, new[] { "--version" });
 
         CommandResult<IReadOnlyList<ProjectSnapshot>> projectsResult = await GetProjectsAsync(cancellationToken);
         checks.Add(new DoctorCheck(
@@ -247,7 +255,7 @@ public sealed class LauncherBackend
                 $"project:{project.ProjectId}",
                 project.Availability == ProjectAvailability.Available,
                 project.Availability == ProjectAvailability.Available
-                    ? $"{project.DisplayName} app-owned configuration is available."
+                    ? $"{project.DisplayName} canonical solution configuration is available."
                     : string.Join(" ", project.Diagnostics.Select(diagnostic => diagnostic.Message)),
                 project.Availability == ProjectAvailability.Available
                     ? DiagnosticSeverity.Info

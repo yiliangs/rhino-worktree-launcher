@@ -14,7 +14,7 @@ internal sealed class RwlTools
         "Use rhino_worktree_resolve_context to map the user's current directory to a registered project and exact Git worktree. " +
         "Never guess or substitute a worktree path. Prefer rhino_worktree_list_worktrees for local state; call " +
         "rhino_worktree_refresh_worktrees only when current remote or pull-request state is needed because it contacts the configured Git remote. " +
-        "Call rhino_worktree_inspect before launch when readiness is uncertain. rhino_worktree_launch builds local code, temporarily changes the " +
+        "Call rhino_worktree_inspect before launch when readiness is uncertain. rhino_worktree_launch follows the project's configured launch mode, temporarily changes the " +
         "Rhino plug-in registration, starts Rhino, and waits for binary verification. Treat returned diagnostics as authoritative and do not bypass " +
         "registration, access grants, readiness checks, or verification failures.";
 
@@ -78,7 +78,7 @@ internal sealed class RwlTools
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(CommandResult<WorktreeInspection>))]
-    [Description("Inspect whether a worktree has a configured build profile, the bundled verifier, and the required Rhino runtime.")]
+    [Description("Inspect whether a worktree has its configured solution build configuration, the bundled verifier, and the required Rhino runtime.")]
     public async Task<CallToolResult> InspectAsync(
         [Description("Absolute path inside the exact worktree to inspect.")] string path,
         CancellationToken cancellationToken) => ToToolResult(
@@ -86,16 +86,16 @@ internal sealed class RwlTools
 
     [McpServerTool(
         Name = "rhino_worktree_launch",
-        Title = "Build and launch Rhino worktree",
+        Title = "Launch configured Rhino worktree",
         ReadOnly = false,
         Destructive = true,
         Idempotent = false,
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(CommandResult<LaunchResult>))]
-    [Description("Build the selected worktree, start Rhino 8, and wait until the bundled verifier confirms that Rhino loaded the expected binaries.")]
+    [Description("Use the project's Build & Launch or Direct Launch mode, start Rhino 8, and wait until the bundled verifier confirms the exact expected binaries.")]
     public async Task<CallToolResult> LaunchAsync(
-        [Description("Absolute path inside the exact worktree to build and launch.")] string path,
+        [Description("Absolute path inside the exact worktree to launch.")] string path,
         [Description("Terminal timeout in seconds. Must be between 1 and 1800.")] double timeoutSeconds = 180,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken cancellationToken = default)
@@ -131,7 +131,7 @@ internal sealed class RwlTools
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(CommandResult<DoctorReport>))]
-    [Description("Diagnose RWL's app-owned project configuration and required local executables.")]
+    [Description("Diagnose RWL's saved project configuration and required local executables.")]
     public async Task<CallToolResult> DoctorAsync(CancellationToken cancellationToken) => ToToolResult(
         await _backend.RunDoctorAsync(cancellationToken),
         valueIsError: report => !report.Healthy);

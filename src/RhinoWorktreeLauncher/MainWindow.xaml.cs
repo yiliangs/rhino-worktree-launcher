@@ -41,6 +41,14 @@ public partial class MainWindow : Window
             ["DividerBrush"] = "#232629",
             ["ControlBorderBrush"] = "#2E3238",
             ["ControlHoverBorderBrush"] = "#464C54",
+            ["DropdownMenuBrush"] = "#202329",
+            ["DropdownMenuBorderBrush"] = "#33383F",
+            ["DropdownOpenBorderBrush"] = "#5A616B",
+            ["DropdownDisabledBrush"] = "#191B1E",
+            ["DropdownDisabledBorderBrush"] = "#25282C",
+            ["DropdownFocusRingBrush"] = "#2E8FAE8B",
+            ["DropdownSelectedBorderBrush"] = "#2B3037",
+            ["DropdownAccentBrush"] = "#8FAE8B",
             ["TagBorderBrush"] = "#232629",
             ["BadgeBorderBrush"] = "#333941",
             ["DiffBoxBorderBrush"] = "#282C31",
@@ -92,6 +100,14 @@ public partial class MainWindow : Window
             ["DividerBrush"] = "#E0E3E7",
             ["ControlBorderBrush"] = "#D5D9DF",
             ["ControlHoverBorderBrush"] = "#B9BFC8",
+            ["DropdownMenuBrush"] = "#FFFFFF",
+            ["DropdownMenuBorderBrush"] = "#D5D9DF",
+            ["DropdownOpenBorderBrush"] = "#9AA3AE",
+            ["DropdownDisabledBrush"] = "#F1F2F4",
+            ["DropdownDisabledBorderBrush"] = "#E2E5EA",
+            ["DropdownFocusRingBrush"] = "#293F7A44",
+            ["DropdownSelectedBorderBrush"] = "#C2CAD6",
+            ["DropdownAccentBrush"] = "#3F7A44",
             ["TagBorderBrush"] = "#DDE0E5",
             ["BadgeBorderBrush"] = "#D7DBE1",
             ["DiffBoxBorderBrush"] = "#E2E5EA",
@@ -166,14 +182,14 @@ public partial class MainWindow : Window
     private async void Refresh_Click(object sender, RoutedEventArgs e) =>
         await RefreshAsync(fetchRemote: true);
 
-    private async void McpSetup_Click(object sender, RoutedEventArgs e)
+    private async void GlobalSettings_Click(object sender, RoutedEventArgs e)
     {
-        McpSetupOverlay.Visibility = Visibility.Visible;
+        GlobalSettingsOverlay.Visibility = Visibility.Visible;
         await RefreshIntegrationStatusAsync();
     }
 
-    private void McpSetupClose_Click(object sender, RoutedEventArgs e) =>
-        McpSetupOverlay.Visibility = Visibility.Collapsed;
+    private void GlobalSettingsClose_Click(object sender, RoutedEventArgs e) =>
+        GlobalSettingsOverlay.Visibility = Visibility.Collapsed;
 
     private async void ConfigureClaude_Click(object sender, RoutedEventArgs e) =>
         await RunIntegrationActionAsync(async () =>
@@ -213,7 +229,7 @@ public partial class MainWindow : Window
 
     private async Task RunIntegrationActionAsync(Func<Task> action)
     {
-        McpSetupOverlay.IsHitTestVisible = false;
+        GlobalSettingsOverlay.IsHitTestVisible = false;
         try
         {
             await action();
@@ -231,7 +247,7 @@ public partial class MainWindow : Window
         }
         finally
         {
-            McpSetupOverlay.IsHitTestVisible = true;
+            GlobalSettingsOverlay.IsHitTestVisible = true;
         }
     }
 
@@ -303,7 +319,21 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) != true)
             return;
 
-        AddProjectDialog consent = new AddProjectDialog(dialog.FolderName)
+        CommandResult<ProjectBuildOptions> options = await _backend.DiscoverProjectBuildOptionsAsync(
+            dialog.FolderName,
+            CancellationToken.None);
+        if (!options.Succeeded)
+        {
+            MessageBox.Show(
+                this,
+                options.Diagnostics[0].Message,
+                "Project configuration required",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        AddProjectDialog consent = new AddProjectDialog(dialog.FolderName, options.Value!)
         {
             Owner = this
         };
@@ -316,7 +346,10 @@ public partial class MainWindow : Window
                 new ProjectRegistrationRequest(
                     consent.ProjectPath,
                     new ProjectAccessGrant(ReadProject: true, ReadRemote: consent.ReadRemote),
-                    consent.ImportedDriverPath),
+                    consent.PluginProjectPath,
+                    consent.SolutionPath,
+                    consent.BuildConfiguration,
+                    LaunchMode.BuildAndLaunch),
                 CancellationToken.None);
             if (!result.Succeeded)
                 throw new InvalidOperationException(result.Diagnostics[0].Message);
@@ -336,33 +369,40 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void ProjectSettings_Click(object sender, RoutedEventArgs e)
+    private async void ProjectConfig_Click(object sender, RoutedEventArgs e)
     {
         if (_currentProject is null)
             return;
 
-        ProjectSettingsDialog settings = new ProjectSettingsDialog(_currentProject.Registration)
+        ProjectRegistration registration = _currentProject.Registration;
+        ProjectConfigDialog config = new ProjectConfigDialog(
+            registration,
+            cancellationToken => _backend.DiscoverProjectBuildOptionsAsync(
+                registration.PrimaryCheckout,
+                cancellationToken))
         {
             Owner = this
         };
-        if (settings.ShowDialog() != true)
+        if (config.ShowDialog() != true)
             return;
 
         try
         {
-            CommandResult<ProjectRegistration> result = await _backend.UpdateProjectSettingsAsync(
-                new ProjectSettingsRequest(
+            CommandResult<ProjectRegistration> result = await _backend.UpdateProjectConfigAsync(
+                new ProjectConfigRequest(
                     _currentProject.ProjectId,
-                    settings.ReadRemote,
-                    settings.BuildMode,
-                    settings.ImportedDriverPath),
+                    config.ReadRemote,
+                    config.PluginProjectPath,
+                    config.SolutionPath,
+                    config.BuildConfiguration,
+                    config.LaunchMode),
                 CancellationToken.None);
             if (!result.Succeeded)
                 throw new InvalidOperationException(result.Diagnostics[0].Message);
 
-            if (settings.ClearCache)
+            if (config.ClearRemoteCache)
             {
-                CommandResult<bool> cleared = await _backend.ClearProjectCacheAsync(
+                CommandResult<bool> cleared = await _backend.ClearRemoteCacheAsync(
                     _currentProject.ProjectId,
                     CancellationToken.None);
                 if (!cleared.Succeeded)
@@ -376,7 +416,7 @@ public partial class MainWindow : Window
             MessageBox.Show(
                 this,
                 ex.Message,
-                "Project settings could not be saved",
+                "Project config could not be saved",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
@@ -394,7 +434,7 @@ public partial class MainWindow : Window
     {
         if (e.Key != Key.Enter ||
             WorktreeList.SelectedItem is not WorktreeSnapshot worktree ||
-            !worktree.CanLaunch)
+            !worktree.HasBuildConfiguration)
         {
             return;
         }
@@ -539,7 +579,7 @@ public partial class MainWindow : Window
     private void UpdateState()
     {
         WorktreeCountText.Text = _worktrees.Count.ToString(CultureInfo.InvariantCulture);
-        ProjectSettingsButton.IsEnabled = _currentProject is not null;
+        ProjectConfigButton.IsEnabled = _currentProject is not null;
         PanelHintText.Text = _hint;
         EmptyStateText.Visibility = _worktrees.Count == 0
             ? Visibility.Visible
@@ -551,9 +591,11 @@ public partial class MainWindow : Window
     private void UpdateSelectionState()
     {
         WorktreeSnapshot? selected = WorktreeList.SelectedItem as WorktreeSnapshot;
-        SelectedWorktreeText.Text = selected?.DisplayName ?? "No worktree selected";
         OpenFolderButton.IsEnabled = selected is not null;
-        LaunchButton.IsEnabled = selected?.CanLaunch == true;
+        LaunchButton.IsEnabled = selected?.HasBuildConfiguration == true;
+        LaunchButton.Content = selected is null || selected.LaunchMode == LaunchMode.DirectLaunch
+            ? "Launch Rhino"
+            : "Build & Launch";
     }
 
     private void UpdateSync(bool active, double local, double git)
@@ -711,6 +753,12 @@ public partial class MainWindow : Window
         Resources["ControlShadowEffect"] = isLight
             ? CreateShadow(3, 1, 0.07, Color.FromRgb(24, 30, 40))
             : CreateShadow(3, 1, 0.30, Colors.Black);
+        Resources["DropdownControlShadowEffect"] = isLight
+            ? CreateShadow(2, 1, 0.08, Color.FromRgb(24, 30, 40))
+            : CreateShadow(2, 1, 0.30, Colors.Black);
+        Resources["DropdownMenuShadowEffect"] = isLight
+            ? CreateShadow(18, 6, 0.22, Color.FromRgb(24, 30, 40))
+            : CreateShadow(20, 8, 0.60, Colors.Black);
         Resources["ChipShadowEffect"] = isLight
             ? CreateShadow(2, 1, 0.05, Color.FromRgb(24, 30, 40))
             : CreateShadow(2, 1, 0.30, Colors.Black);

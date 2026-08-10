@@ -1,10 +1,10 @@
-<Window x:Class="RhinoWorktreeLauncher.ProjectSettingsDialog"
+<Window x:Class="RhinoWorktreeLauncher.ProjectConfigDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:RhinoWorktreeLauncher"
-        Title="Project settings"
+        Title="Project config"
         Width="720"
-        Height="680"
+        Height="820"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
@@ -22,10 +22,7 @@
         <SolidColorBrush x:Key="FooterBrush" Color="#121417" />
         <SolidColorBrush x:Key="ControlBrush" Color="#1B1D21" />
         <SolidColorBrush x:Key="ControlHoverBrush" Color="#22252A" />
-        <SolidColorBrush x:Key="RowHoverBrush" Color="#1F2226" />
-        <SolidColorBrush x:Key="RowActiveBrush" Color="#262B31" />
         <SolidColorBrush x:Key="TrackBrush" Color="#1C1F23" />
-        <SolidColorBrush x:Key="TrackCenterBrush" Color="#3A4048" />
         <SolidColorBrush x:Key="PanelBorderBrush" Color="#26292E" />
         <SolidColorBrush x:Key="DividerBrush" Color="#232629" />
         <SolidColorBrush x:Key="ControlBorderBrush" Color="#2E3238" />
@@ -45,7 +42,6 @@
         <SolidColorBrush x:Key="ToggleOffBorderBrush" Color="#31353B" />
         <SolidColorBrush x:Key="ToggleKnobBrush" Color="#F0F2F5" />
         <SolidColorBrush x:Key="ToggleKnobOffBrush" Color="#7D848D" />
-        <SolidColorBrush x:Key="PatternBrush" Color="#1AB2C0D3" />
         <SolidColorBrush x:Key="PrimaryBrush" Color="#F0F2F5" />
         <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#FFFFFF" />
         <SolidColorBrush x:Key="PrimaryTextBrush" Color="#16181B" />
@@ -56,12 +52,6 @@
                           Direction="270"
                           ShadowDepth="1"
                           Opacity="0.3"
-                          Color="#000000" />
-        <DropShadowEffect x:Key="RowActiveShadowEffect"
-                          BlurRadius="8"
-                          Direction="270"
-                          ShadowDepth="1"
-                          Opacity="0.65"
                           Color="#000000" />
         <DropShadowEffect x:Key="PrimaryShadowEffect"
                           BlurRadius="10"
@@ -75,21 +65,6 @@
                           ShadowDepth="4"
                           Opacity="0.5"
                           Color="#000000" />
-
-        <DrawingBrush x:Key="SelectionTexture"
-                      TileMode="Tile"
-                      Viewport="0,0,9,9"
-                      ViewportUnits="Absolute"
-                      Viewbox="0,0,9,9"
-                      ViewboxUnits="Absolute">
-            <DrawingBrush.Drawing>
-                <GeometryDrawing Brush="{DynamicResource PatternBrush}">
-                    <GeometryDrawing.Geometry>
-                        <EllipseGeometry Center="1,1" RadiusX="1" RadiusY="1" />
-                    </GeometryDrawing.Geometry>
-                </GeometryDrawing>
-            </DrawingBrush.Drawing>
-        </DrawingBrush>
 
         <Style x:Key="SettingsToggleRow" TargetType="CheckBox">
             <Setter Property="Padding" Value="20,15" />
@@ -144,76 +119,6 @@
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="ToggleVisual" Property="Opacity" Value="0.5" />
                                 <Setter Property="Cursor" Value="Arrow" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="BuildChoice" TargetType="RadioButton">
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Foreground" Value="{DynamicResource TextBodyBrush}" />
-            <Setter Property="FontWeight" Value="Normal" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Row"
-                                Padding="13,12"
-                                Background="Transparent"
-                                BorderBrush="Transparent"
-                                BorderThickness="1"
-                                CornerRadius="9">
-                            <Grid ClipToBounds="True">
-                                <Rectangle x:Name="Texture"
-                                           Margin="-13,-12"
-                                           Fill="{StaticResource SelectionTexture}"
-                                           Visibility="Collapsed">
-                                    <Rectangle.OpacityMask>
-                                        <LinearGradientBrush StartPoint="1,0" EndPoint="0,0">
-                                            <GradientStop Offset="0" Color="#FFFFFFFF" />
-                                            <GradientStop Offset="0.32" Color="#80FFFFFF" />
-                                            <GradientStop Offset="0.60" Color="#00FFFFFF" />
-                                        </LinearGradientBrush>
-                                    </Rectangle.OpacityMask>
-                                </Rectangle>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="15" />
-                                        <ColumnDefinition Width="12" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid VerticalAlignment="Center" Width="15" Height="15">
-                                        <Ellipse x:Name="Ring"
-                                                 Stroke="{DynamicResource TrackCenterBrush}"
-                                                 StrokeThickness="1" />
-                                        <Ellipse x:Name="Dot"
-                                                 Width="7"
-                                                 Height="7"
-                                                 Fill="{DynamicResource AccentBrush}"
-                                                 Visibility="Collapsed" />
-                                    </Grid>
-                                    <ContentPresenter Grid.Column="2" VerticalAlignment="Center" />
-                                </Grid>
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource RowHoverBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
-                                <Setter Property="FontWeight" Value="Medium" />
-                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource RowActiveBrush}" />
-                                <Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource PanelBorderBrush}" />
-                                <Setter TargetName="Row" Property="Effect" Value="{DynamicResource RowActiveShadowEffect}" />
-                                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource AccentBrush}" />
-                                <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
-                                <Setter TargetName="Texture" Property="Visibility" Value="Visible" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource ControlHoverBorderBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -303,7 +208,11 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel Margin="26,0">
+        <ScrollViewer x:Name="ConfigContentScrollViewer"
+                      Grid.Row="0"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="26,0">
                 <Grid Margin="0,26,0,22">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="50" />
@@ -376,7 +285,7 @@
                                     </Border>
                                 </StackPanel>
                                 <TextBlock Margin="0,5,0,0"
-                                           Text="Reads the Git project and its worktrees. Never written to."
+                                           Text="Reads the Git project; the selected solution writes ordinary build outputs."
                                            Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="12"
                                            LineHeight="18"
@@ -411,84 +320,71 @@
                     <StackPanel>
                         <Border Padding="20,14,20,12" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
                             <Grid>
-                                <local:TrackingTextBlock Text="BUILD SETUP"
+                                <local:TrackingTextBlock Text="BUILD CONFIGURATION"
                                                          Tracking="0.14"
                                                          Foreground="{DynamicResource TextSecondaryBrush}"
                                                          FontSize="10.5"
                                                          FontWeight="Medium" />
                                 <TextBlock HorizontalAlignment="Right"
-                                           Text="Plug-in project detected"
+                                           Text="Visual Studio solution"
                                            Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="11.5" />
                             </Grid>
                         </Border>
-                        <StackPanel Margin="8">
-                            <RadioButton x:Name="DetectedBuildChoice"
-                                         GroupName="BuildMode"
-                                         IsChecked="True"
-                                         Style="{StaticResource BuildChoice}"
-                                         Checked="BuildChoice_Changed">
+                        <StackPanel Margin="20,15,20,18">
+                            <TextBlock Text="Rhino plug-in project" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5" />
+                            <ComboBox x:Name="PluginProjectComboBox"
+                                      Margin="0,7,0,16"
+                                      ItemTemplate="{StaticResource PluginProjectDropdownValue}"
+                                      IsEnabled="False"
+                                      SelectionChanged="PluginProject_SelectionChanged"
+                                      Tag="Loading build choices..."
+                                      Style="{StaticResource BuildCombo}" />
+                            <TextBlock Text="Solution" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5" />
+                            <ComboBox x:Name="SolutionComboBox"
+                                      Margin="0,7,0,16"
+                                      ItemTemplate="{StaticResource SolutionDropdownValue}"
+                                      IsEnabled="False"
+                                      SelectionChanged="Solution_SelectionChanged"
+                                      Tag="Select a plug-in project first"
+                                      Style="{StaticResource BuildCombo}" />
+                            <TextBlock Text="Configuration" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5" />
+                            <ComboBox x:Name="BuildConfigurationComboBox"
+                                      Margin="0,7,0,15"
+                                      ItemTemplate="{StaticResource BuildConfigurationDropdownValue}"
+                                      IsEnabled="False"
+                                      Tag="Select a solution first"
+                                      Style="{StaticResource BuildCombo}" />
+                            <CheckBox x:Name="BuildBeforeLaunchToggle"
+                                      IsChecked="True"
+                                      Padding="0,15"
+                                      AutomationProperties.Name="Build before launch"
+                                      Style="{StaticResource SettingsToggleRow}">
                                 <StackPanel>
-                                    <TextBlock Text="Use the detected setup"
+                                    <TextBlock Text="Build &amp; Launch"
+                                               Foreground="{DynamicResource TextStrongBrush}"
                                                FontSize="13.5" />
                                     <TextBlock Margin="0,5,0,0"
-                                               Text="RWL builds the plug-in project into an editable, app-owned profile."
+                                               Text="Turn off for Direct Launch, which loads the existing .rhp without rebuilding."
                                                Foreground="{DynamicResource TextMutedBrush}"
                                                FontSize="12"
                                                LineHeight="18"
                                                TextWrapping="Wrap" />
                                 </StackPanel>
-                            </RadioButton>
-                            <RadioButton x:Name="CustomDriverChoice"
-                                         GroupName="BuildMode"
-                                         Style="{StaticResource BuildChoice}"
-                                         Checked="BuildChoice_Changed">
-                                <StackPanel>
-                                    <TextBlock Text="Import my own driver"
-                                               FontSize="13.5" />
-                                    <TextBlock Margin="0,5,0,0"
-                                               Text="Advanced. RWL copies your PowerShell driver into its own storage."
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               FontSize="12"
-                                               LineHeight="18"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                            </RadioButton>
-                            <Grid x:Name="DriverPicker" Margin="40,6,13,5" Visibility="Collapsed">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="8" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Border Padding="11,9"
-                                        Background="{DynamicResource ControlBrush}"
-                                        BorderBrush="{DynamicResource ControlBorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="7">
-                                    <TextBlock x:Name="DriverPathText"
-                                               Text="No driver selected"
-                                               TextTrimming="CharacterEllipsis"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               FontFamily="{StaticResource MonoFont}"
-                                               FontSize="10.5" />
-                                </Border>
-                                <Button Grid.Column="2"
-                                        Padding="13,9"
-                                        Content="Choose file"
-                                        Style="{StaticResource SecondaryButton}"
-                                        Click="ChooseDriver_Click" />
-                            </Grid>
+                            </CheckBox>
                             <TextBlock x:Name="ValidationText"
-                                       Margin="40,4,13,5"
+                                       Margin="0,7,0,0"
                                        Foreground="{DynamicResource ValidationBrush}"
                                        FontSize="11"
                                        Visibility="Collapsed" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
-        </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
 
-        <Border Grid.Row="1"
+        <Border x:Name="ConfigFooter"
+                Grid.Row="1"
                 Padding="26,14,26,18"
                 Background="{DynamicResource FooterBrush}"
                 BorderBrush="{DynamicResource DividerBrush}"
@@ -500,17 +396,19 @@
                     <ColumnDefinition Width="12" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <CheckBox x:Name="ClearCacheToggle"
+                <CheckBox x:Name="ClearRemoteCacheToggle"
                           VerticalAlignment="Center"
-                          Content="Clear build and remote caches"
+                          Content="Clear remote cache"
                           Style="{StaticResource StandardCheckBox}" />
                 <Button Grid.Column="1"
                         Content="Cancel"
                         IsCancel="True"
                         Style="{StaticResource SecondaryButton}"
                         Click="Cancel_Click" />
-                <Button Grid.Column="3"
-                        Content="Save settings"
+                <Button x:Name="SaveConfigButton"
+                        Grid.Column="3"
+                        Content="Save config"
+                        IsEnabled="False"
                         IsDefault="True"
                         Style="{StaticResource PrimaryButton}"
                         Click="Save_Click" />

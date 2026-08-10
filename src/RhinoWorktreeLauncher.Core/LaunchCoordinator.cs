@@ -53,8 +53,8 @@ internal sealed class LaunchCoordinator
             ResolvedContext context = contextResult.Value!;
             worktreePath = context.WorktreePath;
 
-            await ReportAsync("build", "Preparing the app-owned source snapshot and build workspace.");
-            CommandResult<PreparedLaunchArtifacts> build = await _buildCoordinator.BuildAsync(
+            await ReportAsync("prepare", "Resolving the selected solution configuration and canonical artifact.");
+            CommandResult<PreparedLaunchArtifacts> build = await _buildCoordinator.PrepareAsync(
                 path,
                 new ForwardBuildProgress(progress, launchId),
                 token);
@@ -68,10 +68,7 @@ internal sealed class LaunchCoordinator
                     "verifier_missing",
                     $"The app-owned Rhino verifier was not found at '{verifierPath}'."));
 
-            string launchRoot = Path.Combine(
-                Path.GetDirectoryName(artifacts.Workspace.BuildPath)!,
-                "launches",
-                launchId);
+            string launchRoot = Path.Combine(_options.LaunchStateDirectory, launchId);
             Directory.CreateDirectory(launchRoot);
             string resultPath = Path.Combine(launchRoot, "verification-result.json");
             string requestPath = Path.Combine(launchRoot, "verification-request.json");
@@ -121,7 +118,7 @@ internal sealed class LaunchCoordinator
                 logPath,
                 startedAt,
                 DateTimeOffset.UtcNow);
-            await ReportAsync("complete", "Rhino loaded the exact RWL workspace binaries.");
+            await ReportAsync("complete", "Rhino loaded the selected solution configuration's canonical binaries.");
             return CommandResult<LaunchResult>.Success(result);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -209,7 +206,7 @@ internal sealed class LaunchCoordinator
         ProcessStartInfo startInfo = new ProcessStartInfo
         {
             FileName = _options.RhinoExecutableResolver(context.RhinoVersion),
-            WorkingDirectory = artifacts.Workspace.BuildPath,
+            WorkingDirectory = artifacts.WorktreePath,
             UseShellExecute = false
         };
         startInfo.ArgumentList.Add("/nosplash");

@@ -27,7 +27,7 @@ internal sealed class WorktreeScanner
         {
             diagnostics.Add(new Diagnostic(
                 "remote_read_not_granted",
-                "Remote refresh is disabled for this project. Enable remote read in project settings to synchronize remote metadata.",
+                "Remote refresh is disabled for this project. Enable remote read in Config to synchronize remote metadata.",
                 DiagnosticSeverity.Warning));
         }
         else if (includeRemote)
@@ -99,7 +99,7 @@ internal sealed class WorktreeScanner
             : await _remoteMirrors.GetDivergenceAsync(remoteMirror, path, cancellationToken);
         DateTimeOffset lastActivity = await GetLastActivityAsync(path, cancellationToken);
         _ = pullRequests.TryGetValue(descriptor.Branch, out PullRequestRecord? pullRequest);
-        bool canLaunch = project.Registration.BuildProfile.IsConfigured;
+        bool canLaunch = IsBuildConfigurationAvailable(path, project.Registration.BuildProfile);
 
         return new WorktreeSnapshot(
             project.ProjectId,
@@ -114,7 +114,33 @@ internal sealed class WorktreeScanner
             pullRequest?.Number,
             pullRequest?.IsDraft == true,
             isPrimary,
+            project.Registration.BuildProfile.LaunchMode,
             canLaunch);
+    }
+
+    private static bool IsBuildConfigurationAvailable(string worktreePath, BuildProfile saved)
+    {
+        if (!saved.IsConfigured)
+            return false;
+        try
+        {
+            BuildProfile current = BuildProfileDiscovery.Discover(
+                worktreePath,
+                saved.PluginProjectPath,
+                saved.SolutionPath,
+                saved.SelectedConfiguration,
+                saved.LaunchMode);
+            _ = BuildProfileDiscovery.ResolveProjectConfiguration(worktreePath, current);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or
+            UnauthorizedAccessException or
+            ArgumentException or
+            NotSupportedException or
+            InvalidDataException)
+        {
+            return false;
+        }
     }
 
     private async Task<Dictionary<string, PullRequestRecord>> LoadPullRequestsAsync(

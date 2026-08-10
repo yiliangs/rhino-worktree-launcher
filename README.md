@@ -1,42 +1,52 @@
 # Rhino Worktree Launcher
 
-Rhino Worktree Launcher is a native Windows tool for registering Rhino plug-in projects, inspecting their Git worktrees, and launching an exact selected build with loaded-binary verification. A shared .NET 8 backend serves the WPF desktop application, `rwl` CLI, and local stdio MCP server.
+Rhino Worktree Launcher is a native Windows tool for registering Rhino plug-in projects, inspecting their Git worktrees, and launching the exact selected `.rhp` with loaded-binary verification. A shared .NET 8 backend serves the WPF desktop application, `rwl` CLI, and local stdio MCP server.
 
-## Repository-isolation model
+## Project and build model
 
-Repositories are read-only inputs to RWL. Adding a project grants project-wide read access and, by default, remote-status access. The remote grant is optional and remains editable in Project Settings.
+RWL uses the selected Git worktree as the source of truth. It never creates a second source or build tree. Project Config stores one Rhino plug-in project, Visual Studio solution, solution Configuration, Platform, and launch mode for the whole registered Git project. If a repository contains multiple Rhino plug-in projects, Config presents them for an explicit choice instead of guessing from existing `.rhp` files. RWL reopens the same relative project and solution in the selected worktree and verifies the selection before launch.
 
-RWL writes all of its state under `%LOCALAPPDATA%\RhinoWorktreeLauncher`:
+The two launch modes are:
 
-- `projects.json`: access grants and typed build profiles
-- `projects\<project-id>\drivers`: imported custom-driver copies
-- `workspaces\<project-id>\<worktree-id>`: source snapshots, persistent build trees, caches, temporary files, and verification requests
-- `remotes\<project-id>.git`: RWL-owned remote mirror used for ahead/behind calculation
+- **Build & Launch** (default): run `dotnet build` on the selected solution and configuration in the selected worktree, evaluate the plug-in project's mapped `TargetPath`, then launch that `.rhp`.
+- **Direct Launch**: evaluate the same `TargetPath` and load the existing `.rhp` without building or making a freshness claim.
+
+All ordinary build behavior remains owned by the solution and its MSBuild settings, including project imports, output paths, pre-build and post-build targets, and configuration mapping. RWL does not substitute a project-only build, copy the sources, reroute caches, or run an imported driver.
+
+Adding a project grants access to its Git worktrees and, by default, remote-status access. A Build & Launch operation can modify ordinary solution outputs in the selected worktree. The remote grant is optional and remains editable in Config.
+
+RWL-owned state remains under `%LOCALAPPDATA%\RhinoWorktreeLauncher`:
+
+- `projects.json`: project grants and canonical solution selections
+- `remotes\<project-id>.git`: remote mirror used for ahead/behind calculation
+- `launches`: verifier request and response state
 - `logs`: terminal launch diagnostics
 
-Refresh uses read-only Git commands against the project. It does not fetch into the repository or update its refs. RWL snapshots tracked files plus nonignored untracked files and performs restore/build only in its own workspace. Existing ignored build outputs such as `bin`, `obj`, and `node_modules` are not copied from the repository.
-
-This is application-enforced isolation, not an operating-system security sandbox. A deliberately hostile build target or imported script could still address paths outside its working directory. RWL itself never asks those tools to write to the repository.
-
-## Build setup
-
-The default path is a detected, typed build profile stored in `projects.json`. RWL detects the Rhino plug-in project, runtime, plug-in GUID, npm restore roots, .NET build target, output `.rhp`, and critical project dependencies. The same profile applies to every worktree because it operates on the selected worktree's app-owned snapshot.
-
-The escape hatch is **Import my own driver**. The selected PowerShell file is copied into RWL storage immediately; later launches do not depend on the original file. Project Settings can switch between a freshly detected profile and an imported driver or replace the imported copy. See [imported driver protocol v2](docs/imported-driver-protocol-v2.md).
+Refresh uses read-only Git commands against the project. It does not fetch into the repository or update repository refs.
 
 ## Launch and verification
 
 A launch performs these steps:
 
-1. Resolve the registered project and Git worktree identity.
-2. Reconcile the worktree's persistent app-owned source snapshot and build tree.
-3. Run the typed build profile or imported driver in the build tree with app-local NuGet, npm, .NET, and temporary paths.
-4. Apply a serialized temporary current-user Rhino plug-in path overlay.
-5. Start Rhino with RWL's bundled verifier plug-in.
-6. Have the verifier load the target GUID and report the actual `.rhp` and critical assembly paths.
-7. Fail closed unless every loaded path exactly matches the prepared workspace artifacts, then restore the prior registration value.
+1. Resolve the registered project and exact Git worktree.
+2. Revalidate the saved solution and configuration in that worktree.
+3. Build the selected solution when the mode is Build & Launch, or skip the build in Direct Launch.
+4. Ask MSBuild for the plug-in project's mapped `TargetPath` and require that exact `.rhp` to exist.
+5. Apply a serialized temporary current-user Rhino plug-in path overlay.
+6. Start Rhino with RWL's bundled verifier plug-in.
+7. Have the verifier report the actual `.rhp` and critical assembly paths.
+8. Fail closed unless every loaded path matches the selected worktree artifacts, then restore the prior registration value.
 
-The launched plug-in does not need to expose an RWL command, callback, or receipt writer. Launch verification files remain in the RWL workspace.
+The launched plug-in does not need to expose an RWL command, callback, or receipt writer. A build receipt is not used to infer freshness.
+
+## Desktop configuration
+
+The main window separates two scopes:
+
+- **Config** is project-specific. It selects the Rhino plug-in project, solution, Configuration and Platform, Build & Launch or Direct Launch, remote reads, and remote-cache clearing.
+- **Settings** is global. It contains MCP setup for Claude Code and Codex.
+
+The primary action follows Config and reads **Build & Launch** or **Launch Rhino**.
 
 ## Install
 
@@ -46,7 +56,7 @@ Download `RhinoWorktreeLauncher-<version>-win-x64.zip` from a GitHub release, ex
 
 Each release publishes a SHA-256 checksum beside the archive. The binaries are not yet Authenticode-signed, so Windows SmartScreen may warn until a signing certificate is added to the release pipeline.
 
-Use **MCP setup** in the desktop application to configure Claude Code or Codex. RWL updates only its owned client entry, creates a `.rwl-backup` beside an existing client configuration before changing it, and reports whether the stable bootstrap is available. Restart the client after setup.
+Use **Settings** in the desktop application to configure Claude Code or Codex. RWL updates only its owned client entry, creates a `.rwl-backup` beside an existing client configuration before changing it, and reports whether the stable bootstrap is available. Restart the client after setup.
 
 ### Developers
 
@@ -60,12 +70,12 @@ pwsh -NoProfile -File src/RhinoWorktreeLauncher/Install-RhinoWorktreeLauncher.ps
   -Launch
 ```
 
-Each update publishes a versioned release under `%LOCALAPPDATA%\RhinoWorktreeLauncher\releases`. The Start Menu shortcut, CLI, MCP registration, and Claude hook target the stable `%LOCALAPPDATA%\RhinoWorktreeLauncher\bootstrap\rwl.exe`. The bootstrap reads `current.json`, so integrations do not contain version-specific paths.
+Each update publishes a versioned release under `%LOCALAPPDATA%\RhinoWorktreeLauncher\releases`. The Start Menu shortcut, CLI, MCP registration, and Claude hook target the stable bootstrap. The bootstrap reads `current.json`, so integrations do not contain version-specific paths.
 
 ## CLI
 
 ```text
-rwl project register <path> [--no-remote]
+rwl project register <path> [--plugin-project <path>] [--solution <path>] [--configuration <name> --platform <name>] [--direct] [--no-remote]
 rwl project remove <id>
 rwl context --cwd <path> --json
 rwl worktree list --project <id> [--local-only] --json
@@ -77,15 +87,14 @@ rwl integration install <claude|codex> [--no-session-context]
 rwl integration remove <claude|codex>
 ```
 
-Claude Code can optionally receive a SessionStart message resolving the exact registered worktree. This hook supplies situational context only. The MCP server independently publishes tool descriptions, JSON schemas, server instructions, side-effect annotations, cancellation behavior, and backend-enforced project grants. Codex uses the same stable MCP bootstrap and receives a 300-second tool timeout for verified Rhino launches.
-
-The desktop Project Settings surface is currently the place to change a saved build mode, replace an imported driver, revoke or restore remote reads, and clear rebuildable RWL caches.
+Claude Code can optionally receive a SessionStart message resolving the exact registered worktree. The MCP server independently publishes tool descriptions, JSON schemas, server instructions, side-effect annotations, cancellation behavior, and backend-enforced project grants.
 
 ## Build and verify
 
 ```powershell
 dotnet build RhinoWorktreeLauncher.slnx -c Debug
 dotnet test tests/RhinoWorktreeLauncher.Tests/RhinoWorktreeLauncher.Tests.csproj
+dotnet test tests/RhinoWorktreeLauncher.UiTests/RhinoWorktreeLauncher.UiTests.csproj
 ```
 
 To produce the same self-contained package used by releases:

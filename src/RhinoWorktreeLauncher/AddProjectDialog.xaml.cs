@@ -1,67 +1,99 @@
-using Microsoft.Win32;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace RhinoWorktreeLauncher;
 
 public partial class AddProjectDialog : Window
 {
-    private string? _driverPath;
-
-    public AddProjectDialog(string projectPath)
+    public AddProjectDialog(string projectPath, ProjectBuildOptions buildOptions)
     {
         InitializeComponent();
         ProjectPath = Path.GetFullPath(projectPath);
         ProjectPathText.Text = ProjectPath;
+        PluginProjectComboBox.ItemsSource = buildOptions.Plugins;
+        PluginProjectComboBox.SelectedIndex = buildOptions.Plugins.Count == 1 ? 0 : -1;
         Loaded += (_, _) => ApplyOwnerTheme();
     }
 
     public string ProjectPath { get; }
     public bool ReadRemote => RemoteReadToggle.IsChecked == true;
-    public BuildMode BuildMode => CustomDriverChoice.IsChecked == true
-        ? BuildMode.ImportedDriver
-        : BuildMode.Typed;
-    public string? ImportedDriverPath => CustomDriverChoice.IsChecked == true ? _driverPath : null;
+    public string PluginProjectPath => ((PluginBuildOptions)PluginProjectComboBox.SelectedItem).PluginProjectPath;
+    public string SolutionPath => ((SolutionBuildOptions)SolutionComboBox.SelectedItem).SolutionPath;
+    public BuildConfiguration BuildConfiguration =>
+        (BuildConfiguration)BuildConfigurationComboBox.SelectedItem;
 
-    private void BuildChoice_Changed(object sender, RoutedEventArgs e)
+    private void PluginProject_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsInitialized)
+        BuildConfigurationComboBox.ItemsSource = null;
+        if (PluginProjectComboBox.SelectedItem is not PluginBuildOptions plugin)
+        {
+            SolutionComboBox.ItemsSource = null;
+            SolutionComboBox.IsEnabled = false;
+            SolutionComboBox.Tag = "Select a plug-in project first";
+            BuildConfigurationComboBox.IsEnabled = false;
+            BuildConfigurationComboBox.Tag = "Select a solution first";
             return;
-        DriverPicker.Visibility = CustomDriverChoice.IsChecked == true
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        }
+
+        SolutionComboBox.ItemsSource = plugin.Solutions;
+        SolutionComboBox.IsEnabled = plugin.Solutions.Count > 0;
+        SolutionComboBox.Tag = plugin.Solutions.Count > 0
+            ? "Select a solution"
+            : "No solutions found";
+        SolutionComboBox.SelectedIndex = plugin.Solutions.Count == 1 ? 0 : -1;
         ValidationText.Visibility = Visibility.Collapsed;
     }
 
-    private void ChooseDriver_Click(object sender, RoutedEventArgs e)
+    private void Solution_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        OpenFileDialog dialog = new OpenFileDialog
+        if (SolutionComboBox.SelectedItem is not SolutionBuildOptions solution)
         {
-            Title = "Choose a PowerShell build driver",
-            Filter = "PowerShell driver (*.ps1)|*.ps1|All files (*.*)|*.*",
-            CheckFileExists = true,
-            Multiselect = false
-        };
-        if (dialog.ShowDialog(this) != true)
+            BuildConfigurationComboBox.ItemsSource = null;
+            BuildConfigurationComboBox.IsEnabled = false;
+            BuildConfigurationComboBox.Tag = "Select a solution first";
             return;
+        }
 
-        _driverPath = Path.GetFullPath(dialog.FileName);
-        DriverPathText.Text = _driverPath;
-        DriverPathText.Foreground = (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
+        BuildConfigurationComboBox.ItemsSource = solution.Configurations;
+        BuildConfigurationComboBox.IsEnabled = solution.Configurations.Count > 0;
+        BuildConfigurationComboBox.Tag = solution.Configurations.Count > 0
+            ? "Select a configuration"
+            : "No configurations found";
+        BuildConfigurationComboBox.SelectedItem = solution.Configurations.FirstOrDefault(configuration =>
+            string.Equals(configuration.Configuration, "Debug", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(configuration.Platform, "x64", StringComparison.OrdinalIgnoreCase)) ??
+            solution.Configurations.FirstOrDefault(configuration =>
+                string.Equals(configuration.Configuration, "Debug", StringComparison.OrdinalIgnoreCase)) ??
+            solution.Configurations.FirstOrDefault();
         ValidationText.Visibility = Visibility.Collapsed;
     }
 
     private void Add_Click(object sender, RoutedEventArgs e)
     {
-        if (CustomDriverChoice.IsChecked == true &&
-            string.IsNullOrWhiteSpace(_driverPath))
+        if (PluginProjectComboBox.SelectedItem is null)
         {
-            ValidationText.Text = "Choose the driver RWL should import.";
-            ValidationText.Visibility = Visibility.Visible;
+            ShowValidation("Choose the Rhino plug-in project to launch.");
+            return;
+        }
+        if (SolutionComboBox.SelectedItem is null)
+        {
+            ShowValidation("Choose the solution RWL should build.");
+            return;
+        }
+        if (BuildConfigurationComboBox.SelectedItem is null)
+        {
+            ShowValidation("Choose a solution build configuration.");
             return;
         }
 
         DialogResult = true;
+    }
+
+    private void ShowValidation(string message)
+    {
+        ValidationText.Text = message;
+        ValidationText.Visibility = Visibility.Visible;
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
@@ -78,11 +110,27 @@ public partial class AddProjectDialog : Window
             "ControlHoverBrush",
             "PanelBorderBrush",
             "DividerBrush",
+            "ControlBorderBrush",
+            "ControlHoverBorderBrush",
             "TextStrongBrush",
             "TextBodyBrush",
             "TextSecondaryBrush",
             "TextMutedBrush",
+            "TextFaintBrush",
             "AccentBrush",
+            "RowHoverBrush",
+            "RowActiveBrush",
+            "PatternBrush",
+            "DropdownMenuBrush",
+            "DropdownMenuBorderBrush",
+            "DropdownOpenBorderBrush",
+            "DropdownDisabledBrush",
+            "DropdownDisabledBorderBrush",
+            "DropdownFocusRingBrush",
+            "DropdownSelectedBorderBrush",
+            "DropdownAccentBrush",
+            "DropdownControlShadowEffect",
+            "DropdownMenuShadowEffect",
             "PrimaryBrush",
             "PrimaryTextBrush"
         })
