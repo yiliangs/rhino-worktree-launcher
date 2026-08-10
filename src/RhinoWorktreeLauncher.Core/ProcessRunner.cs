@@ -51,10 +51,7 @@ internal static class ProcessRunner
             string output = await outputTask;
             string error = await errorTask;
             if (process.ExitCode != 0)
-            {
-                throw new InvalidOperationException(
-                    $"{fileName} exited with code {process.ExitCode}: {error.Trim()}");
-            }
+                throw CreateFailure(fileName, process.ExitCode, error, TailLines(output));
             return output;
         }
         catch (OperationCanceledException)
@@ -109,16 +106,17 @@ internal static class ProcessRunner
         process.StandardInput.Close();
         try
         {
+            Queue<string> outputTail = new Queue<string>();
             Task<string> errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
             while (await process.StandardOutput.ReadLineAsync(cancellationToken) is { } line)
+            {
+                RememberLine(outputTail, line);
                 await onOutputLine(line);
+            }
             await process.WaitForExitAsync(cancellationToken);
             string error = await errorTask;
             if (process.ExitCode != 0)
-            {
-                throw new InvalidOperationException(
-                    $"{fileName} exited with code {process.ExitCode}: {error.Trim()}");
-            }
+                throw CreateFailure(fileName, process.ExitCode, error, outputTail);
         }
         catch (OperationCanceledException)
         {
@@ -126,5 +124,38 @@ internal static class ProcessRunner
                 process.Kill(entireProcessTree: true);
             throw;
         }
+    }
+
+    private static InvalidOperationException CreateFailure(
+        string fileName,
+        int exitCode,
+        string error,
+        IEnumerable<string> outputTail)
+    {
+        string detail = string.IsNullOrWhiteSpace(error)
+            ? string.Join(Environment.NewLine, outputTail).Trim()
+            : error.Trim();
+        string message = string.IsNullOrWhiteSpace(detail)
+            ? $"{fileName} exited with code {exitCode}."
+            : $"{fileName} exited with code {exitCode}: {detail}";
+        return new InvalidOperationException(message);
+    }
+
+    private static IEnumerable<string> TailLines(string output)
+    {
+        Queue<string> lines = new Queue<string>();
+        using StringReader reader = new StringReader(output);
+        while (reader.ReadLine() is { } line)
+            RememberLine(lines, line);
+        return lines;
+    }
+
+    private static void RememberLine(Queue<string> lines, string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+            return;
+        lines.Enqueue(line);
+        while (lines.Count > 20)
+            _ = lines.Dequeue();
     }
 }
