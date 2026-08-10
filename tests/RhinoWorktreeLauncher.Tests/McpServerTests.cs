@@ -10,6 +10,21 @@ namespace RhinoWorktreeLauncher.Tests;
 public sealed class McpServerTests
 {
     [Fact]
+    public void Mcp_executable_uses_the_windowless_Windows_subsystem()
+    {
+        const ushort WindowsGuiSubsystem = 2;
+        string executable = Path.Combine(AppContext.BaseDirectory, "rwl-mcp.exe");
+        using FileStream stream = File.OpenRead(executable);
+        using BinaryReader reader = new BinaryReader(stream);
+
+        stream.Position = 0x3c;
+        int peHeaderOffset = reader.ReadInt32();
+        stream.Position = peHeaderOffset + 24 + 68;
+
+        Assert.Equal(WindowsGuiSubsystem, reader.ReadUInt16());
+    }
+
+    [Fact]
     public async Task Doctor_marks_an_unhealthy_machine_as_a_tool_error()
     {
         using TemporaryDirectory temporary = new TemporaryDirectory();
