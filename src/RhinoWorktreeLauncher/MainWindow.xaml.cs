@@ -657,6 +657,7 @@ public partial class MainWindow : Window
             });
             CommandResult<LaunchResult> result = await _backend.LaunchAsync(
                 worktree.Path,
+                worktree.LaunchMode,
                 TimeSpan.FromMinutes(3),
                 progress,
                 CancellationToken.None);

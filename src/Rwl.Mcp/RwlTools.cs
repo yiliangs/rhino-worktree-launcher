@@ -14,8 +14,9 @@ internal sealed class RwlTools
         "Use rhino_worktree_resolve_context to map the user's current directory to a registered project and exact Git worktree. " +
         "Never guess or substitute a worktree path. Prefer rhino_worktree_list_worktrees for local state; call " +
         "rhino_worktree_refresh_worktrees only when current remote or pull-request state is needed because it contacts the configured Git remote. " +
-        "Call rhino_worktree_inspect before launch when readiness is uncertain. rhino_worktree_launch follows the project's configured launch mode, temporarily changes the " +
-        "Rhino plug-in registration, starts Rhino, and waits for binary verification. Treat returned diagnostics as authoritative and do not bypass " +
+        "Call rhino_worktree_inspect before launch when readiness is uncertain. Choose rhino_worktree_build_and_launch when current source should be compiled. " +
+        "Choose rhino_worktree_launch_existing only when an existing artifact is intended; it never rebuilds or claims freshness. Both launch tools temporarily change the " +
+        "Rhino plug-in registration, start Rhino, and wait for binary verification. Treat returned diagnostics as authoritative and do not bypass " +
         "registration, access grants, readiness checks, or verification failures.";
 
     private readonly LauncherBackend _backend;
@@ -85,20 +86,45 @@ internal sealed class RwlTools
             await _backend.InspectWorktreeAsync(path, cancellationToken));
 
     [McpServerTool(
-        Name = "rhino_worktree_launch",
-        Title = "Launch configured Rhino worktree",
+        Name = "rhino_worktree_build_and_launch",
+        Title = "Build and launch Rhino worktree",
         ReadOnly = false,
         Destructive = true,
         Idempotent = false,
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(CommandResult<LaunchResult>))]
-    [Description("Use the project's Build & Launch or Direct Launch mode, start Rhino 8, and wait until the bundled verifier confirms the exact expected binaries.")]
-    public async Task<CallToolResult> LaunchAsync(
-        [Description("Absolute path inside the exact worktree to launch.")] string path,
+    [Description("Build the exact worktree's configured solution, start Rhino 8, and wait until the bundled verifier confirms the expected binaries.")]
+    public async Task<CallToolResult> BuildAndLaunchAsync(
+        [Description("Absolute path inside the exact worktree to build and launch.")] string path,
         [Description("Terminal timeout in seconds. Must be between 1 and 1800.")] double timeoutSeconds = 180,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken cancellationToken = default)
+        => await LaunchAsync(path, LaunchMode.BuildAndLaunch, timeoutSeconds, progress, cancellationToken);
+
+    [McpServerTool(
+        Name = "rhino_worktree_launch_existing",
+        Title = "Launch existing Rhino worktree build",
+        ReadOnly = false,
+        Destructive = true,
+        Idempotent = false,
+        OpenWorld = false,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(CommandResult<LaunchResult>))]
+    [Description("Launch the exact worktree's existing configured artifact without rebuilding or claiming freshness, then wait until the bundled verifier confirms the expected binaries.")]
+    public async Task<CallToolResult> LaunchExistingAsync(
+        [Description("Absolute path inside the exact worktree whose existing artifact should be launched.")] string path,
+        [Description("Terminal timeout in seconds. Must be between 1 and 1800.")] double timeoutSeconds = 180,
+        IProgress<ProgressNotificationValue>? progress = null,
+        CancellationToken cancellationToken = default)
+        => await LaunchAsync(path, LaunchMode.DirectLaunch, timeoutSeconds, progress, cancellationToken);
+
+    private async Task<CallToolResult> LaunchAsync(
+        string path,
+        LaunchMode requestedLaunchMode,
+        double timeoutSeconds,
+        IProgress<ProgressNotificationValue>? progress,
+        CancellationToken cancellationToken)
     {
         if (!double.IsFinite(timeoutSeconds) || timeoutSeconds < 1 || timeoutSeconds > 1800)
         {
@@ -117,6 +143,7 @@ internal sealed class RwlTools
             }));
         return ToToolResult(await _backend.LaunchAsync(
             path,
+            requestedLaunchMode,
             TimeSpan.FromSeconds(timeoutSeconds),
             launchProgress,
             cancellationToken));

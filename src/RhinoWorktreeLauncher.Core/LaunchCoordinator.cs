@@ -26,6 +26,7 @@ internal sealed class LaunchCoordinator
 
     public async Task<CommandResult<LaunchResult>> LaunchAsync(
         string path,
+        LaunchMode launchMode,
         TimeSpan timeout,
         IProgress<LaunchProgress>? progress,
         CancellationToken cancellationToken)
@@ -56,6 +57,7 @@ internal sealed class LaunchCoordinator
             await ReportAsync("prepare", "Resolving the selected solution configuration and canonical artifact.");
             CommandResult<PreparedLaunchArtifacts> build = await _buildCoordinator.PrepareAsync(
                 path,
+                launchMode,
                 new ForwardBuildProgress(progress, launchId),
                 token);
             if (!build.Succeeded)

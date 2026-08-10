@@ -29,6 +29,7 @@ public sealed class LaunchBackendTests
 
         CommandResult<LaunchResult> result = await backend.LaunchAsync(
             repository,
+            LaunchMode.BuildAndLaunch,
             TimeSpan.FromSeconds(20),
             progress: null,
             CancellationToken.None);
@@ -84,6 +85,7 @@ public sealed class LaunchBackendTests
 
         CommandResult<LaunchResult> result = await backend.LaunchAsync(
             repository,
+            LaunchMode.DirectLaunch,
             TimeSpan.FromSeconds(20),
             progress: null,
             CancellationToken.None);

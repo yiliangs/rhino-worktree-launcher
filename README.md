@@ -4,12 +4,14 @@ Rhino Worktree Launcher is a native Windows tool for registering Rhino plug-in p
 
 ## Project and build model
 
-RWL uses the selected Git worktree as the source of truth. It never creates a second source or build tree. Project Config stores one Rhino plug-in project, Visual Studio solution, solution Configuration, Platform, and launch mode for the whole registered Git project. If a repository contains multiple Rhino plug-in projects, Config presents them for an explicit choice instead of guessing from existing `.rhp` files. RWL reopens the same relative project and solution in the selected worktree and verifies the selection before launch.
+RWL uses the selected Git worktree as the source of truth. It never creates a second source or build tree. Project Config stores one Rhino plug-in project, Visual Studio solution, solution Configuration and Platform, plus the desktop launch-mode default for the whole registered Git project. If a repository contains multiple Rhino plug-in projects, Config presents them for an explicit choice instead of guessing from existing `.rhp` files. RWL reopens the same relative project and solution in the selected worktree and verifies the selection before launch.
 
 The two launch modes are:
 
 - **Build & Launch** (default): run `dotnet build` on the selected solution and configuration in the selected worktree, evaluate the plug-in project's mapped `TargetPath`, then launch that `.rhp`.
 - **Direct Launch**: evaluate the same `TargetPath` and load the existing `.rhp` without building or making a freshness claim.
+
+The desktop action follows the default saved in Config. MCP agents choose per request by calling `rhino_worktree_build_and_launch` or `rhino_worktree_launch_existing`; the MCP tools never inherit the desktop default.
 
 All ordinary build behavior remains owned by the solution and its MSBuild settings, including project imports, output paths, pre-build and post-build targets, and configuration mapping. RWL does not substitute a project-only build, copy the sources, reroute caches, or run an imported driver.
 
@@ -87,7 +89,7 @@ rwl integration install <claude|codex> [--no-session-context]
 rwl integration remove <claude|codex>
 ```
 
-Claude Code can optionally receive a SessionStart message resolving the exact registered worktree. The MCP server independently publishes tool descriptions, JSON schemas, server instructions, side-effect annotations, cancellation behavior, and backend-enforced project grants.
+Claude Code can optionally receive a SessionStart message resolving the exact registered worktree. The MCP server independently publishes tool descriptions, JSON schemas, server instructions, side-effect annotations, cancellation behavior, and backend-enforced project grants. Its separate build-and-launch and launch-existing tools make the per-request build choice explicit while preserving RWL verification in both paths.
 
 ## Build and verify
 

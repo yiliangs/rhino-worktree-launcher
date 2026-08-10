@@ -74,6 +74,91 @@ public sealed class McpServerTests
     }
 
     [Fact]
+    public async Task Mcp_build_and_launch_ignores_the_desktop_direct_launch_default()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        string verifierPath = temporary.PathFor("launcher/verifier/Rwl.RhinoVerifier.rhp");
+        temporary.WriteFile("launcher/verifier/Rwl.RhinoVerifier.rhp", "verifier");
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            LaunchStateDirectory = temporary.PathFor("launcher/launches"),
+            VerifierPluginPath = verifierPath,
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoProcessStarter = CompleteVerification
+        });
+        CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(
+                repository,
+                ProjectAccessGrant.Full,
+                LaunchMode: LaunchMode.DirectLaunch),
+            CancellationToken.None);
+        Assert.True(registration.Succeeded, registration.Diagnostics.FirstOrDefault()?.Message);
+        RwlTools tools = new RwlTools(backend);
+
+        CallToolResult result = await tools.BuildAndLaunchAsync(
+            repository,
+            timeoutSeconds: 20,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        JsonElement value = result.StructuredContent!.Value.GetProperty("value");
+        Assert.True(File.Exists(value.GetProperty("pluginPath").GetString()));
+    }
+
+    [Fact]
+    public async Task Mcp_launch_existing_ignores_the_desktop_build_and_launch_default()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        temporary.Run(
+            "dotnet",
+            repository,
+            "build",
+            temporary.PathFor("repository/Sample.slnx"),
+            "-c",
+            "Debug",
+            "-p:Platform=x64");
+        string pluginPath = Assert.Single(Directory.EnumerateFiles(
+            temporary.PathFor("repository/Sample/bin"),
+            "Sample.rhp",
+            SearchOption.AllDirectories));
+        byte[] builtArtifact = await File.ReadAllBytesAsync(pluginPath);
+        temporary.WriteFile(
+            "repository/Sample/ChangedAfterBuild.cs",
+            "namespace Sample; public static class ChangedAfterBuild { public const int Value = 2; }");
+
+        string verifierPath = temporary.PathFor("launcher/verifier/Rwl.RhinoVerifier.rhp");
+        temporary.WriteFile("launcher/verifier/Rwl.RhinoVerifier.rhp", "verifier");
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            LaunchStateDirectory = temporary.PathFor("launcher/launches"),
+            VerifierPluginPath = verifierPath,
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoProcessStarter = CompleteVerification
+        });
+        CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+        Assert.True(registration.Succeeded, registration.Diagnostics.FirstOrDefault()?.Message);
+        RwlTools tools = new RwlTools(backend);
+
+        CallToolResult result = await tools.LaunchExistingAsync(
+            repository,
+            timeoutSeconds: 20,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Equal(builtArtifact, await File.ReadAllBytesAsync(pluginPath));
+    }
+
+    [Fact]
     public async Task List_requires_an_explicit_project_or_directory_context()
     {
         using TemporaryDirectory temporary = new TemporaryDirectory();
@@ -102,15 +187,18 @@ public sealed class McpServerTests
     {
         McpServerToolAttribute list = AttributeFor(nameof(RwlTools.ListWorktreesAsync));
         McpServerToolAttribute refresh = AttributeFor(nameof(RwlTools.RefreshWorktreesAsync));
-        McpServerToolAttribute launch = AttributeFor(nameof(RwlTools.LaunchAsync));
+        McpServerToolAttribute buildAndLaunch = AttributeFor(nameof(RwlTools.BuildAndLaunchAsync));
+        McpServerToolAttribute launchExisting = AttributeFor(nameof(RwlTools.LaunchExistingAsync));
 
         Assert.True(list.ReadOnly);
         Assert.False(list.OpenWorld);
         Assert.False(refresh.ReadOnly);
         Assert.True(refresh.OpenWorld);
         Assert.False(refresh.Destructive);
-        Assert.False(launch.ReadOnly);
-        Assert.True(launch.Destructive);
+        Assert.False(buildAndLaunch.ReadOnly);
+        Assert.True(buildAndLaunch.Destructive);
+        Assert.False(launchExisting.ReadOnly);
+        Assert.True(launchExisting.Destructive);
     }
 
     [Fact]
@@ -154,12 +242,22 @@ public sealed class McpServerTests
                 .GetProperty("tools")
                 .EnumerateArray()
                 .ToArray();
-            Assert.Equal(6, tools.Length);
-            JsonElement launch = Assert.Single(
+            Assert.Equal(7, tools.Length);
+            JsonElement buildAndLaunch = Assert.Single(
+                tools,
+                tool => tool.GetProperty("name").GetString() == "rhino_worktree_build_and_launch");
+            JsonElement launchExisting = Assert.Single(
+                tools,
+                tool => tool.GetProperty("name").GetString() == "rhino_worktree_launch_existing");
+            Assert.DoesNotContain(
                 tools,
                 tool => tool.GetProperty("name").GetString() == "rhino_worktree_launch");
-            Assert.True(launch.GetProperty("annotations").GetProperty("destructiveHint").GetBoolean());
-            Assert.Equal("object", launch.GetProperty("outputSchema").GetProperty("type").GetString());
+            Assert.True(buildAndLaunch.GetProperty("annotations").GetProperty("destructiveHint").GetBoolean());
+            Assert.Equal("object", buildAndLaunch.GetProperty("outputSchema").GetProperty("type").GetString());
+            Assert.Contains(
+                "without rebuilding or claiming freshness",
+                launchExisting.GetProperty("description").GetString(),
+                StringComparison.Ordinal);
         }
         finally
         {
@@ -220,4 +318,38 @@ public sealed class McpServerTests
             .GetMethod(methodName)!
             .GetCustomAttributes(typeof(McpServerToolAttribute), inherit: false)
             .Cast<McpServerToolAttribute>());
+
+    private static Process CompleteVerification(ProcessStartInfo startInfo)
+    {
+        Process process = StartSleepingProcess();
+        VerifierRequest request = JsonSerializer.Deserialize<VerifierRequest>(
+            File.ReadAllText(startInfo.Environment["RWL_VERIFY_REQUEST"]!),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        File.WriteAllText(request.ResultPath, JsonSerializer.Serialize(new VerifierResult
+        {
+            SchemaVersion = 1,
+            Status = "loaded",
+            LaunchId = request.LaunchId,
+            ProcessId = process.Id,
+            PluginPath = request.PluginPath,
+            CriticalDependencies = request.CriticalDependencies
+        }));
+        return process;
+    }
+
+    private static Process StartSleepingProcess()
+    {
+        ProcessStartInfo startInfo = new ProcessStartInfo
+        {
+            FileName = "pwsh",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-Command");
+        startInfo.ArgumentList.Add("Start-Sleep -Seconds 5");
+        return Process.Start(startInfo)!;
+    }
 }
