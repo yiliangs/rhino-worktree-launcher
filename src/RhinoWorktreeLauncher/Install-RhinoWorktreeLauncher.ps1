@@ -32,6 +32,22 @@ if ([string]::IsNullOrWhiteSpace($PackageRoot) -and (Test-Path -LiteralPath $bun
 }
 $usePackage = -not [string]::IsNullOrWhiteSpace($PackageRoot)
 
+function Remove-ReplacedExecutableBackup([string]$Path)
+{
+    try
+    {
+        Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+    }
+    catch [System.UnauthorizedAccessException]
+    {
+        Write-Warning "The replaced executable backup remains in use and will be left at '$Path'."
+    }
+    catch [System.IO.IOException]
+    {
+        Write-Warning "The replaced executable backup remains in use and will be left at '$Path'."
+    }
+}
+
 function Move-AtomicReplace([string]$Source, [string]$Destination)
 {
     if (-not (Test-Path -LiteralPath $Destination))
@@ -39,6 +55,11 @@ function Move-AtomicReplace([string]$Source, [string]$Destination)
         [IO.File]::Move($Source, $Destination)
         return
     }
+
+    $destinationDirectory = Split-Path $Destination -Parent
+    $destinationName = Split-Path $Destination -Leaf
+    Get-ChildItem -LiteralPath $destinationDirectory -Filter "$destinationName.rwl-replace-*.bak" -File |
+        ForEach-Object { Remove-ReplacedExecutableBackup $_.FullName }
 
     $backup = "$Destination.rwl-replace-$PID.bak"
     try
@@ -49,7 +70,7 @@ function Move-AtomicReplace([string]$Source, [string]$Destination)
     {
         if (Test-Path -LiteralPath $backup)
         {
-            Remove-Item -LiteralPath $backup -Force
+            Remove-ReplacedExecutableBackup $backup
         }
     }
 }

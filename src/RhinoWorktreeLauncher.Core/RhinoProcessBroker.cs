@@ -52,7 +52,7 @@ internal static class RhinoProcessBroker
 
         try
         {
-            await pipe.WaitForConnectionAsync(timeout.Token);
+            await pipe.WaitForConnectionAsync(timeout.Token).ConfigureAwait(false);
             using StreamReader reader = new StreamReader(pipe, Encoding.UTF8, false, leaveOpen: true);
             using StreamWriter writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true)
             {
@@ -65,9 +65,11 @@ internal static class RhinoProcessBroker
                 Arguments = configured.ArgumentList.ToArray(),
                 Environment = GetEnvironmentOverrides(configured)
             };
-            await writer.WriteLineAsync(JsonSerializer.Serialize(request, JsonOptions)).WaitAsync(timeout.Token);
+            await writer.WriteLineAsync(JsonSerializer.Serialize(request, JsonOptions))
+                .WaitAsync(timeout.Token)
+                .ConfigureAwait(false);
 
-            string? responseLine = await reader.ReadLineAsync(timeout.Token);
+            string? responseLine = await reader.ReadLineAsync(timeout.Token).ConfigureAwait(false);
             RhinoLaunchResponse response = responseLine is null
                 ? throw new InvalidOperationException("The Rhino launch broker closed without returning a process.")
                 : JsonSerializer.Deserialize<RhinoLaunchResponse>(responseLine, JsonOptions) ??
