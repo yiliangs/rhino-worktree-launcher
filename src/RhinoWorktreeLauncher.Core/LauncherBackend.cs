@@ -106,21 +106,23 @@ public sealed class LauncherBackend
         }
     }
 
-    public Task<CommandResult<ProjectBuildOptions>> DiscoverProjectBuildOptionsAsync(
+    public async Task<CommandResult<ProjectBuildOptions>> DiscoverProjectBuildOptionsAsync(
         string path,
         CancellationToken cancellationToken)
     {
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult(CommandResult<ProjectBuildOptions>.Success(
-                BuildProfileDiscovery.DiscoverOptions(path)));
+            ProjectBuildOptions options = await Task.Run(
+                () => Options.ProjectBuildOptionsDiscovery(path),
+                cancellationToken).ConfigureAwait(false);
+            return CommandResult<ProjectBuildOptions>.Success(options);
         }
         catch (Exception exception)
         {
-            return Task.FromResult(CommandResult<ProjectBuildOptions>.Failure(new Diagnostic(
+            return CommandResult<ProjectBuildOptions>.Failure(new Diagnostic(
                 "build_configuration_discovery_failed",
-                exception.Message)));
+                exception.Message));
         }
     }
 

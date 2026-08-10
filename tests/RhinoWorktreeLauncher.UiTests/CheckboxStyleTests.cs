@@ -95,6 +95,18 @@ public sealed class CheckboxStyleTests
     }
 
     [Fact]
+    public void Project_config_exposes_a_loading_state_before_build_choices_arrive()
+    {
+        XDocument document = LoadXaml("ProjectConfigDialog.xaml");
+
+        XElement pluginProject = Named(document, "PluginProjectComboBox");
+        XElement save = Named(document, "SaveConfigButton");
+        Assert.Equal("False", pluginProject.Attribute("IsEnabled")?.Value);
+        Assert.Equal("Loading build choices...", pluginProject.Attribute("Tag")?.Value);
+        Assert.Equal("False", save.Attribute("IsEnabled")?.Value);
+    }
+
+    [Fact]
     public void Project_config_keeps_panels_above_the_fixed_footer()
     {
         XDocument document = LoadXaml("ProjectConfigDialog.xaml");

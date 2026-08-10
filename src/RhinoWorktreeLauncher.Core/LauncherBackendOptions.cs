@@ -26,6 +26,8 @@ public sealed class LauncherBackendOptions
         "System",
         "Rhino.exe");
     public Func<ProcessStartInfo, Process> RhinoProcessStarter { get; init; } = RhinoProcessBroker.Start;
+    internal Func<string, ProjectBuildOptions> ProjectBuildOptionsDiscovery { get; init; } =
+        BuildProfileDiscovery.DiscoverOptions;
 
     private static string ResolveGitHubCliPath()
     {

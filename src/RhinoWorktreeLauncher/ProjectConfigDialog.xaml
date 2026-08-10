@@ -336,8 +336,9 @@
                             <ComboBox x:Name="PluginProjectComboBox"
                                       Margin="0,7,0,16"
                                       ItemTemplate="{StaticResource PluginProjectDropdownValue}"
+                                      IsEnabled="False"
                                       SelectionChanged="PluginProject_SelectionChanged"
-                                      Tag="Select a plug-in project"
+                                      Tag="Loading build choices..."
                                       Style="{StaticResource BuildCombo}" />
                             <TextBlock Text="Solution" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11.5" />
                             <ComboBox x:Name="SolutionComboBox"
@@ -404,8 +405,10 @@
                         IsCancel="True"
                         Style="{StaticResource SecondaryButton}"
                         Click="Cancel_Click" />
-                <Button Grid.Column="3"
+                <Button x:Name="SaveConfigButton"
+                        Grid.Column="3"
                         Content="Save config"
+                        IsEnabled="False"
                         IsDefault="True"
                         Style="{StaticResource PrimaryButton}"
                         Click="Save_Click" />

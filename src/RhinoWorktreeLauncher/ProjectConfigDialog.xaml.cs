@@ -9,12 +9,17 @@ namespace RhinoWorktreeLauncher;
 
 public partial class ProjectConfigDialog : Window
 {
+    private readonly CancellationTokenSource _loadCancellation = new CancellationTokenSource();
+    private readonly Func<CancellationToken, Task<CommandResult<ProjectBuildOptions>>> _loadBuildOptions;
     private readonly BuildProfile _savedProfile;
     private readonly string _projectPath;
 
-    public ProjectConfigDialog(ProjectRegistration registration, ProjectBuildOptions buildOptions)
+    public ProjectConfigDialog(
+        ProjectRegistration registration,
+        Func<CancellationToken, Task<CommandResult<ProjectBuildOptions>>> loadBuildOptions)
     {
         InitializeComponent();
+        _loadBuildOptions = loadBuildOptions;
         _savedProfile = registration.BuildProfile;
         _projectPath = Path.GetFullPath(registration.PrimaryCheckout);
 
@@ -25,16 +30,17 @@ public partial class ProjectConfigDialog : Window
         ProjectPathText.ToolTip = _projectPath;
         RemoteReadToggle.IsChecked = registration.Access.ReadRemote;
         BuildBeforeLaunchToggle.IsChecked = registration.BuildProfile.LaunchMode == LaunchMode.BuildAndLaunch;
-        PluginProjectComboBox.ItemsSource = buildOptions.Plugins;
-        PluginProjectComboBox.SelectedItem = buildOptions.Plugins.FirstOrDefault(plugin => string.Equals(
-            plugin.PluginProjectPath,
-            registration.BuildProfile.PluginProjectPath,
-            StringComparison.OrdinalIgnoreCase)) ?? (buildOptions.Plugins.Count == 1 ? buildOptions.Plugins[0] : null);
 
         Loaded += (_, _) =>
         {
             ApplyOwnerTheme();
             UpdateProjectPathText();
+        };
+        ContentRendered += LoadBuildOptions;
+        Closed += (_, _) =>
+        {
+            _loadCancellation.Cancel();
+            _loadCancellation.Dispose();
         };
     }
 
@@ -47,6 +53,41 @@ public partial class ProjectConfigDialog : Window
         ? LaunchMode.BuildAndLaunch
         : LaunchMode.DirectLaunch;
     public bool ClearRemoteCache => ClearRemoteCacheToggle.IsChecked == true;
+
+    private async void LoadBuildOptions(object? sender, EventArgs e)
+    {
+        ContentRendered -= LoadBuildOptions;
+        CommandResult<ProjectBuildOptions> result = await _loadBuildOptions(_loadCancellation.Token);
+        if (!IsVisible)
+            return;
+        if (!result.Succeeded)
+        {
+            MessageBox.Show(
+                this,
+                result.Diagnostics[0].Message,
+                "Project configuration unavailable",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            DialogResult = false;
+            return;
+        }
+
+        ApplyBuildOptions(result.Value!);
+    }
+
+    private void ApplyBuildOptions(ProjectBuildOptions buildOptions)
+    {
+        PluginProjectComboBox.ItemsSource = buildOptions.Plugins;
+        PluginProjectComboBox.IsEnabled = buildOptions.Plugins.Count > 0;
+        PluginProjectComboBox.Tag = buildOptions.Plugins.Count > 0
+            ? "Select a plug-in project"
+            : "No Rhino plug-in projects found";
+        PluginProjectComboBox.SelectedItem = buildOptions.Plugins.FirstOrDefault(plugin => string.Equals(
+            plugin.PluginProjectPath,
+            _savedProfile.PluginProjectPath,
+            StringComparison.OrdinalIgnoreCase)) ?? (buildOptions.Plugins.Count == 1 ? buildOptions.Plugins[0] : null);
+        SaveConfigButton.IsEnabled = buildOptions.Plugins.Count > 0;
+    }
 
     private void PluginProject_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

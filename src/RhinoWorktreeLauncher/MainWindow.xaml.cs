@@ -374,23 +374,12 @@ public partial class MainWindow : Window
         if (_currentProject is null)
             return;
 
-        CommandResult<ProjectBuildOptions> options = await _backend.DiscoverProjectBuildOptionsAsync(
-            _currentProject.Registration.PrimaryCheckout,
-            CancellationToken.None);
-        if (!options.Succeeded)
-        {
-            MessageBox.Show(
-                this,
-                options.Diagnostics[0].Message,
-                "Project configuration unavailable",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-            return;
-        }
-
+        ProjectRegistration registration = _currentProject.Registration;
         ProjectConfigDialog config = new ProjectConfigDialog(
-            _currentProject.Registration,
-            options.Value!)
+            registration,
+            cancellationToken => _backend.DiscoverProjectBuildOptionsAsync(
+                registration.PrimaryCheckout,
+                cancellationToken))
         {
             Owner = this
         };
