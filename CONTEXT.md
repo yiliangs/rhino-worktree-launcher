@@ -39,3 +39,7 @@ _Avoid_: global settings, MCP setup
 **Settings**:
 The global desktop surface for MCP client integration.
 _Avoid_: project config
+
+**Installable payload**:
+The versioned self-contained Windows binaries shared by source-checkout installation and release archives. It is the only distributable product shape.
+_Avoid_: developer build, release build

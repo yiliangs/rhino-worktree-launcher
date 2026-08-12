@@ -72,6 +72,8 @@ pwsh -NoProfile -File src/RhinoWorktreeLauncher/Install-RhinoWorktreeLauncher.ps
   -Launch
 ```
 
+Source installation first produces the same installable payload as a release package, then installs that payload. `eng/New-RwlPackage.ps1` is the only binary producer; the installer never maintains a second publish path.
+
 Each update publishes a versioned release under `%LOCALAPPDATA%\RhinoWorktreeLauncher\releases`. The Start Menu shortcut, CLI, MCP registration, and Claude hook target the stable bootstrap. The bootstrap reads `current.json`, so integrations do not contain version-specific paths.
 
 ## CLI
