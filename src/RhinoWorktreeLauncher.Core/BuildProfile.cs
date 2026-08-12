@@ -159,6 +159,31 @@ internal static class BuildProfileDiscovery
         return new BuildConfiguration(configuration, platform);
     }
 
+    public static bool IsAvailable(string repositoryRoot, BuildProfile profile)
+    {
+        if (!profile.IsConfigured)
+            return false;
+        try
+        {
+            string root = Path.GetFullPath(repositoryRoot);
+            string solutionPath = ResolveContainedPath(root, profile.SolutionPath);
+            string pluginProjectPath = ResolveContainedPath(root, profile.PluginProjectPath);
+            if (!File.Exists(solutionPath) || !File.Exists(pluginProjectPath))
+                return false;
+
+            _ = ResolveProjectConfiguration(root, profile);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or
+            UnauthorizedAccessException or
+            ArgumentException or
+            NotSupportedException or
+            InvalidDataException)
+        {
+            return false;
+        }
+    }
+
     private static ProjectCandidate SelectPluginProject(string root, string? selectedPluginProjectPath)
     {
         ProjectCandidate[] projects = FindPluginProjects(root);
