@@ -10,12 +10,9 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
-$desktopProject = Join-Path $PSScriptRoot 'RhinoWorktreeLauncher.csproj'
 $sourceRoot = Split-Path $PSScriptRoot -Parent
-$cliProject = Join-Path $sourceRoot 'Rwl.Cli\Rwl.Cli.csproj'
-$mcpProject = Join-Path $sourceRoot 'Rwl.Mcp\Rwl.Mcp.csproj'
-$bootstrapProject = Join-Path $sourceRoot 'Rwl.Bootstrap\Rwl.Bootstrap.csproj'
-$verifierProject = Join-Path $sourceRoot 'Rwl.RhinoVerifier\Rwl.RhinoVerifier.csproj'
+$repositoryRoot = Split-Path $sourceRoot -Parent
+$packageScript = Join-Path $repositoryRoot 'eng\New-RwlPackage.ps1'
 $dataRoot = Join-Path $env:LOCALAPPDATA 'RhinoWorktreeLauncher'
 $releaseId = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $installRoot = Join-Path $dataRoot "releases\$releaseId"
@@ -26,11 +23,7 @@ $bootstrapPublishRoot = Join-Path $installRoot 'bootstrap-publish'
 $stableBootstrapRoot = Join-Path $dataRoot 'bootstrap'
 $stableBootstrapPath = Join-Path $stableBootstrapRoot 'rwl.exe'
 $bundledPackageRoot = Join-Path $PSScriptRoot 'payload'
-if ([string]::IsNullOrWhiteSpace($PackageRoot) -and (Test-Path -LiteralPath $bundledPackageRoot))
-{
-    $PackageRoot = $bundledPackageRoot
-}
-$usePackage = -not [string]::IsNullOrWhiteSpace($PackageRoot)
+$temporaryPackageRoot = $null
 
 function Remove-ReplacedExecutableBackup([string]$Path)
 {
@@ -75,8 +68,49 @@ function Move-AtomicReplace([string]$Source, [string]$Destination)
     }
 }
 
-if ($usePackage)
+function Remove-TemporaryPackage([string]$Path)
 {
+    $temporaryRoot = [IO.Path]::GetFullPath($Path)
+    $systemTemporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    $systemTemporaryRoot = $systemTemporaryRoot.TrimEnd(
+        [IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    if (-not $temporaryRoot.StartsWith($systemTemporaryRoot, [StringComparison]::OrdinalIgnoreCase))
+    {
+        throw "Refusing to remove temporary package path outside '$systemTemporaryRoot': '$temporaryRoot'."
+    }
+    if (Test-Path -LiteralPath $temporaryRoot)
+    {
+        Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
+    }
+}
+
+try
+{
+    if ([string]::IsNullOrWhiteSpace($PackageRoot))
+    {
+        if (Test-Path -LiteralPath $bundledPackageRoot)
+        {
+            $PackageRoot = $bundledPackageRoot
+        }
+        else
+        {
+            if (-not (Test-Path -LiteralPath $packageScript -PathType Leaf))
+            {
+                throw "The canonical RWL package producer was not found at '$packageScript'."
+            }
+            $temporaryPackageRoot = Join-Path (
+                [IO.Path]::GetTempPath()) (
+                'RhinoWorktreeLauncher.Package.' + [Guid]::NewGuid().ToString('N'))
+            Write-Host 'Producing the canonical Rhino Worktree Launcher package from source...' -ForegroundColor Cyan
+            & $packageScript -OutputPath $temporaryPackageRoot
+            if ($LASTEXITCODE -ne 0)
+            {
+                throw "Package production failed with exit code $LASTEXITCODE."
+            }
+            $PackageRoot = Join-Path $temporaryPackageRoot 'payload'
+        }
+    }
+
     $PackageRoot = [IO.Path]::GetFullPath($PackageRoot)
     $requiredPayload = @(
         (Join-Path $PackageRoot 'desktop\RhinoWorktreeLauncher.exe'),
@@ -92,39 +126,25 @@ if ($usePackage)
         }
     }
 
-    Write-Host 'Installing the prebuilt Rhino Worktree Launcher package...' -ForegroundColor Cyan
-    New-Item -ItemType Directory -Force -Path $desktopRoot, $cliRoot, $mcpRoot | Out-Null
+    Write-Host 'Installing the canonical Rhino Worktree Launcher payload...' -ForegroundColor Cyan
+    New-Item -ItemType Directory -Force -Path $desktopRoot, $cliRoot, $mcpRoot, $bootstrapPublishRoot | Out-Null
     Copy-Item -Path (Join-Path $PackageRoot 'desktop\*') -Destination $desktopRoot -Recurse -Force
     Copy-Item -Path (Join-Path $PackageRoot 'cli\*') -Destination $cliRoot -Recurse -Force
     Copy-Item -Path (Join-Path $PackageRoot 'mcp\*') -Destination $mcpRoot -Recurse -Force
-    $publishedBootstrapPath = Join-Path $PackageRoot 'bootstrap\rwl.exe'
+    Copy-Item -Path (Join-Path $PackageRoot 'bootstrap\*') -Destination $bootstrapPublishRoot -Recurse -Force
 }
-else
+finally
 {
-    Write-Host 'Publishing Rhino Worktree Launcher from source...' -ForegroundColor Cyan
-    & dotnet build $verifierProject -c Release
-    if ($LASTEXITCODE -ne 0) { throw "Rhino verifier build failed with exit code $LASTEXITCODE." }
-    & dotnet publish $desktopProject -c Release -r win-x64 --self-contained true -o $desktopRoot
-    if ($LASTEXITCODE -ne 0) { throw "Desktop publish failed with exit code $LASTEXITCODE." }
-    & dotnet publish $cliProject -c Release -r win-x64 --self-contained true -o $cliRoot
-    if ($LASTEXITCODE -ne 0) { throw "CLI publish failed with exit code $LASTEXITCODE." }
-    & dotnet publish $mcpProject -c Release -r win-x64 --self-contained true -o $mcpRoot
-    if ($LASTEXITCODE -ne 0) { throw "MCP publish failed with exit code $LASTEXITCODE." }
-    & dotnet publish $bootstrapProject -c Release -r win-x64 --self-contained true -o $bootstrapPublishRoot
-    if ($LASTEXITCODE -ne 0)
+    if (-not [string]::IsNullOrWhiteSpace($temporaryPackageRoot))
     {
-        throw "Bootstrap publish failed with exit code $LASTEXITCODE."
+        Remove-TemporaryPackage $temporaryPackageRoot
     }
-    $verifierOutput = Join-Path $sourceRoot 'Rwl.RhinoVerifier\bin\Release\net48\Rwl.RhinoVerifier.rhp'
-    Copy-Item -LiteralPath $verifierOutput -Destination $desktopRoot -Force
-    Copy-Item -LiteralPath $verifierOutput -Destination $cliRoot -Force
-    Copy-Item -LiteralPath $verifierOutput -Destination $mcpRoot -Force
-    $publishedBootstrapPath = Join-Path $bootstrapPublishRoot 'rwl.exe'
 }
 
 $desktopExecutable = Join-Path $desktopRoot 'RhinoWorktreeLauncher.exe'
 $cliExecutable = Join-Path $cliRoot 'rwl-cli.exe'
 $mcpExecutable = Join-Path $mcpRoot 'rwl-mcp.exe'
+$publishedBootstrapPath = Join-Path $bootstrapPublishRoot 'rwl.exe'
 $releasePointer = [ordered]@{
     releaseId = $releaseId
     desktop = $desktopExecutable

@@ -10,6 +10,7 @@ Independent .NET 8 Windows application with one backend and three adapters: nati
 - `Rwl.Mcp` is a thin newline-delimited JSON-RPC stdio server over the same commands. Its launch tool remains one blocking request.
 - `Rwl.Bootstrap` is the stable `%LOCALAPPDATA%\RhinoWorktreeLauncher\bootstrap\rwl.exe`. It resolves `current.json` and forwards to the current versioned desktop, CLI, or MCP executable.
 - `Rwl.RhinoVerifier` is the bundled Rhino 8 verifier.
+- `eng/New-RwlPackage.ps1` is the only installable-payload producer. Source installs, packaged installs, and releases consume its payload shape; the installer never owns a second build or publish implementation.
 
 The backend is a one-off bootstrapper, not a Rhino session monitor. Do not add durable launch operations, reattachment, background observation, or a service.
 
@@ -27,6 +28,7 @@ The backend is a one-off bootstrapper, not a Rhino session monitor. Do not add d
 - Rhino startup uses a serialized temporary HKCU plug-in path overlay and the app-owned verifier. Restore the exact previous current-user value before launch returns; never require elevation or modify HKLM.
 - Process creation is not success. Launch succeeds only after the verifier's launch ID, PID, `.rhp`, and every critical dependency path match. Timeout or mismatch terminates the unverified child.
 - Every launch writes inert JSONL diagnostics under `%LOCALAPPDATA%\RhinoWorktreeLauncher\logs`.
+- Verification builds may compile the solution, but only the canonical package producer defines distributable binaries.
 - Claude install/remove owns only the `rhino-worktree-launcher` MCP entry and the RWL `session-context` hook. Preserve all unrelated settings and integrations.
 
 ## Build and verify
