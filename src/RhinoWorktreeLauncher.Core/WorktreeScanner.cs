@@ -17,135 +17,261 @@ internal sealed class WorktreeScanner
     public async Task<CommandResult<ProjectWorktrees>> ScanAsync(
         ProjectSnapshot project,
         bool includeRemote,
+        IProgress<WorktreeRefreshProgress>? progress,
         CancellationToken cancellationToken)
     {
-        List<Diagnostic> diagnostics = new List<Diagnostic>();
-        string primary = project.Registration.PrimaryCheckout;
+        CommandResult<ProjectWorktrees> listed = await ListLocalAsync(project, cancellationToken);
+        if (!listed.Succeeded || listed.Value is null)
+            return listed;
 
-        RemoteMirror? remoteMirror = null;
-        if (includeRemote && !project.Registration.Access.ReadRemote)
+        progress?.Report(new WorktreeRefreshProgress(
+            WorktreeRefreshStage.LocalList,
+            listed.Value));
+        CommandResult<ProjectWorktrees> local = await EnrichLocalAsync(
+            listed.Value,
+            cancellationToken);
+        if (!local.Succeeded || local.Value is null)
+            return local;
+
+        progress?.Report(new WorktreeRefreshProgress(WorktreeRefreshStage.Local, local.Value));
+        if (!includeRemote)
+            return local;
+
+        RemoteRefresh remote = await RefreshRemoteAsync(project, cancellationToken);
+        CommandResult<ProjectWorktrees> enriched = await EnrichRemoteAsync(
+            local.Value,
+            local.Diagnostics,
+            remote,
+            cancellationToken);
+        if (enriched.Value is not null && !SameWorktrees(local.Value.Worktrees, enriched.Value.Worktrees))
         {
-            diagnostics.Add(new Diagnostic(
-                "remote_read_not_granted",
-                "Remote refresh is disabled for this project. Enable remote read in Config to synchronize remote metadata.",
-                DiagnosticSeverity.Warning));
+            progress?.Report(new WorktreeRefreshProgress(
+                WorktreeRefreshStage.Remote,
+                enriched.Value));
         }
-        else if (includeRemote)
-        {
-            try
-            {
-                remoteMirror = await _remoteMirrors.RefreshAsync(project, cancellationToken);
-            }
-            catch (Exception exception)
-            {
-                diagnostics.Add(new Diagnostic(
-                    "git_fetch_unavailable",
-                    exception.Message,
-                    DiagnosticSeverity.Warning));
-            }
-        }
+        return enriched;
+    }
 
-        Dictionary<string, PullRequestRecord> pullRequests = includeRemote && project.Registration.Access.ReadRemote
-            ? await LoadPullRequestsAsync(primary, diagnostics, cancellationToken)
-            : new Dictionary<string, PullRequestRecord>(StringComparer.OrdinalIgnoreCase);
-
+    private async Task<CommandResult<ProjectWorktrees>> ListLocalAsync(
+        ProjectSnapshot project,
+        CancellationToken cancellationToken)
+    {
         try
         {
+            string primary = project.Registration.PrimaryCheckout;
             string listing = await RunGitAsync(
                 primary,
                 new[] { "worktree", "list", "--porcelain" },
                 cancellationToken);
             List<WorktreeSnapshot> worktrees = new List<WorktreeSnapshot>();
             foreach (WorktreeDescriptor descriptor in Parse(listing))
-            {
-                WorktreeSnapshot snapshot = await CreateSnapshotAsync(
-                    project,
-                    descriptor,
-                    remoteMirror,
-                    pullRequests,
-                    cancellationToken);
-                worktrees.Add(snapshot);
-            }
-            ApplyDivergenceScale(worktrees);
+                worktrees.Add(CreateListedSnapshot(project, descriptor));
 
-            return CommandResult<ProjectWorktrees>.Success(
-                new ProjectWorktrees(
-                    project,
-                    worktrees
-                        .OrderByDescending(worktree => worktree.IsPrimary)
-                        .ThenBy(worktree => worktree.DisplayName, StringComparer.OrdinalIgnoreCase)
-                        .ToArray()),
-                diagnostics);
+            return CommandResult<ProjectWorktrees>.Success(new ProjectWorktrees(
+                project,
+                Order(worktrees)));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception exception)
         {
-            diagnostics.Add(new Diagnostic("git_scan_failed", exception.Message));
-            return CommandResult<ProjectWorktrees>.Failure(diagnostics.ToArray());
+            return CommandResult<ProjectWorktrees>.Failure(new Diagnostic(
+                "git_scan_failed",
+                exception.Message));
         }
     }
 
-    private async Task<WorktreeSnapshot> CreateSnapshotAsync(
+    private static WorktreeSnapshot CreateListedSnapshot(
         ProjectSnapshot project,
-        WorktreeDescriptor descriptor,
-        RemoteMirror? remoteMirror,
-        IReadOnlyDictionary<string, PullRequestRecord> pullRequests,
-        CancellationToken cancellationToken)
+        WorktreeDescriptor descriptor)
     {
         string path = Path.GetFullPath(descriptor.Path);
         bool isPrimary = ContextResolver.SamePath(path, project.Registration.PrimaryCheckout);
-        (int added, int deleted) = await GetLocalDiffAsync(path, cancellationToken);
-        (int ahead, int behind) = remoteMirror is null
-            ? (0, 0)
-            : await _remoteMirrors.GetDivergenceAsync(remoteMirror, path, cancellationToken);
-        DateTimeOffset lastActivity = await GetLastActivityAsync(path, cancellationToken);
-        _ = pullRequests.TryGetValue(descriptor.Branch, out PullRequestRecord? pullRequest);
-        bool canLaunch = IsBuildConfigurationAvailable(path, project.Registration.BuildProfile);
+        bool canLaunch = BuildProfileDiscovery.IsAvailable(
+            path,
+            project.Registration.BuildProfile);
 
         return new WorktreeSnapshot(
             project.ProjectId,
             isPrimary ? descriptor.Branch : new DirectoryInfo(path).Name,
             descriptor.Branch,
             path,
-            lastActivity,
-            ahead,
-            behind,
-            added,
-            deleted,
-            pullRequest?.Number,
-            pullRequest?.IsDraft == true,
+            DateTimeOffset.MinValue,
+            0,
+            0,
+            0,
+            0,
+            null,
+            false,
             isPrimary,
             project.Registration.BuildProfile.LaunchMode,
-            canLaunch);
+            canLaunch,
+            false,
+            false);
     }
 
-    private static bool IsBuildConfigurationAvailable(string worktreePath, BuildProfile saved)
+    private async Task<CommandResult<ProjectWorktrees>> EnrichLocalAsync(
+        ProjectWorktrees listed,
+        CancellationToken cancellationToken)
     {
-        if (!saved.IsConfigured)
-            return false;
+        List<Diagnostic> diagnostics = new List<Diagnostic>();
+        List<WorktreeSnapshot> worktrees = new List<WorktreeSnapshot>();
+        foreach (WorktreeSnapshot worktree in listed.Worktrees)
+        {
+            try
+            {
+                (int added, int deleted) = await GetLocalDiffAsync(
+                    worktree.Path,
+                    cancellationToken);
+                DateTimeOffset lastActivity = await GetLastActivityAsync(
+                    worktree.Path,
+                    cancellationToken);
+                worktrees.Add(worktree with
+                {
+                    LastActivityAt = lastActivity,
+                    LocalAdded = added,
+                    LocalDeleted = deleted,
+                    HasLocalState = true
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                diagnostics.Add(new Diagnostic(
+                    "local_state_unavailable",
+                    $"Could not read local state for '{worktree.Path}': {exception.Message}",
+                    DiagnosticSeverity.Warning));
+                worktrees.Add(worktree);
+            }
+        }
+
+        return CommandResult<ProjectWorktrees>.Success(
+            new ProjectWorktrees(listed.Project, Order(worktrees)),
+            diagnostics);
+    }
+
+    private async Task<RemoteRefresh> RefreshRemoteAsync(
+        ProjectSnapshot project,
+        CancellationToken cancellationToken)
+    {
+        if (!project.Registration.Access.ReadRemote)
+        {
+            return new RemoteRefresh(
+                null,
+                new Dictionary<string, PullRequestRecord>(StringComparer.OrdinalIgnoreCase),
+                new[]
+                {
+                    new Diagnostic(
+                        "remote_read_not_granted",
+                        "Remote refresh is disabled for this project. Enable remote read in Config to synchronize remote metadata.",
+                        DiagnosticSeverity.Warning)
+                });
+        }
+
+        Task<RemoteMirrorResult> mirrorTask = RefreshMirrorAsync(project, cancellationToken);
+        Task<PullRequestResult> pullRequestTask = LoadPullRequestsAsync(
+            project.Registration.PrimaryCheckout,
+            cancellationToken);
+        await Task.WhenAll(mirrorTask, pullRequestTask);
+        RemoteMirrorResult mirror = await mirrorTask;
+        PullRequestResult pullRequests = await pullRequestTask;
+        return new RemoteRefresh(
+            mirror.Mirror,
+            pullRequests.PullRequests,
+            mirror.Diagnostics.Concat(pullRequests.Diagnostics).ToArray());
+    }
+
+    private async Task<RemoteMirrorResult> RefreshMirrorAsync(
+        ProjectSnapshot project,
+        CancellationToken cancellationToken)
+    {
         try
         {
-            BuildProfile current = BuildProfileDiscovery.Discover(
-                worktreePath,
-                saved.PluginProjectPath,
-                saved.SolutionPath,
-                saved.SelectedConfiguration,
-                saved.LaunchMode);
-            _ = BuildProfileDiscovery.ResolveProjectConfiguration(worktreePath, current);
-            return true;
+            return new RemoteMirrorResult(
+                await _remoteMirrors.RefreshAsync(project, cancellationToken),
+                Array.Empty<Diagnostic>());
         }
-        catch (Exception exception) when (exception is IOException or
-            UnauthorizedAccessException or
-            ArgumentException or
-            NotSupportedException or
-            InvalidDataException)
+        catch (OperationCanceledException)
         {
-            return false;
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return new RemoteMirrorResult(
+                null,
+                new[]
+                {
+                    new Diagnostic(
+                        "git_fetch_unavailable",
+                        exception.Message,
+                        DiagnosticSeverity.Warning)
+                });
         }
     }
 
-    private async Task<Dictionary<string, PullRequestRecord>> LoadPullRequestsAsync(
+    private async Task<CommandResult<ProjectWorktrees>> EnrichRemoteAsync(
+        ProjectWorktrees local,
+        IReadOnlyList<Diagnostic> localDiagnostics,
+        RemoteRefresh remote,
+        CancellationToken cancellationToken)
+    {
+        List<Diagnostic> diagnostics = new List<Diagnostic>(localDiagnostics);
+        diagnostics.AddRange(remote.Diagnostics);
+        List<WorktreeSnapshot> worktrees = new List<WorktreeSnapshot>();
+        foreach (WorktreeSnapshot worktree in local.Worktrees)
+        {
+            int ahead = 0;
+            int behind = 0;
+            bool hasGitState = false;
+            if (remote.Mirror is not null)
+            {
+                try
+                {
+                    (ahead, behind) = await _remoteMirrors.GetDivergenceAsync(
+                        remote.Mirror,
+                        worktree.Path,
+                        cancellationToken);
+                    hasGitState = true;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    diagnostics.Add(new Diagnostic(
+                        "git_divergence_unavailable",
+                        exception.Message,
+                        DiagnosticSeverity.Warning));
+                }
+            }
+
+            _ = remote.PullRequests.TryGetValue(
+                worktree.BranchName,
+                out PullRequestRecord? pullRequest);
+            worktrees.Add(worktree with
+            {
+                AheadCount = ahead,
+                BehindCount = behind,
+                PullRequestNumber = pullRequest?.Number,
+                IsPullRequestDraft = pullRequest?.IsDraft == true,
+                HasGitState = hasGitState
+            });
+        }
+        ApplyDivergenceScale(worktrees);
+
+        return CommandResult<ProjectWorktrees>.Success(
+            new ProjectWorktrees(local.Project, Order(worktrees)),
+            diagnostics);
+    }
+
+    private async Task<PullRequestResult> LoadPullRequestsAsync(
         string primary,
-        ICollection<Diagnostic> diagnostics,
         CancellationToken cancellationToken)
     {
         try
@@ -158,21 +284,31 @@ internal sealed class WorktreeScanner
             PullRequestRecord[] records = JsonSerializer.Deserialize<PullRequestRecord[]>(
                 output,
                 JsonDefaults.Read) ?? Array.Empty<PullRequestRecord>();
-            return records
-                .Where(record => !string.IsNullOrWhiteSpace(record.HeadRefName))
-                .GroupBy(record => record.HeadRefName, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(
-                    group => group.Key,
-                    group => group.OrderByDescending(record => record.Number).First(),
-                    StringComparer.OrdinalIgnoreCase);
+            return new PullRequestResult(
+                records
+                    .Where(record => !string.IsNullOrWhiteSpace(record.HeadRefName))
+                    .GroupBy(record => record.HeadRefName, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.OrderByDescending(record => record.Number).First(),
+                        StringComparer.OrdinalIgnoreCase),
+                Array.Empty<Diagnostic>());
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception exception)
         {
-            diagnostics.Add(new Diagnostic(
-                "github_unavailable",
-                exception.Message,
-                DiagnosticSeverity.Warning));
-            return new Dictionary<string, PullRequestRecord>(StringComparer.OrdinalIgnoreCase);
+            return new PullRequestResult(
+                new Dictionary<string, PullRequestRecord>(StringComparer.OrdinalIgnoreCase),
+                new[]
+                {
+                    new Diagnostic(
+                        "github_unavailable",
+                        exception.Message,
+                        DiagnosticSeverity.Warning)
+                });
         }
     }
 
@@ -214,6 +350,15 @@ internal sealed class WorktreeScanner
             workingDirectory,
             new[] { "--no-optional-locks", "-C", workingDirectory }.Concat(arguments),
             cancellationToken);
+
+    private static IReadOnlyList<WorktreeSnapshot> Order(IEnumerable<WorktreeSnapshot> worktrees) => worktrees
+        .OrderByDescending(worktree => worktree.IsPrimary)
+        .ThenBy(worktree => worktree.DisplayName, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private static bool SameWorktrees(
+        IReadOnlyList<WorktreeSnapshot> left,
+        IReadOnlyList<WorktreeSnapshot> right) => left.SequenceEqual(right);
 
     private static IEnumerable<WorktreeDescriptor> Parse(string output)
     {
@@ -263,6 +408,19 @@ internal sealed class WorktreeScanner
             worktree.BehindBarWidth = WorktreeSnapshot.ScaleDivergence(worktree.BehindCount, cap);
         }
     }
+
+    private sealed record RemoteRefresh(
+        RemoteMirror? Mirror,
+        IReadOnlyDictionary<string, PullRequestRecord> PullRequests,
+        IReadOnlyList<Diagnostic> Diagnostics);
+
+    private sealed record RemoteMirrorResult(
+        RemoteMirror? Mirror,
+        IReadOnlyList<Diagnostic> Diagnostics);
+
+    private sealed record PullRequestResult(
+        IReadOnlyDictionary<string, PullRequestRecord> PullRequests,
+        IReadOnlyList<Diagnostic> Diagnostics);
 
     private sealed record WorktreeDescriptor(string Path, string Branch);
 

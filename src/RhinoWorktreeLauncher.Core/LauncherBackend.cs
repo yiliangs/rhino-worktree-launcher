@@ -157,9 +157,19 @@ public sealed class LauncherBackend
             : CommandResult<ProjectSnapshot>.Success(project, project.Diagnostics);
     }
 
+    public Task<CommandResult<ProjectWorktrees>> GetWorktreeSnapshotAsync(
+        string projectId,
+        bool includeRemote,
+        CancellationToken cancellationToken) => GetWorktreeSnapshotAsync(
+            projectId,
+            includeRemote,
+            progress: null,
+            cancellationToken);
+
     public async Task<CommandResult<ProjectWorktrees>> GetWorktreeSnapshotAsync(
         string projectId,
         bool includeRemote,
+        IProgress<WorktreeRefreshProgress>? progress,
         CancellationToken cancellationToken)
     {
         CommandResult<ProjectSnapshot> projectResult = await GetProjectSnapshotAsync(
@@ -173,7 +183,11 @@ public sealed class LauncherBackend
                 projectResult.Diagnostics.ToArray());
         }
 
-        return await _scanner.ScanAsync(projectResult.Value, includeRemote, cancellationToken);
+        return await _scanner.ScanAsync(
+            projectResult.Value,
+            includeRemote,
+            progress,
+            cancellationToken);
     }
 
     public async Task<CommandResult<WorktreeInspection>> InspectWorktreeAsync(

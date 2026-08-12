@@ -320,6 +320,106 @@ public sealed class WorktreeBackendTests
     }
 
     [Fact]
+    public async Task Remote_refresh_reports_local_worktrees_while_the_remote_mirror_is_blocked()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string remote = temporary.CreateDirectory("remote.git");
+        temporary.Run("git", remote, "init", "--bare", "--quiet");
+        string repository = RepositoryFixture.Initialize(temporary, "repository");
+        string branch = temporary.Run("git", repository, "branch", "--show-current").Trim();
+        temporary.Run("git", repository, "remote", "add", "origin", remote);
+        temporary.Run("git", repository, "push", "--quiet", "-u", "origin", branch);
+
+        string remotesDirectory = temporary.CreateDirectory("launcher/remotes");
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            RemotesDirectory = remotesDirectory,
+            GitHubExecutable = temporary.PathFor("missing-gh.exe")
+        });
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        string remoteLockPath = Path.Combine(remotesDirectory, "repository.git.rwl.lock");
+        FileStream remoteLock = new FileStream(
+            remoteLockPath,
+            FileMode.OpenOrCreate,
+            FileAccess.ReadWrite,
+            FileShare.None);
+        TaskCompletionSource<WorktreeRefreshProgress> listReported = new TaskCompletionSource<WorktreeRefreshProgress>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<WorktreeRefreshProgress> localReported = new TaskCompletionSource<WorktreeRefreshProgress>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        Task<CommandResult<ProjectWorktrees>> refresh = backend.GetWorktreeSnapshotAsync(
+            "repository",
+            includeRemote: true,
+            new ImmediateProgress<WorktreeRefreshProgress>(update =>
+            {
+                if (update.Stage == WorktreeRefreshStage.LocalList)
+                    _ = listReported.TrySetResult(update);
+                else if (update.Stage == WorktreeRefreshStage.Local)
+                    _ = localReported.TrySetResult(update);
+            }),
+            timeout.Token);
+
+        WorktreeRefreshProgress listed;
+        WorktreeRefreshProgress local;
+        try
+        {
+            listed = await listReported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            local = await localReported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(refresh.IsCompleted);
+        }
+        catch
+        {
+            await timeout.CancelAsync();
+            throw;
+        }
+        finally
+        {
+            remoteLock.Dispose();
+        }
+
+        WorktreeSnapshot listedWorktree = Assert.Single(listed.Worktrees.Worktrees);
+        WorktreeSnapshot localWorktree = Assert.Single(local.Worktrees.Worktrees);
+        Assert.False(listedWorktree.HasLocalState);
+        Assert.True(localWorktree.HasLocalState);
+        Assert.False(localWorktree.HasGitState);
+
+        CommandResult<ProjectWorktrees> result = await refresh;
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.True(Assert.Single(result.Value!.Worktrees).HasGitState);
+    }
+
+    [Fact]
+    public async Task Local_refresh_validates_only_the_saved_build_configuration()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs")
+        });
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+        temporary.WriteFile("repository/Unrelated.slnx", "not a solution");
+
+        CommandResult<ProjectWorktrees> result = await backend.GetWorktreeSnapshotAsync(
+            "repository",
+            includeRemote: false,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.True(Assert.Single(result.Value!.Worktrees).HasBuildConfiguration);
+    }
+
+    [Fact]
     public async Task Remote_refresh_updates_an_app_mirror_without_fetching_into_the_repository()
     {
         using TemporaryDirectory temporary = new TemporaryDirectory();
@@ -392,6 +492,15 @@ public sealed class WorktreeBackendTests
         Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "build_configuration_unavailable");
         Assert.Equal(DiagnosticSeverity.Error, result.Diagnostics[0].Severity);
     }
+}
+
+internal sealed class ImmediateProgress<T> : IProgress<T>
+{
+    private readonly Action<T> _report;
+
+    public ImmediateProgress(Action<T> report) => _report = report;
+
+    public void Report(T value) => _report(value);
 }
 
 internal static class RepositoryFixture

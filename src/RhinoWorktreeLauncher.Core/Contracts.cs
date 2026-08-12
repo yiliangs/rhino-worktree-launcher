@@ -92,6 +92,17 @@ public sealed record ProjectWorktrees(
     ProjectSnapshot Project,
     IReadOnlyList<WorktreeSnapshot> Worktrees);
 
+public enum WorktreeRefreshStage
+{
+    LocalList,
+    Local,
+    Remote
+}
+
+public sealed record WorktreeRefreshProgress(
+    WorktreeRefreshStage Stage,
+    ProjectWorktrees Worktrees);
+
 public sealed record BuildProgress(string Stage, string Message, DateTimeOffset Timestamp);
 
 public sealed record PreparedLaunchArtifacts(
@@ -124,11 +135,11 @@ public sealed record WorktreeSnapshot(
     bool IsPullRequestDraft,
     bool IsPrimary,
     LaunchMode LaunchMode,
-    bool HasBuildConfiguration)
+    bool HasBuildConfiguration,
+    bool HasLocalState,
+    bool HasGitState)
 {
     public bool HasPullRequest => PullRequestNumber.HasValue;
-    public bool HasLocalState => true;
-    public bool HasGitState => true;
     public string LaunchModeLabel => HasBuildConfiguration
         ? LaunchMode == LaunchMode.BuildAndLaunch ? "BUILD & LAUNCH" : "DIRECT LAUNCH"
         : "CONFIG NEEDED";

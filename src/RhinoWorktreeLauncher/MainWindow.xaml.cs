@@ -148,7 +148,8 @@ public partial class MainWindow : Window
         new McpClientIntegrationManager();
     private readonly DispatcherTimer _themeTimer;
     private ProjectSnapshot? _currentProject;
-    private bool _isRefreshing;
+    private CancellationTokenSource? _refreshCancellation;
+    private int _refreshGeneration;
     private bool _isUpdatingProjects;
     private bool _isUpdatingWorktrees;
     private bool? _isLightTheme;
@@ -170,6 +171,10 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _themeTimer.Stop();
+        _refreshGeneration++;
+        _refreshCancellation?.Cancel();
+        _refreshCancellation?.Dispose();
+        _refreshCancellation = null;
         base.OnClosed(e);
     }
 
@@ -509,45 +514,106 @@ public partial class MainWindow : Window
 
     private async Task RefreshAsync(bool fetchRemote)
     {
-        if (_isRefreshing || _currentProject is null)
+        if (_currentProject is null)
             return;
 
-        _isRefreshing = true;
+        ProjectSnapshot project = _currentProject;
+        int generation = ++_refreshGeneration;
+        CancellationTokenSource cancellation = new CancellationTokenSource();
+        CancellationTokenSource? previousCancellation = _refreshCancellation;
+        _refreshCancellation = cancellation;
+        previousCancellation?.Cancel();
+        previousCancellation?.Dispose();
         string? selectedPath = (WorktreeList.SelectedItem as WorktreeSnapshot)?.Path;
         _hint = fetchRemote ? "Syncing repository..." : "Loading worktrees...";
         UpdateState();
-        UpdateSync(active: true, local: 0, git: 0);
+        UpdateSync(active: true, local: 0, git: null);
 
         try
         {
+            DispatcherProgress<WorktreeRefreshProgress> progress = new DispatcherProgress<WorktreeRefreshProgress>(
+                Dispatcher,
+                update =>
+                {
+                    if (!IsCurrentRefresh(generation, project.ProjectId))
+                        return;
+
+                    string? currentSelection = (WorktreeList.SelectedItem as WorktreeSnapshot)?.Path ??
+                        selectedPath;
+                    _ = UpdateWorktreesIfChanged(update.Worktrees.Worktrees, currentSelection);
+                    if (update.Stage == WorktreeRefreshStage.LocalList)
+                    {
+                        UpdateSync(active: true, local: 0, git: null);
+                        _hint = "Reading local state...";
+                    }
+                    else if (update.Stage == WorktreeRefreshStage.Local)
+                    {
+                        UpdateSync(active: true, local: 1, git: fetchRemote ? 0 : null);
+                        _hint = fetchRemote ? "Syncing remote metadata..." : string.Empty;
+                    }
+                    else
+                    {
+                        UpdateSync(active: true, local: 1, git: 1);
+                    }
+                    UpdateState();
+                });
             CommandResult<ProjectWorktrees> result = await _backend.GetWorktreeSnapshotAsync(
-                _currentProject.ProjectId,
+                project.ProjectId,
                 fetchRemote,
-                CancellationToken.None);
+                progress,
+                cancellation.Token);
+            if (!IsCurrentRefresh(generation, project.ProjectId))
+                return;
             if (!result.Succeeded || result.Value is null)
                 throw new InvalidOperationException(result.Diagnostics[0].Message);
 
-            UpdateWorktrees(result.Value.Worktrees, selectedPath);
-            UpdateSync(active: true, local: 1, git: 1);
+            string? currentSelection = (WorktreeList.SelectedItem as WorktreeSnapshot)?.Path ??
+                selectedPath;
+            _ = UpdateWorktreesIfChanged(result.Value.Worktrees, currentSelection);
+            UpdateSync(active: true, local: 1, git: fetchRemote ? 1 : null);
             _hint = result.Diagnostics.Count == 0
                 ? string.Empty
                 : "Local data shown; remote enrichment unavailable";
             UpdateState();
             if (fetchRemote)
-                await Task.Delay(450);
+                await Task.Delay(450, cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
+            if (!IsCurrentRefresh(generation, project.ProjectId))
+                return;
             _worktrees.Clear();
             _hint = ex.Message;
             UpdateState();
         }
         finally
         {
-            _isRefreshing = false;
-            UpdateSync(active: false, local: 0, git: 0);
-            UpdateState();
+            if (IsCurrentRefresh(generation, project.ProjectId))
+            {
+                _refreshCancellation = null;
+                UpdateSync(active: false, local: 0, git: 0);
+                UpdateState();
+            }
+            cancellation.Dispose();
         }
+    }
+
+    private bool IsCurrentRefresh(int generation, string projectId) =>
+        generation == _refreshGeneration &&
+        string.Equals(_currentProject?.ProjectId, projectId, StringComparison.OrdinalIgnoreCase);
+
+    private bool UpdateWorktreesIfChanged(
+        IReadOnlyList<WorktreeSnapshot> entries,
+        string? selectedPath)
+    {
+        if (_worktrees.SequenceEqual(entries))
+            return false;
+
+        UpdateWorktrees(entries, selectedPath);
+        return true;
     }
 
     private void UpdateWorktrees(
@@ -557,9 +623,24 @@ public partial class MainWindow : Window
         _isUpdatingWorktrees = true;
         try
         {
-            _worktrees.Clear();
-            foreach (WorktreeSnapshot entry in entries)
-                _worktrees.Add(entry);
+            for (int index = 0; index < entries.Count; index++)
+            {
+                WorktreeSnapshot entry = entries[index];
+                int existingIndex = IndexOfWorktree(entry.Path, index);
+                if (existingIndex < 0)
+                {
+                    _worktrees.Insert(index, entry);
+                }
+                else
+                {
+                    if (existingIndex != index)
+                        _worktrees.Move(existingIndex, index);
+                    if (!_worktrees[index].Equals(entry))
+                        _worktrees[index] = entry;
+                }
+            }
+            while (_worktrees.Count > entries.Count)
+                _worktrees.RemoveAt(_worktrees.Count - 1);
 
             WorktreeList.SelectedItem = _worktrees.FirstOrDefault(entry => string.Equals(
                 entry.Path,
@@ -574,6 +655,16 @@ public partial class MainWindow : Window
         }
 
         UpdateSelectionState();
+    }
+
+    private int IndexOfWorktree(string path, int startIndex)
+    {
+        for (int index = startIndex; index < _worktrees.Count; index++)
+        {
+            if (string.Equals(_worktrees[index].Path, path, StringComparison.OrdinalIgnoreCase))
+                return index;
+        }
+        return -1;
     }
 
     private void UpdateState()
@@ -598,7 +689,7 @@ public partial class MainWindow : Window
             : "Build & Launch";
     }
 
-    private void UpdateSync(bool active, double local, double git)
+    private void UpdateSync(bool active, double local, double? git)
     {
         RefreshButton.IsHitTestVisible = !active;
         RefreshButton.Cursor = active ? Cursors.Arrow : Cursors.Hand;
@@ -619,10 +710,15 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Loaded);
     }
 
-    private static void SetProgress(Border fill, double value)
+    private static void SetProgress(Border fill, double? value)
     {
         fill.BeginAnimation(WidthProperty, null);
-        if (value >= 1)
+        if (!value.HasValue)
+        {
+            fill.Width = 0;
+            return;
+        }
+        if (value.Value >= 1)
         {
             fill.Width = (fill.Parent as FrameworkElement)?.ActualWidth ?? 0;
             return;
@@ -848,6 +944,29 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
+
+    private sealed class DispatcherProgress<T> : IProgress<T>
+    {
+        private readonly Dispatcher _dispatcher;
+        private readonly Action<T> _report;
+
+        public DispatcherProgress(Dispatcher dispatcher, Action<T> report)
+        {
+            _dispatcher = dispatcher;
+            _report = report;
+        }
+
+        public void Report(T value)
+        {
+            if (_dispatcher.CheckAccess())
+            {
+                _report(value);
+                return;
+            }
+
+            _dispatcher.Invoke(() => _report(value));
+        }
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
