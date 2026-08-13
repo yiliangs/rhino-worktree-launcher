@@ -13,6 +13,8 @@ public partial class ProjectConfigDialog : Window
     private readonly Func<CancellationToken, Task<CommandResult<ProjectBuildOptions>>> _loadBuildOptions;
     private readonly BuildProfile _savedProfile;
     private readonly string _projectPath;
+    private BuildSelectionState? _buildSelection;
+    private bool _renderingBuildSelection;
 
     public ProjectConfigDialog(
         ProjectRegistration registration,
@@ -22,6 +24,7 @@ public partial class ProjectConfigDialog : Window
         _loadBuildOptions = loadBuildOptions;
         _savedProfile = registration.BuildProfile;
         _projectPath = Path.GetFullPath(registration.PrimaryCheckout);
+        BuildConfigurationComboBox.SelectionChanged += BuildConfiguration_SelectionChanged;
 
         ProjectNameText.Text = registration.DisplayName;
         ProjectInitialText.Text = string.IsNullOrWhiteSpace(registration.DisplayName)
@@ -45,10 +48,9 @@ public partial class ProjectConfigDialog : Window
     }
 
     public bool ReadRemote => RemoteReadToggle.IsChecked == true;
-    public string PluginProjectPath => ((PluginBuildOptions)PluginProjectComboBox.SelectedItem).PluginProjectPath;
-    public string SolutionPath => ((SolutionBuildOptions)SolutionComboBox.SelectedItem).SolutionPath;
-    public BuildConfiguration BuildConfiguration =>
-        (BuildConfiguration)BuildConfigurationComboBox.SelectedItem;
+    public string PluginProjectPath => _buildSelection!.SelectedPlugin!.PluginProjectPath;
+    public string SolutionPath => _buildSelection!.SelectedSolution!.SolutionPath;
+    public BuildConfiguration BuildConfiguration => _buildSelection!.SelectedConfiguration!;
     public LaunchMode LaunchMode => BuildBeforeLaunchToggle.IsChecked == true
         ? LaunchMode.BuildAndLaunch
         : LaunchMode.DirectLaunch;
@@ -77,86 +79,82 @@ public partial class ProjectConfigDialog : Window
 
     private void ApplyBuildOptions(ProjectBuildOptions buildOptions)
     {
-        PluginProjectComboBox.ItemsSource = buildOptions.Plugins;
-        PluginProjectComboBox.IsEnabled = buildOptions.Plugins.Count > 0;
-        PluginProjectComboBox.Tag = buildOptions.Plugins.Count > 0
-            ? "Select a plug-in project"
-            : "No Rhino plug-in projects found";
-        PluginProjectComboBox.SelectedItem = buildOptions.Plugins.FirstOrDefault(plugin => string.Equals(
-            plugin.PluginProjectPath,
-            _savedProfile.PluginProjectPath,
-            StringComparison.OrdinalIgnoreCase)) ?? (buildOptions.Plugins.Count == 1 ? buildOptions.Plugins[0] : null);
+        _buildSelection = BuildSelectionState.ForConfig(buildOptions, _savedProfile);
+        RenderBuildSelection();
         SaveConfigButton.IsEnabled = buildOptions.Plugins.Count > 0;
     }
 
     private void PluginProject_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        BuildConfigurationComboBox.ItemsSource = null;
-        if (PluginProjectComboBox.SelectedItem is not PluginBuildOptions plugin)
-        {
-            SolutionComboBox.ItemsSource = null;
-            SolutionComboBox.IsEnabled = false;
-            SolutionComboBox.Tag = "Select a plug-in project first";
-            BuildConfigurationComboBox.IsEnabled = false;
-            BuildConfigurationComboBox.Tag = "Select a solution first";
+        if (_renderingBuildSelection || _buildSelection is null)
             return;
-        }
 
-        SolutionComboBox.ItemsSource = plugin.Solutions;
-        SolutionComboBox.IsEnabled = plugin.Solutions.Count > 0;
-        SolutionComboBox.Tag = plugin.Solutions.Count > 0
-            ? "Select a solution"
-            : "No solutions found";
-        SolutionComboBox.SelectedItem = plugin.Solutions.FirstOrDefault(solution =>
-            string.Equals(plugin.PluginProjectPath, _savedProfile.PluginProjectPath, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(solution.SolutionPath, _savedProfile.SolutionPath, StringComparison.OrdinalIgnoreCase)) ??
-            (plugin.Solutions.Count == 1 ? plugin.Solutions[0] : null);
-        ValidationText.Visibility = Visibility.Collapsed;
+        PluginBuildOptions? plugin = PluginProjectComboBox.SelectedItem as PluginBuildOptions;
+        _buildSelection = _buildSelection.SelectPlugin(plugin);
+        RenderBuildSelection();
+        if (plugin is not null)
+            ValidationText.Visibility = Visibility.Collapsed;
     }
 
     private void Solution_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (SolutionComboBox.SelectedItem is not SolutionBuildOptions solution)
-        {
-            BuildConfigurationComboBox.ItemsSource = null;
-            BuildConfigurationComboBox.IsEnabled = false;
-            BuildConfigurationComboBox.Tag = "Select a solution first";
+        if (_renderingBuildSelection || _buildSelection is null)
             return;
-        }
 
-        BuildConfigurationComboBox.ItemsSource = solution.Configurations;
-        BuildConfigurationComboBox.IsEnabled = solution.Configurations.Count > 0;
-        BuildConfigurationComboBox.Tag = solution.Configurations.Count > 0
-            ? "Select a configuration"
-            : "No configurations found";
-        BuildConfigurationComboBox.SelectedItem = solution.Configurations.FirstOrDefault(configuration =>
-            string.Equals(solution.SolutionPath, _savedProfile.SolutionPath, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(
-                configuration.Configuration,
-                _savedProfile.SelectedConfiguration.Configuration,
-                StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(
-                configuration.Platform,
-                _savedProfile.SelectedConfiguration.Platform,
-                StringComparison.OrdinalIgnoreCase)) ??
-            solution.Configurations.FirstOrDefault(configuration =>
-                string.Equals(configuration.Configuration, "Debug", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(configuration.Platform, "x64", StringComparison.OrdinalIgnoreCase)) ??
-            solution.Configurations.FirstOrDefault();
-        ValidationText.Visibility = Visibility.Collapsed;
+        SolutionBuildOptions? solution = SolutionComboBox.SelectedItem as SolutionBuildOptions;
+        _buildSelection = _buildSelection.SelectSolution(solution);
+        RenderBuildSelection();
+        if (solution is not null)
+            ValidationText.Visibility = Visibility.Collapsed;
+    }
+
+    private void BuildConfiguration_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_renderingBuildSelection || _buildSelection is null)
+            return;
+
+        _buildSelection = _buildSelection.SelectConfiguration(
+            BuildConfigurationComboBox.SelectedItem as BuildConfiguration);
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        if (PluginProjectComboBox.SelectedItem is null ||
-            SolutionComboBox.SelectedItem is null ||
-            BuildConfigurationComboBox.SelectedItem is null)
+        if (_buildSelection?.IsComplete != true)
         {
             ValidationText.Text = "Choose a plug-in project, solution, and build configuration.";
             ValidationText.Visibility = Visibility.Visible;
             return;
         }
         DialogResult = true;
+    }
+
+    private void RenderBuildSelection()
+    {
+        if (_buildSelection is null)
+            return;
+
+        _renderingBuildSelection = true;
+        try
+        {
+            PluginProjectComboBox.ItemsSource = _buildSelection.Plugins;
+            PluginProjectComboBox.IsEnabled = _buildSelection.PluginEnabled;
+            PluginProjectComboBox.Tag = _buildSelection.PluginPlaceholder;
+            PluginProjectComboBox.SelectedItem = _buildSelection.SelectedPlugin;
+
+            SolutionComboBox.ItemsSource = _buildSelection.Solutions;
+            SolutionComboBox.IsEnabled = _buildSelection.SolutionEnabled;
+            SolutionComboBox.Tag = _buildSelection.SolutionPlaceholder;
+            SolutionComboBox.SelectedItem = _buildSelection.SelectedSolution;
+
+            BuildConfigurationComboBox.ItemsSource = _buildSelection.Configurations;
+            BuildConfigurationComboBox.IsEnabled = _buildSelection.ConfigurationEnabled;
+            BuildConfigurationComboBox.Tag = _buildSelection.ConfigurationPlaceholder;
+            BuildConfigurationComboBox.SelectedItem = _buildSelection.SelectedConfiguration;
+        }
+        finally
+        {
+            _renderingBuildSelection = false;
+        }
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;

@@ -6,88 +6,104 @@ namespace RhinoWorktreeLauncher;
 
 public partial class AddProjectDialog : Window
 {
+    private BuildSelectionState _buildSelection;
+    private bool _renderingBuildSelection;
+
     public AddProjectDialog(string projectPath, ProjectBuildOptions buildOptions)
     {
+        _buildSelection = BuildSelectionState.ForAdd(buildOptions);
         InitializeComponent();
         ProjectPath = Path.GetFullPath(projectPath);
         ProjectPathText.Text = ProjectPath;
-        PluginProjectComboBox.ItemsSource = buildOptions.Plugins;
-        PluginProjectComboBox.SelectedIndex = buildOptions.Plugins.Count == 1 ? 0 : -1;
+        BuildConfigurationComboBox.SelectionChanged += BuildConfiguration_SelectionChanged;
+        RenderBuildSelection();
         Loaded += (_, _) => ApplyOwnerTheme();
     }
 
     public string ProjectPath { get; }
     public bool ReadRemote => RemoteReadToggle.IsChecked == true;
-    public string PluginProjectPath => ((PluginBuildOptions)PluginProjectComboBox.SelectedItem).PluginProjectPath;
-    public string SolutionPath => ((SolutionBuildOptions)SolutionComboBox.SelectedItem).SolutionPath;
-    public BuildConfiguration BuildConfiguration =>
-        (BuildConfiguration)BuildConfigurationComboBox.SelectedItem;
+    public string PluginProjectPath => _buildSelection.SelectedPlugin!.PluginProjectPath;
+    public string SolutionPath => _buildSelection.SelectedSolution!.SolutionPath;
+    public BuildConfiguration BuildConfiguration => _buildSelection.SelectedConfiguration!;
 
     private void PluginProject_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        BuildConfigurationComboBox.ItemsSource = null;
-        if (PluginProjectComboBox.SelectedItem is not PluginBuildOptions plugin)
-        {
-            SolutionComboBox.ItemsSource = null;
-            SolutionComboBox.IsEnabled = false;
-            SolutionComboBox.Tag = "Select a plug-in project first";
-            BuildConfigurationComboBox.IsEnabled = false;
-            BuildConfigurationComboBox.Tag = "Select a solution first";
+        if (_renderingBuildSelection)
             return;
-        }
 
-        SolutionComboBox.ItemsSource = plugin.Solutions;
-        SolutionComboBox.IsEnabled = plugin.Solutions.Count > 0;
-        SolutionComboBox.Tag = plugin.Solutions.Count > 0
-            ? "Select a solution"
-            : "No solutions found";
-        SolutionComboBox.SelectedIndex = plugin.Solutions.Count == 1 ? 0 : -1;
-        ValidationText.Visibility = Visibility.Collapsed;
+        PluginBuildOptions? plugin = PluginProjectComboBox.SelectedItem as PluginBuildOptions;
+        _buildSelection = _buildSelection.SelectPlugin(plugin);
+        RenderBuildSelection();
+        if (plugin is not null)
+            ValidationText.Visibility = Visibility.Collapsed;
     }
 
     private void Solution_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (SolutionComboBox.SelectedItem is not SolutionBuildOptions solution)
-        {
-            BuildConfigurationComboBox.ItemsSource = null;
-            BuildConfigurationComboBox.IsEnabled = false;
-            BuildConfigurationComboBox.Tag = "Select a solution first";
+        if (_renderingBuildSelection)
             return;
-        }
 
-        BuildConfigurationComboBox.ItemsSource = solution.Configurations;
-        BuildConfigurationComboBox.IsEnabled = solution.Configurations.Count > 0;
-        BuildConfigurationComboBox.Tag = solution.Configurations.Count > 0
-            ? "Select a configuration"
-            : "No configurations found";
-        BuildConfigurationComboBox.SelectedItem = solution.Configurations.FirstOrDefault(configuration =>
-            string.Equals(configuration.Configuration, "Debug", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(configuration.Platform, "x64", StringComparison.OrdinalIgnoreCase)) ??
-            solution.Configurations.FirstOrDefault(configuration =>
-                string.Equals(configuration.Configuration, "Debug", StringComparison.OrdinalIgnoreCase)) ??
-            solution.Configurations.FirstOrDefault();
-        ValidationText.Visibility = Visibility.Collapsed;
+        SolutionBuildOptions? solution = SolutionComboBox.SelectedItem as SolutionBuildOptions;
+        _buildSelection = _buildSelection.SelectSolution(solution);
+        RenderBuildSelection();
+        if (solution is not null)
+            ValidationText.Visibility = Visibility.Collapsed;
+    }
+
+    private void BuildConfiguration_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_renderingBuildSelection)
+            return;
+
+        _buildSelection = _buildSelection.SelectConfiguration(
+            BuildConfigurationComboBox.SelectedItem as BuildConfiguration);
     }
 
     private void Add_Click(object sender, RoutedEventArgs e)
     {
-        if (PluginProjectComboBox.SelectedItem is null)
+        if (_buildSelection.SelectedPlugin is null)
         {
             ShowValidation("Choose the Rhino plug-in project to launch.");
             return;
         }
-        if (SolutionComboBox.SelectedItem is null)
+        if (_buildSelection.SelectedSolution is null)
         {
             ShowValidation("Choose the solution RWL should build.");
             return;
         }
-        if (BuildConfigurationComboBox.SelectedItem is null)
+        if (_buildSelection.SelectedConfiguration is null)
         {
             ShowValidation("Choose a solution build configuration.");
             return;
         }
 
         DialogResult = true;
+    }
+
+    private void RenderBuildSelection()
+    {
+        _renderingBuildSelection = true;
+        try
+        {
+            PluginProjectComboBox.ItemsSource = _buildSelection.Plugins;
+            PluginProjectComboBox.IsEnabled = _buildSelection.PluginEnabled;
+            PluginProjectComboBox.Tag = _buildSelection.PluginPlaceholder;
+            PluginProjectComboBox.SelectedItem = _buildSelection.SelectedPlugin;
+
+            SolutionComboBox.ItemsSource = _buildSelection.Solutions;
+            SolutionComboBox.IsEnabled = _buildSelection.SolutionEnabled;
+            SolutionComboBox.Tag = _buildSelection.SolutionPlaceholder;
+            SolutionComboBox.SelectedItem = _buildSelection.SelectedSolution;
+
+            BuildConfigurationComboBox.ItemsSource = _buildSelection.Configurations;
+            BuildConfigurationComboBox.IsEnabled = _buildSelection.ConfigurationEnabled;
+            BuildConfigurationComboBox.Tag = _buildSelection.ConfigurationPlaceholder;
+            BuildConfigurationComboBox.SelectedItem = _buildSelection.SelectedConfiguration;
+        }
+        finally
+        {
+            _renderingBuildSelection = false;
+        }
     }
 
     private void ShowValidation(string message)
