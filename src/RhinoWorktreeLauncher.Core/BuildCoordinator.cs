@@ -32,17 +32,12 @@ internal sealed class BuildCoordinator
                     "Choose a solution build configuration in Config before launching."));
             }
 
-            BuildProfile profile = BuildProfileDiscovery.Discover(
+            ResolvedBuildProfile resolved = BuildProfileResolver.Resolve(
                 context.WorktreePath,
-                context.BuildProfile.PluginProjectPath,
-                context.BuildProfile.SolutionPath,
-                context.BuildProfile.SelectedConfiguration,
+                context.BuildProfile,
+                BuildProfileResolutionMode.RediscoverCanonicalSelection,
                 launchMode);
-            BuildConfiguration projectConfiguration = BuildProfileDiscovery.ResolveProjectConfiguration(
-                context.WorktreePath,
-                profile);
-            string solutionPath = ResolveContainedPath(context.WorktreePath, profile.SolutionPath);
-            string projectPath = ResolveContainedPath(context.WorktreePath, profile.PluginProjectPath);
+            BuildProfile profile = resolved.Profile;
 
             if (profile.LaunchMode == LaunchMode.BuildAndLaunch)
             {
@@ -56,7 +51,7 @@ internal sealed class BuildCoordinator
                     new[]
                     {
                         "build",
-                        solutionPath,
+                        resolved.SolutionPath,
                         "-c",
                         profile.SelectedConfiguration.Configuration,
                         $"-p:Platform={profile.SelectedConfiguration.Platform}"
@@ -74,9 +69,9 @@ internal sealed class BuildCoordinator
 
             string pluginPath = await ResolveTargetPathAsync(
                 context.WorktreePath,
-                solutionPath,
-                projectPath,
-                projectConfiguration,
+                resolved.SolutionPath,
+                resolved.PluginProjectPath,
+                resolved.ProjectConfiguration,
                 cancellationToken);
             if (!File.Exists(pluginPath))
             {
@@ -152,18 +147,6 @@ internal sealed class BuildCoordinator
         return Path.GetFullPath(Path.IsPathRooted(targetPath)
             ? targetPath
             : Path.Combine(Path.GetDirectoryName(projectPath)!, targetPath));
-    }
-
-    private static string ResolveContainedPath(string root, string relativePath)
-    {
-        if (Path.IsPathRooted(relativePath))
-            throw new InvalidDataException("Build configuration paths must be relative to the selected worktree.");
-        string fullRoot = Path.GetFullPath(root);
-        string path = Path.GetFullPath(Path.Combine(fullRoot, relativePath));
-        string prefix = fullRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException($"Build configuration path '{relativePath}' escaped the selected worktree.");
-        return path;
     }
 
     private static string ResolveDependency(string packageDirectory, string name)

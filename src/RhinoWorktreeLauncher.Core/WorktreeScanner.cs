@@ -89,7 +89,7 @@ internal sealed class WorktreeScanner
     {
         string path = Path.GetFullPath(descriptor.Path);
         bool isPrimary = ContextResolver.SamePath(path, project.Registration.PrimaryCheckout);
-        bool canLaunch = BuildProfileDiscovery.IsAvailable(
+        bool canLaunch = BuildProfileResolver.IsAvailable(
             path,
             project.Registration.BuildProfile);
 

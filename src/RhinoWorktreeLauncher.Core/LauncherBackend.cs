@@ -211,13 +211,11 @@ public sealed class LauncherBackend
         {
             try
             {
-                BuildProfile current = BuildProfileDiscovery.Discover(
+                _ = BuildProfileResolver.Resolve(
                     context.WorktreePath,
-                    context.BuildProfile.PluginProjectPath,
-                    context.BuildProfile.SolutionPath,
-                    context.BuildProfile.SelectedConfiguration,
+                    context.BuildProfile,
+                    BuildProfileResolutionMode.RediscoverCanonicalSelection,
                     context.BuildProfile.LaunchMode);
-                _ = BuildProfileDiscovery.ResolveProjectConfiguration(context.WorktreePath, current);
             }
             catch (Exception exception)
             {
