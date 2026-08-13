@@ -90,17 +90,14 @@ internal sealed class RemoteMirrorStore
             : (0, 0);
     }
 
-    public async Task ClearAsync(string projectId, CancellationToken cancellationToken)
+    public Task ClearAsync(string projectId, CancellationToken cancellationToken)
     {
         string mirrorPath = ResolveMirrorPath(
             projectId,
             "The cache path escaped RWL application storage.");
-        if (!Directory.Exists(mirrorPath))
-            return;
-
-        await using FileStream mirrorLock = await AcquireLockAsync(mirrorPath, cancellationToken);
         if (Directory.Exists(mirrorPath))
             Directory.Delete(mirrorPath, recursive: true);
+        return Task.CompletedTask;
     }
 
     private Task<string> RunSourceGitAsync(

@@ -5,7 +5,7 @@ namespace RhinoWorktreeLauncher.Tests;
 public sealed class RemoteMirrorStoreTests
 {
     [Fact]
-    public async Task Clear_waits_for_the_same_mirror_lock_used_by_refresh_and_divergence()
+    public async Task Clear_preserves_non_coordinated_deletion_while_a_mirror_lock_is_held()
     {
         using TemporaryDirectory temporary = new TemporaryDirectory();
         string remotesDirectory = temporary.CreateDirectory("launcher/remotes");
@@ -25,11 +25,9 @@ public sealed class RemoteMirrorStoreTests
             FileShare.None);
         Task clear = store.ClearAsync("repository", CancellationToken.None);
 
-        Assert.False(clear.IsCompleted);
-        Assert.True(File.Exists(mirrorFile));
-        heldLock.Dispose();
-        await clear.WaitAsync(TimeSpan.FromSeconds(5));
+        await clear;
 
+        Assert.False(File.Exists(mirrorFile));
         Assert.False(Directory.Exists(mirrorPath));
         Assert.True(Directory.Exists(remotesDirectory));
     }
