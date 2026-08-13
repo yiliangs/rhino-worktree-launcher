@@ -8,10 +8,10 @@ internal sealed class WorktreeScanner
     private readonly LauncherBackendOptions _options;
     private readonly RemoteMirrorStore _remoteMirrors;
 
-    public WorktreeScanner(LauncherBackendOptions options)
+    public WorktreeScanner(LauncherBackendOptions options, RemoteMirrorStore remoteMirrors)
     {
         _options = options;
-        _remoteMirrors = new RemoteMirrorStore(options);
+        _remoteMirrors = remoteMirrors;
     }
 
     public async Task<CommandResult<ProjectWorktrees>> ScanAsync(
