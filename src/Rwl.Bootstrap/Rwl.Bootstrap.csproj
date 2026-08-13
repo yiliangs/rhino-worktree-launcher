@@ -10,4 +10,8 @@
     <AssemblyName>rwl</AssemblyName>
     <ApplicationIcon>..\RhinoWorktreeLauncher\Assets\rhino-launcher.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Rwl.Protocol\RhinoBrokerProtocol.cs" Link="Protocol\RhinoBrokerProtocol.cs" />
+  </ItemGroup>
 </Project>

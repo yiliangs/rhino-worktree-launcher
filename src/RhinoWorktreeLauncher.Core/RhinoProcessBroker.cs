@@ -5,18 +5,12 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
-using System.Text.Json;
+using Rwl.Protocol;
 
 namespace RhinoWorktreeLauncher;
 
 internal static class RhinoProcessBroker
 {
-    private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
-    };
-
     public static Process Start(ProcessStartInfo configured)
     {
         string bootstrapPath = Environment.GetEnvironmentVariable("RWL_BOOTSTRAP_PATH") ?? string.Empty;
@@ -65,14 +59,14 @@ internal static class RhinoProcessBroker
                 Arguments = configured.ArgumentList.ToArray(),
                 Environment = GetEnvironmentOverrides(configured)
             };
-            await writer.WriteLineAsync(JsonSerializer.Serialize(request, JsonOptions))
+            await writer.WriteLineAsync(RhinoBrokerProtocol.SerializeRequest(request))
                 .WaitAsync(timeout.Token)
                 .ConfigureAwait(false);
 
             string? responseLine = await reader.ReadLineAsync(timeout.Token).ConfigureAwait(false);
             RhinoLaunchResponse response = responseLine is null
                 ? throw new InvalidOperationException("The Rhino launch broker closed without returning a process.")
-                : JsonSerializer.Deserialize<RhinoLaunchResponse>(responseLine, JsonOptions) ??
+                : RhinoBrokerProtocol.DeserializeResponse(responseLine) ??
                     throw new InvalidDataException("The Rhino launch broker returned an empty response.");
             if (!string.IsNullOrWhiteSpace(response.Error))
                 throw new InvalidOperationException(response.Error);
@@ -198,17 +192,4 @@ internal static class RhinoProcessBroker
         }
     }
 
-    private sealed class RhinoLaunchRequest
-    {
-        public string Executable { get; init; } = string.Empty;
-        public string WorkingDirectory { get; init; } = string.Empty;
-        public string[] Arguments { get; init; } = Array.Empty<string>();
-        public Dictionary<string, string?> Environment { get; init; } = new Dictionary<string, string?>();
-    }
-
-    private sealed class RhinoLaunchResponse
-    {
-        public int ProcessId { get; init; }
-        public string? Error { get; init; }
-    }
 }
