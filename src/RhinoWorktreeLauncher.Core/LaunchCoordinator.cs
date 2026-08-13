@@ -268,7 +268,7 @@ internal sealed class LaunchCoordinator
             throw new VerificationException("Verifier launch ID does not match this launch.");
         if (actual.ProcessId != processId)
             throw new VerificationException("Verifier process ID does not match the Rhino process.");
-        if (!ContextResolver.SamePath(actual.PluginPath, expected.PluginPath))
+        if (!PathIdentity.AreEquivalent(actual.PluginPath, expected.PluginPath))
             throw new VerificationException("Rhino loaded the plug-in from an unexpected path.");
 
         Dictionary<string, VerifiedDependency> loaded = actual.CriticalDependencies.ToDictionary(
@@ -277,7 +277,7 @@ internal sealed class LaunchCoordinator
         foreach (VerifiedDependency dependency in expected.CriticalDependencies)
         {
             if (!loaded.TryGetValue(dependency.Name, out VerifiedDependency? actualDependency) ||
-                !ContextResolver.SamePath(actualDependency.Path, dependency.Path))
+                !PathIdentity.AreEquivalent(actualDependency.Path, dependency.Path))
             {
                 throw new VerificationException(
                     $"Rhino loaded critical dependency '{dependency.Name}' from an unexpected path.");

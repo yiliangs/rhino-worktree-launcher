@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using Rwl.Protocol;
 
 namespace Rwl.Bootstrap;
 
@@ -116,9 +117,7 @@ internal static class Program
             string? requestLine = await reader.ReadLineAsync(timeout.Token);
             RhinoLaunchRequest request = requestLine is null
                 ? throw new InvalidDataException("The launcher closed without providing a Rhino launch request.")
-                : JsonSerializer.Deserialize<RhinoLaunchRequest>(
-                    requestLine,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ??
+                : RhinoBrokerProtocol.DeserializeRequest(requestLine) ??
                     throw new InvalidDataException("The Rhino launch request was empty.");
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
@@ -140,7 +139,7 @@ internal static class Program
                 throw new InvalidOperationException($"Could not start '{request.Executable}'.");
             int processId = process.Id;
             process.Dispose();
-            await writer.WriteLineAsync(JsonSerializer.Serialize(new RhinoLaunchResponse
+            await writer.WriteLineAsync(RhinoBrokerProtocol.SerializeResponse(new RhinoLaunchResponse
             {
                 ProcessId = processId
             })).WaitAsync(timeout.Token);
@@ -148,7 +147,7 @@ internal static class Program
         }
         catch (Exception exception)
         {
-            await writer.WriteLineAsync(JsonSerializer.Serialize(new RhinoLaunchResponse
+            await writer.WriteLineAsync(RhinoBrokerProtocol.SerializeResponse(new RhinoLaunchResponse
             {
                 Error = exception.Message
             }));
@@ -188,20 +187,6 @@ internal static class Program
         public string Desktop { get; init; } = string.Empty;
         public string Cli { get; init; } = string.Empty;
         public string Mcp { get; init; } = string.Empty;
-    }
-
-    private sealed class RhinoLaunchRequest
-    {
-        public string Executable { get; init; } = string.Empty;
-        public string WorkingDirectory { get; init; } = string.Empty;
-        public string[] Arguments { get; init; } = Array.Empty<string>();
-        public Dictionary<string, string?> Environment { get; init; } = new Dictionary<string, string?>();
-    }
-
-    private sealed class RhinoLaunchResponse
-    {
-        public int ProcessId { get; init; }
-        public string? Error { get; init; }
     }
 
 }

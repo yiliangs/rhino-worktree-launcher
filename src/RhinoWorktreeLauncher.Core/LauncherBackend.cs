@@ -4,6 +4,7 @@ public sealed class LauncherBackend
 {
     private readonly ProjectCatalog _catalog;
     private readonly ContextResolver _contextResolver;
+    private readonly RemoteMirrorStore _remoteMirrors;
     private readonly WorktreeScanner _scanner;
     private readonly BuildCoordinator _buildCoordinator;
     private readonly LaunchCoordinator _launchCoordinator;
@@ -13,7 +14,8 @@ public sealed class LauncherBackend
         Options = options ?? new LauncherBackendOptions();
         _catalog = new ProjectCatalog(Options.CatalogPath);
         _contextResolver = new ContextResolver(_catalog);
-        _scanner = new WorktreeScanner(Options);
+        _remoteMirrors = new RemoteMirrorStore(Options);
+        _scanner = new WorktreeScanner(Options, _remoteMirrors);
         _buildCoordinator = new BuildCoordinator(Options, _contextResolver);
         _launchCoordinator = new LaunchCoordinator(Options, _contextResolver, _buildCoordinator);
     }
@@ -97,7 +99,7 @@ public sealed class LauncherBackend
 
         try
         {
-            DeleteOwnedDirectory(Options.RemotesDirectory, projectId + ".git");
+            await _remoteMirrors.ClearAsync(projectId, cancellationToken);
             return CommandResult<bool>.Success(true);
         }
         catch (Exception exception)
@@ -211,13 +213,11 @@ public sealed class LauncherBackend
         {
             try
             {
-                BuildProfile current = BuildProfileDiscovery.Discover(
+                _ = BuildProfileResolver.Resolve(
                     context.WorktreePath,
-                    context.BuildProfile.PluginProjectPath,
-                    context.BuildProfile.SolutionPath,
-                    context.BuildProfile.SelectedConfiguration,
+                    context.BuildProfile,
+                    BuildProfileResolutionMode.RediscoverCanonicalSelection,
                     context.BuildProfile.LaunchMode);
-                _ = BuildProfileDiscovery.ResolveProjectConfiguration(context.WorktreePath, current);
             }
             catch (Exception exception)
             {
@@ -323,14 +323,4 @@ public sealed class LauncherBackend
         }
     }
 
-    private static void DeleteOwnedDirectory(string root, string childName)
-    {
-        string ownedRoot = Path.GetFullPath(root);
-        string target = Path.GetFullPath(Path.Combine(ownedRoot, childName));
-        string prefix = ownedRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if (!target.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("The cache path escaped RWL application storage.");
-        if (Directory.Exists(target))
-            Directory.Delete(target, recursive: true);
-    }
 }

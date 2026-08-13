@@ -192,8 +192,6 @@ public sealed record LaunchProgress(
     string Message,
     DateTimeOffset Timestamp);
 
-public sealed record VerifiedDependency(string Name, string Path);
-
 public sealed record LaunchResult(
     string LaunchId,
     LaunchStatus Status,

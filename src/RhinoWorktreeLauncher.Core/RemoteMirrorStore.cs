@@ -25,13 +25,9 @@ internal sealed class RemoteMirrorStore
             throw new InvalidOperationException("The registered project does not define remote 'origin'.");
 
         Directory.CreateDirectory(_options.RemotesDirectory);
-        string mirrorPath = Path.GetFullPath(Path.Combine(
-            _options.RemotesDirectory,
-            project.ProjectId + ".git"));
-        string rootPrefix = Path.GetFullPath(_options.RemotesDirectory)
-            .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if (!mirrorPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("The remote mirror path escaped RWL application storage.");
+        string mirrorPath = ResolveMirrorPath(
+            project.ProjectId,
+            "The remote mirror path escaped RWL application storage.");
 
         await using FileStream mirrorLock = await AcquireLockAsync(mirrorPath, cancellationToken);
         if (!Directory.Exists(mirrorPath))
@@ -94,6 +90,16 @@ internal sealed class RemoteMirrorStore
             : (0, 0);
     }
 
+    public Task ClearAsync(string projectId, CancellationToken cancellationToken)
+    {
+        string mirrorPath = ResolveMirrorPath(
+            projectId,
+            "The cache path escaped RWL application storage.");
+        if (Directory.Exists(mirrorPath))
+            Directory.Delete(mirrorPath, recursive: true);
+        return Task.CompletedTask;
+    }
+
     private Task<string> RunSourceGitAsync(
         string workingDirectory,
         IEnumerable<string> arguments,
@@ -116,6 +122,16 @@ internal sealed class RemoteMirrorStore
     {
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(path).ToUpperInvariant()));
         return Convert.ToHexString(hash).ToLowerInvariant()[..24];
+    }
+
+    private string ResolveMirrorPath(string projectId, string escapeMessage)
+    {
+        string root = Path.GetFullPath(_options.RemotesDirectory);
+        string mirrorPath = Path.GetFullPath(Path.Combine(root, projectId + ".git"));
+        string rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!mirrorPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException(escapeMessage);
+        return mirrorPath;
     }
 
     private static async Task<FileStream> AcquireLockAsync(

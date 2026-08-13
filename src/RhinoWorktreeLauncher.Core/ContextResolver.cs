@@ -36,7 +36,7 @@ public sealed class ContextResolver
         IReadOnlyList<ProjectRegistration> registrations =
             await _catalog.LoadRegistrationsAsync(cancellationToken);
         ProjectRegistration? registration = registrations.FirstOrDefault(candidate =>
-            SamePath(candidate.GitCommonDirectory, gitCommonDirectory));
+            PathIdentity.AreEquivalent(candidate.GitCommonDirectory, gitCommonDirectory));
         if (registration is null)
         {
             return CommandResult<ResolvedContext>.Failure(new Diagnostic(
@@ -50,7 +50,7 @@ public sealed class ContextResolver
             registration.GitCommonDirectory,
             registration.PrimaryCheckout,
             worktreePath,
-            SamePath(worktreePath, registration.PrimaryCheckout),
+            PathIdentity.AreEquivalent(worktreePath, registration.PrimaryCheckout),
             registration.RhinoVersion,
             registration.BuildProfile));
     }
@@ -60,9 +60,4 @@ public sealed class ContextResolver
         string fullPath = Path.GetFullPath(path);
         return File.Exists(fullPath) ? Path.GetDirectoryName(fullPath)! : fullPath;
     }
-
-    internal static bool SamePath(string left, string right) => string.Equals(
-        Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar),
-        Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar),
-        StringComparison.OrdinalIgnoreCase);
 }

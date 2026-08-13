@@ -8,10 +8,10 @@ internal sealed class WorktreeScanner
     private readonly LauncherBackendOptions _options;
     private readonly RemoteMirrorStore _remoteMirrors;
 
-    public WorktreeScanner(LauncherBackendOptions options)
+    public WorktreeScanner(LauncherBackendOptions options, RemoteMirrorStore remoteMirrors)
     {
         _options = options;
-        _remoteMirrors = new RemoteMirrorStore(options);
+        _remoteMirrors = remoteMirrors;
     }
 
     public async Task<CommandResult<ProjectWorktrees>> ScanAsync(
@@ -88,8 +88,8 @@ internal sealed class WorktreeScanner
         WorktreeDescriptor descriptor)
     {
         string path = Path.GetFullPath(descriptor.Path);
-        bool isPrimary = ContextResolver.SamePath(path, project.Registration.PrimaryCheckout);
-        bool canLaunch = BuildProfileDiscovery.IsAvailable(
+        bool isPrimary = PathIdentity.AreEquivalent(path, project.Registration.PrimaryCheckout);
+        bool canLaunch = BuildProfileResolver.IsAvailable(
             path,
             project.Registration.BuildProfile);
 

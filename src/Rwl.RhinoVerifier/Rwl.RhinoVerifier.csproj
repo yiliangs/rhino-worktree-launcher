@@ -14,4 +14,8 @@
     <PackageReference Include="RhinoCommon" Version="8.32.26160.13001" ExcludeAssets="runtime" PrivateAssets="all" />
     <Reference Include="System.Runtime.Serialization" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Rwl.Protocol\VerifierProtocol.cs" Link="Protocol\VerifierProtocol.cs" />
+  </ItemGroup>
 </Project>
