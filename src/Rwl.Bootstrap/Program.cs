@@ -58,11 +58,17 @@ internal static class Program
                     break;
             }
 
+            // This bootstrap is a windowless host, so it holds no console unless the
+            // AttachConsole above succeeded. Starting a console executable such as
+            // rwl-cli.exe from a console-less process makes Windows allocate a fresh
+            // console window, which flashes on every hook invocation. Redirecting the
+            // standard streams does not suppress that; only CreateNoWindow does.
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = executable,
                 WorkingDirectory = Path.GetDirectoryName(executable)!,
-                UseShellExecute = false
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
             if (wait)
             {
