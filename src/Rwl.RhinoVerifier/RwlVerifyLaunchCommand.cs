@@ -1,6 +1,7 @@
 using Rhino;
 using Rhino.Commands;
 using Rhino.PlugIns;
+using RhinoWorktreeLauncher;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,7 +9,6 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 
 namespace Rwl.RhinoVerifier
@@ -30,10 +30,10 @@ namespace Rwl.RhinoVerifier
                 return Result.Failure;
             }
 
-            VerifyRequest request = null;
+            VerifierRequest request = null;
             try
             {
-                request = Read<VerifyRequest>(requestPath);
+                request = Read<VerifierRequest>(requestPath);
                 if (request.SchemaVersion != 1 || request.PluginId == Guid.Empty)
                     throw new InvalidDataException("The RWL verification request is invalid.");
 
@@ -45,9 +45,9 @@ namespace Rwl.RhinoVerifier
                     throw new InvalidOperationException("Rhino did not expose the loaded plug-in instance.");
 
                 string pluginPath = plugin.GetType().Assembly.Location;
-                List<VerifyDependency> dependencies = new List<VerifyDependency>();
+                List<VerifiedDependency> dependencies = new List<VerifiedDependency>();
                 Assembly[] loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
-                foreach (VerifyDependency expected in request.CriticalDependencies ?? new VerifyDependency[0])
+                foreach (VerifiedDependency expected in request.CriticalDependencies ?? new VerifiedDependency[0])
                 {
                     Assembly assembly = loadedAssemblies.FirstOrDefault(candidate => string.Equals(
                         candidate.GetName().Name,
@@ -56,14 +56,10 @@ namespace Rwl.RhinoVerifier
                     if (assembly == null || string.IsNullOrWhiteSpace(assembly.Location))
                         throw new InvalidOperationException(
                             string.Format("Critical dependency '{0}' is not loaded.", expected.Name));
-                    dependencies.Add(new VerifyDependency
-                    {
-                        Name = expected.Name,
-                        Path = assembly.Location
-                    });
+                    dependencies.Add(new VerifiedDependency(expected.Name, assembly.Location));
                 }
 
-                WriteAtomic(request.ResultPath, new VerifyResult
+                WriteAtomic(request.ResultPath, new VerifierResult
                 {
                     SchemaVersion = 1,
                     Status = "loaded",
@@ -81,14 +77,14 @@ namespace Rwl.RhinoVerifier
                 {
                     try
                     {
-                        WriteAtomic(request.ResultPath, new VerifyResult
+                        WriteAtomic(request.ResultPath, new VerifierResult
                         {
                             SchemaVersion = 1,
                             Status = "failed",
                             Error = exception.Message,
                             LaunchId = request.LaunchId,
                             ProcessId = Process.GetCurrentProcess().Id,
-                            CriticalDependencies = new VerifyDependency[0]
+                            CriticalDependencies = new VerifiedDependency[0]
                         });
                     }
                     catch
@@ -134,61 +130,5 @@ namespace Rwl.RhinoVerifier
             }
         }
 
-        [DataContract]
-        private sealed class VerifyRequest
-        {
-            [DataMember(Name = "schemaVersion")]
-            public int SchemaVersion { get; set; }
-
-            [DataMember(Name = "launchId")]
-            public string LaunchId { get; set; }
-
-            [DataMember(Name = "pluginId")]
-            public Guid PluginId { get; set; }
-
-            [DataMember(Name = "pluginPath")]
-            public string PluginPath { get; set; }
-
-            [DataMember(Name = "criticalDependencies")]
-            public VerifyDependency[] CriticalDependencies { get; set; }
-
-            [DataMember(Name = "resultPath")]
-            public string ResultPath { get; set; }
-        }
-
-        [DataContract]
-        private sealed class VerifyResult
-        {
-            [DataMember(Name = "schemaVersion")]
-            public int SchemaVersion { get; set; }
-
-            [DataMember(Name = "status")]
-            public string Status { get; set; }
-
-            [DataMember(Name = "error", EmitDefaultValue = false)]
-            public string Error { get; set; }
-
-            [DataMember(Name = "launchId")]
-            public string LaunchId { get; set; }
-
-            [DataMember(Name = "processId")]
-            public int ProcessId { get; set; }
-
-            [DataMember(Name = "pluginPath", EmitDefaultValue = false)]
-            public string PluginPath { get; set; }
-
-            [DataMember(Name = "criticalDependencies")]
-            public VerifyDependency[] CriticalDependencies { get; set; }
-        }
-
-        [DataContract]
-        private sealed class VerifyDependency
-        {
-            [DataMember(Name = "name")]
-            public string Name { get; set; }
-
-            [DataMember(Name = "path")]
-            public string Path { get; set; }
-        }
     }
 }

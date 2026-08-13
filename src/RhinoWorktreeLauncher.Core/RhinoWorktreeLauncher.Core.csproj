@@ -8,4 +8,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.VisualStudio.SolutionPersistence" Version="1.0.52" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Rwl.Protocol\VerifierProtocol.cs" Link="Protocol\VerifierProtocol.cs" />
+  </ItemGroup>
 </Project>
