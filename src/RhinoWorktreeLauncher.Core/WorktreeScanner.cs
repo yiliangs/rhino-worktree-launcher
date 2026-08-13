@@ -88,7 +88,7 @@ internal sealed class WorktreeScanner
         WorktreeDescriptor descriptor)
     {
         string path = Path.GetFullPath(descriptor.Path);
-        bool isPrimary = ContextResolver.SamePath(path, project.Registration.PrimaryCheckout);
+        bool isPrimary = PathIdentity.AreEquivalent(path, project.Registration.PrimaryCheckout);
         bool canLaunch = BuildProfileResolver.IsAvailable(
             path,
             project.Registration.BuildProfile);

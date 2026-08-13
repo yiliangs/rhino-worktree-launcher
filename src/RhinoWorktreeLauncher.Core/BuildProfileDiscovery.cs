@@ -126,7 +126,7 @@ internal static class BuildProfileDiscovery
         {
             SolutionModel solution = SolutionModelReader.Open(solutionPath);
             string solutionDirectory = Path.GetDirectoryName(solutionPath)!;
-            SolutionProjectModel? pluginProject = solution.SolutionProjects.FirstOrDefault(item => ContextResolver.SamePath(
+            SolutionProjectModel? pluginProject = solution.SolutionProjects.FirstOrDefault(item => PathIdentity.AreEquivalent(
                 Path.GetFullPath(Path.Combine(solutionDirectory, item.FilePath)),
                 projectPath));
             if (pluginProject is null)
@@ -266,7 +266,7 @@ internal static class BuildProfileDiscovery
     {
         DirectoryInfo? directory = new FileInfo(path).Directory;
         string fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
-        while (directory is not null && !ContextResolver.SamePath(directory.FullName, fullRoot))
+        while (directory is not null && !PathIdentity.AreEquivalent(directory.FullName, fullRoot))
         {
             if (Directory.Exists(Path.Combine(directory.FullName, ".git")) ||
                 File.Exists(Path.Combine(directory.FullName, ".git")))

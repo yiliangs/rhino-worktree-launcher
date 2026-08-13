@@ -56,7 +56,7 @@ public sealed class ProjectCatalog
         ProjectRegistration? existing = (await ReadCurrentFileAsync(cancellationToken)).Projects
             .Where(record => record.IsComplete)
             .Select(record => record.ToRegistration())
-            .FirstOrDefault(registration => ContextResolver.SamePath(
+            .FirstOrDefault(registration => PathIdentity.AreEquivalent(
                 registration.GitCommonDirectory,
                 gitCommonDirectory));
         ProjectIdentity identity = existing is null
@@ -97,7 +97,7 @@ public sealed class ProjectCatalog
         {
             file.Projects.RemoveAll(record =>
                 string.Equals(record.ProjectId, registration.ProjectId, StringComparison.OrdinalIgnoreCase) ||
-                (!string.IsNullOrWhiteSpace(record.GitCommonDirectory) && ContextResolver.SamePath(
+                (!string.IsNullOrWhiteSpace(record.GitCommonDirectory) && PathIdentity.AreEquivalent(
                     record.GitCommonDirectory,
                     registration.GitCommonDirectory)));
             file.Projects.Add(CatalogRegistrationRecord.From(registration));

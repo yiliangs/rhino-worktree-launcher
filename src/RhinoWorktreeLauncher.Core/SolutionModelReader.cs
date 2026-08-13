@@ -22,7 +22,7 @@ internal static class SolutionModelReader
     {
         SolutionModel solution = Open(solutionPath);
         string solutionDirectory = Path.GetDirectoryName(solutionPath)!;
-        SolutionProjectModel project = solution.SolutionProjects.FirstOrDefault(item => ContextResolver.SamePath(
+        SolutionProjectModel project = solution.SolutionProjects.FirstOrDefault(item => PathIdentity.AreEquivalent(
             Path.GetFullPath(Path.Combine(solutionDirectory, item.FilePath)),
             pluginProjectPath)) ?? throw new InvalidDataException(
             $"Solution '{profile.SolutionPath}' no longer contains plug-in project '{profile.PluginProjectPath}'.");
