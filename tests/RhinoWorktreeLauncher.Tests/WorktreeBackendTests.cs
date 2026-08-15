@@ -144,6 +144,71 @@ public sealed class WorktreeBackendTests
     }
 
     [Fact]
+    public async Task Registration_excludes_non_assembly_project_references_from_critical_dependencies()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string repository = temporary.CreateDirectory("sample-plugin");
+        temporary.Run("git", repository, "init", "--quiet");
+        temporary.Run("git", repository, "config", "user.email", "tests@example.com");
+        temporary.Run("git", repository, "config", "user.name", "RWL Tests");
+        temporary.WriteFile(
+            "sample-plugin/Sample/Sample.csproj",
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net481</TargetFramework>
+                <TargetExt>.rhp</TargetExt>
+              </PropertyGroup>
+              <ItemGroup>
+                <Reference Include="RhinoCommon" />
+                <ProjectReference Include="..\Library\Library.csproj" />
+                <ProjectReference Include="..\Overlay\Overlay.csproj" ReferenceOutputAssembly="false" />
+                <ProjectReference Include="..\Companion\Companion.csproj">
+                  <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+                </ProjectReference>
+              </ItemGroup>
+            </Project>
+            """);
+        temporary.WriteFile(
+            "sample-plugin/Sample/SamplePlugin.cs",
+            """
+            using System.Runtime.InteropServices;
+            using Rhino.PlugIns;
+            [assembly: Guid("ef680fd0-d674-41b5-9c08-5a5d6f925fd1")]
+            public sealed class SamplePlugin : PlugIn { }
+            """);
+        temporary.WriteFile(
+            "sample-plugin/Sample.slnx",
+            """
+            <Solution>
+              <Configurations>
+                <BuildType Name="Debug" />
+                <BuildType Name="Release" />
+                <Platform Name="Any CPU" />
+                <Platform Name="x64" />
+              </Configurations>
+              <Project Path="Sample/Sample.csproj" />
+            </Solution>
+            """);
+        temporary.Run("git", repository, "add", ".");
+        temporary.Run("git", repository, "commit", "--quiet", "-m", "initial");
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs")
+        });
+
+        CommandResult<ProjectRegistration> result = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.Equal(
+            new[] { "Library" },
+            result.Value!.BuildProfile.Artifacts.CriticalDependencies);
+    }
+
+    [Fact]
     public async Task Registration_requires_an_explicit_solution_when_multiple_solutions_contain_the_plugin()
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();

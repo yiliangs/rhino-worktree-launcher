@@ -210,6 +210,7 @@ internal static class BuildProfileDiscovery
         string platforms = Value(document, "Platforms") ?? Value(document, "Platform") ?? "Any CPU";
         string[] references = document.Descendants()
             .Where(element => string.Equals(element.Name.LocalName, "ProjectReference", StringComparison.Ordinal))
+            .Where(ReferencesOutputAssembly)
             .Select(element => (string?)element.Attribute("Include"))
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => Path.GetFileNameWithoutExtension(value!))
@@ -223,6 +224,19 @@ internal static class BuildProfileDiscovery
             pluginId,
             references,
             hasRhpTarget);
+    }
+
+    private static bool ReferencesOutputAssembly(XElement reference)
+    {
+        // ReferenceOutputAssembly=false marks a build-ordering dependency whose
+        // assembly never lands beside the referencing project's output.
+        string? value = (string?)reference.Attribute("ReferenceOutputAssembly") ?? reference.Elements()
+            .FirstOrDefault(element => string.Equals(
+                element.Name.LocalName,
+                "ReferenceOutputAssembly",
+                StringComparison.Ordinal))?
+            .Value;
+        return !string.Equals(value?.Trim(), "false", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Guid FindPlugInGuid(string projectDirectory)
