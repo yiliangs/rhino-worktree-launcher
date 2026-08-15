@@ -9,7 +9,6 @@ Independent .NET 8 Windows application with one backend and three adapters: nati
 - `Rwl.Cli` is the script/diagnostic adapter and Claude `SessionStart` hook target.
 - `Rwl.Mcp` is a thin newline-delimited JSON-RPC stdio server over the same commands. Its launch tool remains one blocking request.
 - `Rwl.Bootstrap` is the stable `%LOCALAPPDATA%\RhinoWorktreeLauncher\bootstrap\rwl.exe`. It resolves `current.json` and forwards to the current versioned desktop, CLI, or MCP executable.
-- `Rwl.RhinoVerifier` is the bundled Rhino 8 verifier.
 - `eng/New-RwlPackage.ps1` is the only installable-payload producer. Source installs, packaged installs, and releases consume its payload shape; the installer never owns a second build or publish implementation.
 
 The backend is a one-off bootstrapper, not a Rhino session monitor. Do not add durable launch operations, reattachment, background observation, or a service.
@@ -25,8 +24,8 @@ The backend is a one-off bootstrapper, not a Rhino session monitor. Do not add d
 - Config requires an explicit canonical plug-in project when a repository has more than one candidate; discovery must remain available so the UI can present that choice. Never infer project identity from existing `.rhp` outputs.
 - Build & Launch runs the selected solution and its Configuration and Platform in the selected worktree. Direct Launch skips the build. Both resolve the selected plug-in project's mapped MSBuild `TargetPath`; never guess, copy, or select an `.rhp` by filename.
 - Launch mode belongs to the invoking adapter. The desktop and CLI pass the saved Config default; MCP publishes separate Build & Launch and Launch Existing tools and never inherits the desktop default.
-- Rhino startup uses a serialized temporary HKCU plug-in path overlay and the app-owned verifier. Restore the exact previous current-user value before launch returns; never require elevation or modify HKLM.
-- Process creation is not success. Launch succeeds only after the verifier's launch ID, PID, `.rhp`, and every critical dependency path match. Timeout or mismatch terminates the unverified child.
+- Rhino startup uses a serialized temporary HKCU plug-in path overlay and passes the selected `.rhp` on Rhino's command line; the registry overlay alone never makes Rhino load an unseen plug-in. Restore the exact previous current-user value before launch returns; never require elevation or modify HKLM.
+- Process creation is not success. Launch succeeds only after the launched Rhino process holds the selected `.rhp` mapped in its address space (external file-use attribution, ADR 0002 — no in-Rhino verifier plug-in, which can never verify its own loading). Critical dependencies are existence-checked beside the plug-in during prepare, not load-gated: lazily-loaded dependencies are legitimately unmapped at startup. Timeout terminates the unverified child.
 - Every launch writes inert JSONL diagnostics under `%LOCALAPPDATA%\RhinoWorktreeLauncher\logs`.
 - Verification builds may compile the solution, but only the canonical package producer defines distributable binaries.
 - Claude install/remove owns only the `rhino-worktree-launcher` MCP entry and the RWL `session-context` hook. Preserve all unrelated settings and integrations.

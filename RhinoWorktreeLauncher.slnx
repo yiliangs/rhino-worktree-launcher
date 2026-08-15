@@ -4,7 +4,6 @@
     <Project Path="src/Rwl.Cli/Rwl.Cli.csproj" />
     <Project Path="src/Rwl.Bootstrap/Rwl.Bootstrap.csproj" />
     <Project Path="src/Rwl.Mcp/Rwl.Mcp.csproj" />
-    <Project Path="src/Rwl.RhinoVerifier/Rwl.RhinoVerifier.csproj" />
     <Project Path="src/RhinoWorktreeLauncher/RhinoWorktreeLauncher.csproj" />
   </Folder>
   <Folder Name="/tests/">

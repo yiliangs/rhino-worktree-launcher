@@ -31,10 +31,6 @@ if (Test-Path -LiteralPath $packageRoot)
 
 New-Item -ItemType Directory -Force -Path $desktopRoot, $cliRoot, $mcpRoot, $bootstrapRoot | Out-Null
 
-$verifierProject = Join-Path $sourceRoot 'Rwl.RhinoVerifier\Rwl.RhinoVerifier.csproj'
-& dotnet build $verifierProject -c Release -p:Version=$Version
-if ($LASTEXITCODE -ne 0) { throw "Rhino verifier build failed with exit code $LASTEXITCODE." }
-
 $publishTargets = @(
     @{ Project = Join-Path $sourceRoot 'RhinoWorktreeLauncher\RhinoWorktreeLauncher.csproj'; Output = $desktopRoot },
     @{ Project = Join-Path $sourceRoot 'Rwl.Cli\Rwl.Cli.csproj'; Output = $cliRoot },
@@ -50,10 +46,6 @@ foreach ($target in $publishTargets)
     }
 }
 
-$verifierOutput = Join-Path $sourceRoot 'Rwl.RhinoVerifier\bin\Release\net48\Rwl.RhinoVerifier.rhp'
-Copy-Item -LiteralPath $verifierOutput -Destination $desktopRoot -Force
-Copy-Item -LiteralPath $verifierOutput -Destination $cliRoot -Force
-Copy-Item -LiteralPath $verifierOutput -Destination $mcpRoot -Force
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'Install.bat') -Destination $packageRoot -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'RhinoWorktreeLauncher\Install-RhinoWorktreeLauncher.ps1') -Destination $packageRoot -Force
 

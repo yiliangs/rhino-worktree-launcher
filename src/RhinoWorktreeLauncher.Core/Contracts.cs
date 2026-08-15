@@ -105,6 +105,8 @@ public sealed record WorktreeRefreshProgress(
 
 public sealed record BuildProgress(string Stage, string Message, DateTimeOffset Timestamp);
 
+public sealed record VerifiedDependency(string Name, string Path);
+
 public sealed record PreparedLaunchArtifacts(
     Guid PluginId,
     string PackageDirectory,

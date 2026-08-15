@@ -224,8 +224,6 @@ public sealed class LauncherBackend
                 diagnostics.Add(new Diagnostic("build_configuration_unavailable", exception.Message));
             }
         }
-        if (!File.Exists(Options.VerifierPluginPath))
-            diagnostics.Add(new Diagnostic("verifier_missing", $"RWL's Rhino verifier was not found at '{Options.VerifierPluginPath}'."));
         if (!File.Exists(rhinoPath))
             diagnostics.Add(new Diagnostic("rhino_missing", $"Rhino was not found at '{rhinoPath}'."));
 
