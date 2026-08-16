@@ -78,16 +78,14 @@ public sealed class McpServerTests
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
-        string verifierPath = temporary.PathFor("launcher/verifier/Rwl.RhinoVerifier.rhp");
-        temporary.WriteFile("launcher/verifier/Rwl.RhinoVerifier.rhp", "verifier");
+        LaunchBackendTests.FakeRhino rhino = new LaunchBackendTests.FakeRhino();
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
-            LaunchStateDirectory = temporary.PathFor("launcher/launches"),
-            VerifierPluginPath = verifierPath,
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = CompleteVerification
+            RhinoProcessStarter = rhino.Start,
+            FileInUseInspector = rhino.IsFileInUse
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(
@@ -131,16 +129,14 @@ public sealed class McpServerTests
             "repository/Sample/ChangedAfterBuild.cs",
             "namespace Sample; public static class ChangedAfterBuild { public const int Value = 2; }");
 
-        string verifierPath = temporary.PathFor("launcher/verifier/Rwl.RhinoVerifier.rhp");
-        temporary.WriteFile("launcher/verifier/Rwl.RhinoVerifier.rhp", "verifier");
+        LaunchBackendTests.FakeRhino rhino = new LaunchBackendTests.FakeRhino();
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
-            LaunchStateDirectory = temporary.PathFor("launcher/launches"),
-            VerifierPluginPath = verifierPath,
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = CompleteVerification
+            RhinoProcessStarter = rhino.Start,
+            FileInUseInspector = rhino.IsFileInUse
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -319,37 +315,4 @@ public sealed class McpServerTests
             .GetCustomAttributes(typeof(McpServerToolAttribute), inherit: false)
             .Cast<McpServerToolAttribute>());
 
-    private static Process CompleteVerification(ProcessStartInfo startInfo)
-    {
-        Process process = StartSleepingProcess();
-        VerifierRequest request = JsonSerializer.Deserialize<VerifierRequest>(
-            File.ReadAllText(startInfo.Environment["RWL_VERIFY_REQUEST"]!),
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
-        File.WriteAllText(request.ResultPath, JsonSerializer.Serialize(new VerifierResult
-        {
-            SchemaVersion = 1,
-            Status = "loaded",
-            LaunchId = request.LaunchId,
-            ProcessId = process.Id,
-            PluginPath = request.PluginPath,
-            CriticalDependencies = request.CriticalDependencies
-        }));
-        return process;
-    }
-
-    private static Process StartSleepingProcess()
-    {
-        ProcessStartInfo startInfo = new ProcessStartInfo
-        {
-            FileName = "pwsh",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-Command");
-        startInfo.ArgumentList.Add("Start-Sleep -Seconds 5");
-        return Process.Start(startInfo)!;
-    }
 }

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.Json;
 using RhinoWorktreeLauncher;
 
 namespace RhinoWorktreeLauncher.Tests;
@@ -11,16 +10,14 @@ public sealed class LaunchBackendTests
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
-        string verifierPath = temporary.PathFor("launcher/verifier/Rwl.RhinoVerifier.rhp");
-        temporary.WriteFile("launcher/verifier/Rwl.RhinoVerifier.rhp", "verifier");
+        FakeRhino rhino = new FakeRhino();
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
-            LaunchStateDirectory = temporary.PathFor("launcher/launches"),
-            VerifierPluginPath = verifierPath,
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = CompleteVerification
+            RhinoProcessStarter = rhino.Start,
+            FileInUseInspector = rhino.IsFileInUse
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -39,6 +36,7 @@ public sealed class LaunchBackendTests
         Assert.StartsWith(repository, result.Value.PluginPath!, StringComparison.OrdinalIgnoreCase);
         Assert.EndsWith("Sample.rhp", result.Value.PluginPath!, StringComparison.OrdinalIgnoreCase);
         Assert.True(File.Exists(result.Value.PluginPath));
+        Assert.Equal(rhino.ProcessId, result.Value.RhinoProcessId);
         Assert.False(Directory.Exists(temporary.PathFor("launcher/workspaces")));
     }
 
@@ -64,16 +62,14 @@ public sealed class LaunchBackendTests
             "repository/Sample/ChangedAfterBuild.cs",
             "namespace Sample; public static class ChangedAfterBuild { public const int Value = 2; }");
 
-        string verifierPath = temporary.PathFor("launcher/verifier/Rwl.RhinoVerifier.rhp");
-        temporary.WriteFile("launcher/verifier/Rwl.RhinoVerifier.rhp", "verifier");
+        FakeRhino rhino = new FakeRhino();
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
-            LaunchStateDirectory = temporary.PathFor("launcher/launches"),
-            VerifierPluginPath = verifierPath,
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = CompleteVerification
+            RhinoProcessStarter = rhino.Start,
+            FileInUseInspector = rhino.IsFileInUse
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(
@@ -95,37 +91,33 @@ public sealed class LaunchBackendTests
         Assert.Equal(builtArtifact, await File.ReadAllBytesAsync(pluginPath));
     }
 
-    private static Process CompleteVerification(ProcessStartInfo startInfo)
+    internal sealed class FakeRhino
     {
-        Process process = StartSleepingProcess();
-        VerifierRequest request = JsonSerializer.Deserialize<VerifierRequest>(
-            File.ReadAllText(startInfo.Environment["RWL_VERIFY_REQUEST"]!),
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
-        File.WriteAllText(request.ResultPath, JsonSerializer.Serialize(new VerifierResult
-        {
-            SchemaVersion = 1,
-            Status = "loaded",
-            LaunchId = request.LaunchId,
-            ProcessId = process.Id,
-            PluginPath = request.PluginPath,
-            CriticalDependencies = request.CriticalDependencies
-        }));
-        return process;
-    }
+        public int? ProcessId { get; private set; }
 
-    private static Process StartSleepingProcess()
-    {
-        ProcessStartInfo startInfo = new ProcessStartInfo
+        public Process Start(ProcessStartInfo startInfo)
         {
-            FileName = "pwsh",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-Command");
-        startInfo.ArgumentList.Add("Start-Sleep -Seconds 30");
-        return Process.Start(startInfo)!;
+            Process process = StartSleepingProcess();
+            ProcessId = process.Id;
+            return process;
+        }
+
+        public bool IsFileInUse(int processId, string path) => processId == ProcessId;
+
+        private static Process StartSleepingProcess()
+        {
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = "pwsh",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-Command");
+            startInfo.ArgumentList.Add("Start-Sleep -Seconds 30");
+            return Process.Start(startInfo)!;
+        }
     }
 }
