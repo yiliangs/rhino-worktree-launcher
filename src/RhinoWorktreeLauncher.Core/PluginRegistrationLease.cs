@@ -3,11 +3,14 @@ using System.Runtime.Versioning;
 
 namespace RhinoWorktreeLauncher;
 
-// Rhino loads a registered plug-in from the path named by its registration. A key
-// holding only a file name is registered but not loadable, and Rhino then rejects the
-// same plug-in offered on its command line as an ID already in use. The lease
-// therefore writes the whole registration Rhino needs to load the selected artifact at
-// startup, and restores every value it touched when the launch ends.
+// Rhino loads a plug-in it has never seen through the documented install seed: a
+// Plug-ins\{id} key holding only root Name and FileName values makes Rhino install
+// and load that file at its next startup, then fill in the full registration itself
+// (Registering Plugins guide; a hand-built complete registration was silently ignored
+// in a live test on 2026-08-17). A plug-in with an existing current-user registration
+// is redirected instead: its PlugIn\FileName is pointed at the selected artifact and
+// LoadMode is forced to a startup load. Every value the lease writes is captured and
+// restored when the launch ends, and a key the lease created is removed wholesale.
 internal sealed class PluginRegistrationLease : IDisposable
 {
     public const string Mode = "windows-registry-lease";
@@ -56,18 +59,26 @@ internal sealed class PluginRegistrationLease : IDisposable
 
             string selectedPath = Path.GetFullPath(pluginPath);
             List<CapturedValue> captured = new List<CapturedValue>();
-            using (RegistryKey root = Registry.CurrentUser.CreateSubKey(pluginRootPath, writable: true) ??
-                throw new UnauthorizedAccessException($"The launcher cannot create HKCU\\{pluginRootPath}."))
+            if (pluginKeyExisted)
             {
-                Write(root, pluginRootPath, "Name", pluginName, RegistryValueKind.String, captured);
-                Write(root, pluginRootPath, "EnglishName", pluginName, RegistryValueKind.String, captured);
-                Write(root, pluginRootPath, "LoadMode", LoadAtStartup, RegistryValueKind.DWord, captured);
-                Write(root, pluginRootPath, "IsDotNETPlugIn", 1, RegistryValueKind.DWord, captured);
-            }
-            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(pluginKeyPath, writable: true) ??
-                throw new UnauthorizedAccessException($"The launcher cannot create HKCU\\{pluginKeyPath}."))
-            {
+                using (RegistryKey root = Registry.CurrentUser.CreateSubKey(pluginRootPath, writable: true) ??
+                    throw new UnauthorizedAccessException($"The launcher cannot open HKCU\\{pluginRootPath}."))
+                {
+                    Write(root, pluginRootPath, "LoadMode", LoadAtStartup, RegistryValueKind.DWord, captured);
+                }
+                using RegistryKey key = Registry.CurrentUser.CreateSubKey(pluginKeyPath, writable: true) ??
+                    throw new UnauthorizedAccessException($"The launcher cannot open HKCU\\{pluginKeyPath}.");
                 Write(key, pluginKeyPath, "FileName", selectedPath, RegistryValueKind.String, captured);
+            }
+            else
+            {
+                // The install seed holds nothing but root Name and FileName, the exact
+                // documented shape; extra values risk reading as an already installed
+                // registration, and a hand-built installed shape is silently ignored.
+                using RegistryKey root = Registry.CurrentUser.CreateSubKey(pluginRootPath, writable: true) ??
+                    throw new UnauthorizedAccessException($"The launcher cannot create HKCU\\{pluginRootPath}.");
+                Write(root, pluginRootPath, "Name", pluginName, RegistryValueKind.String, captured);
+                Write(root, pluginRootPath, "FileName", selectedPath, RegistryValueKind.String, captured);
             }
 
             return new PluginRegistrationLease(

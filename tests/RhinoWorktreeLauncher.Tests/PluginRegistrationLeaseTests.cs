@@ -31,6 +31,8 @@ public sealed class PluginRegistrationLeaseTests
             {
                 using RegistryKey leased = Registry.CurrentUser.OpenSubKey(keyPath)!;
                 Assert.Equal(Path.GetFullPath(selected), leased.GetValue("FileName"));
+                using RegistryKey leasedRoot = Registry.CurrentUser.OpenSubKey(PluginRootKeyPath(pluginId))!;
+                Assert.Equal(1, leasedRoot.GetValue("LoadMode"));
             }
 
             using RegistryKey restored = Registry.CurrentUser.OpenSubKey(keyPath)!;
@@ -123,7 +125,7 @@ public sealed class PluginRegistrationLeaseTests
     }
 
     [Fact]
-    public async Task Lease_registers_the_selected_artifact_as_a_startup_load()
+    public async Task Lease_seeds_an_unseen_plugin_with_the_documented_install_registration()
     {
         if (!OperatingSystem.IsWindows())
             return;
@@ -145,11 +147,11 @@ public sealed class PluginRegistrationLeaseTests
             {
                 using RegistryKey root = Registry.CurrentUser.OpenSubKey(rootPath)!;
                 Assert.Equal("Sample", root.GetValue("Name"));
-                Assert.Equal("Sample", root.GetValue("EnglishName"));
-                Assert.Equal(1, root.GetValue("LoadMode"));
-                Assert.Equal(1, root.GetValue("IsDotNETPlugIn"));
-                using RegistryKey plugIn = Registry.CurrentUser.OpenSubKey(PluginKeyPath(pluginId))!;
-                Assert.Equal(Path.GetFullPath(selected), plugIn.GetValue("FileName"));
+                Assert.Equal(Path.GetFullPath(selected), root.GetValue("FileName"));
+                // The seed must stay exactly Name and FileName: extra values risk
+                // reading as an already installed registration, which Rhino ignores.
+                Assert.Equal(2, root.GetValueNames().Length);
+                Assert.Empty(root.GetSubKeyNames());
             }
 
             Assert.Null(Registry.CurrentUser.OpenSubKey(rootPath));
@@ -190,8 +192,7 @@ public sealed class PluginRegistrationLeaseTests
             using RegistryKey restored = Registry.CurrentUser.OpenSubKey(rootPath)!;
             Assert.Equal("Installed", restored.GetValue("Name"));
             Assert.Equal(2, restored.GetValue("LoadMode"));
-            Assert.Null(restored.GetValue("EnglishName"));
-            Assert.Null(restored.GetValue("IsDotNETPlugIn"));
+            Assert.Null(restored.GetValue("FileName"));
             Assert.Null(Registry.CurrentUser.OpenSubKey(PluginKeyPath(pluginId)));
         }
         finally

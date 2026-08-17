@@ -34,7 +34,7 @@ A launch performs these steps:
 2. Revalidate the saved solution and configuration in that worktree.
 3. Build the selected solution when the mode is Build & Launch, or skip the build in Direct Launch.
 4. Ask MSBuild for the plug-in project's mapped `TargetPath` and require that exact `.rhp` to exist.
-5. Apply a serialized temporary current-user registration that names the selected `.rhp` and loads it at startup.
+5. Apply a serialized temporary current-user registration: Rhino's documented install seed for a plug-in it has never seen, or a redirect of the existing registration to the selected `.rhp`.
 6. Start Rhino. That registration is the only loading mechanism, and the `.rhp` is not passed on Rhino's command line.
 7. Wait for the launched Rhino process to map the selected `.rhp` into its address space.
 8. Fail closed unless that exact file is in use, then restore every registry value the launch wrote.

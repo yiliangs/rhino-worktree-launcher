@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. Amended 2026-08-17: the overlay's registration shape is the documented install seed or a redirect of an existing registration, not a hand-built complete registration (see Amendment). Amended by ADR 0013, which suspends a competing machine registration where the user granted write access.
 
 ## Context
 
@@ -28,3 +28,11 @@ Launch reads the registrations for the selected plug-in ID in both hives before 
 - A competing machine registration remains possible, and the user resolves it by removing that registration with an elevated account. RWL refuses fast and states the exact key instead of timing out without explanation.
 - The lease restores a larger set of values than a single file name, and Rhino's own writes into a pre-existing key survive the launch.
 - Verification by file-use attribution (ADR 0002) is unchanged. This decision changes only how the selected plug-in is offered to Rhino.
+
+## Amendment (2026-08-17)
+
+A live test falsified the original registration shape. A hand-built complete registration, holding `Name`, `EnglishName`, `LoadMode`, and `IsDotNETPlugIn` beside `PlugIn\FileName`, was silently ignored: Rhino started cleanly with no competing registration present and never loaded the file.
+
+Rhino loads a plug-in it has never seen only through the documented install seed: a `Plug-ins\{id}` key holding exactly the root values `Name` and `FileName`. At its next startup Rhino installs that plug-in, loads the file, and fills in the full registration itself.
+
+The lease therefore writes one of two shapes. For a plug-in with no current-user registration it writes the install seed and nothing else. For a plug-in whose current-user registration already exists it redirects that registration, pointing `PlugIn\FileName` at the selected artifact and forcing `LoadMode` to a startup load. The capture-and-restore discipline is unchanged: a key the lease created is removed wholesale, which also removes everything Rhino filled in during the install.
