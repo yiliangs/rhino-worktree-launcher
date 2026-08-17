@@ -110,7 +110,8 @@ public sealed class LaunchBackendTests
             PluginRegistrationScanner = (_, _, _) => new[]
             {
                 new PluginRegistrationConflict("machine", competing, competingKey)
-            }
+            },
+            MachineRegistrationSuspender = (_, _, _, _) => Task.FromResult<IDisposable?>(null)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -132,6 +133,46 @@ public sealed class LaunchBackendTests
         Assert.Contains(competingKey, diagnostic.Message);
         string log = await File.ReadAllTextAsync(result.Value!.DiagnosticsLogPath);
         Assert.Contains("plugin_registration_conflict", log);
+    }
+
+    [Fact]
+    public async Task A_competing_machine_registration_is_suspended_and_restored_when_access_is_granted()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        FakeRhino rhino = new FakeRhino();
+        FakeSuspension suspension = new FakeSuspension();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoProcessStarter = rhino.Start,
+            FileInUseInspector = rhino.IsFileInUse,
+            PluginRegistrationScanner = (_, _, _) => new[]
+            {
+                new PluginRegistrationConflict(
+                    "machine",
+                    @"C:\primary\Sample.rhp",
+                    @"HKEY_LOCAL_MACHINE\Software\McNeel\Rhinoceros\8.0\Plug-ins\11111111-2222-3333-4444-555555555555")
+            },
+            MachineRegistrationSuspender = (_, _, _, _) => Task.FromResult<IDisposable?>(suspension)
+        });
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        CommandResult<LaunchResult> result = await backend.LaunchAsync(
+            repository,
+            LaunchMode.BuildAndLaunch,
+            TimeSpan.FromSeconds(20),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.True(suspension.Disposed);
+        string log = await File.ReadAllTextAsync(result.Value!.DiagnosticsLogPath);
+        Assert.Contains("plugin_registration_suspended", log);
     }
 
     [Fact]
@@ -201,6 +242,13 @@ public sealed class LaunchBackendTests
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
         Assert.DoesNotContain(rhino.Arguments, argument =>
             argument.EndsWith(".rhp", StringComparison.OrdinalIgnoreCase));
+    }
+
+    internal sealed class FakeSuspension : IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
     }
 
     internal sealed class FakeRhino

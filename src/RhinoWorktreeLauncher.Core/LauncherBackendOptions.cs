@@ -28,6 +28,11 @@ public sealed class LauncherBackendOptions
         get;
         init;
     } = PluginRegistrationScan.FindConflicts;
+    public Func<string, int, Guid, CancellationToken, Task<IDisposable?>> MachineRegistrationSuspender
+    {
+        get;
+        init;
+    } = MachineRegistrationSuspension.TryAcquireAsync;
     internal Func<string, ProjectBuildOptions> ProjectBuildOptionsDiscovery { get; init; } =
         BuildProfileDiscovery.DiscoverOptions;
 

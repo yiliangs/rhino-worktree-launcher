@@ -41,7 +41,7 @@ internal sealed class PluginRegistrationLease : IDisposable
         string lockPath = Path.Combine(
             locksDirectory,
             $"rhino-{rhinoVersion}-{normalizedPluginId}.registration.lock");
-        FileStream registrationLock = await AcquireFileLockAsync(lockPath, cancellationToken);
+        FileStream registrationLock = await FileLock.AcquireAsync(lockPath, cancellationToken);
         try
         {
             string pluginRootPath =
@@ -145,24 +145,6 @@ internal sealed class PluginRegistrationLease : IDisposable
                     key.SetValue(value.Name, value.Value ?? string.Empty, value.Kind ?? RegistryValueKind.String);
                 else
                     key.DeleteValue(value.Name, throwOnMissingValue: false);
-            }
-        }
-    }
-
-    private static async Task<FileStream> AcquireFileLockAsync(
-        string path,
-        CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            }
-            catch (IOException)
-            {
-                await Task.Delay(100, cancellationToken);
             }
         }
     }

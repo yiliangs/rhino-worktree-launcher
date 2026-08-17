@@ -39,7 +39,17 @@ A launch performs these steps:
 7. Wait for the launched Rhino process to map the selected `.rhp` into its address space.
 8. Fail closed unless that exact file is in use, then restore every registry value the launch wrote.
 
-If a machine-wide registration claims the same plug-in ID and names a different file, for example one left by a previous install or by debugging another checkout, the launch refuses before Rhino starts and names the exact registry key. Rhino resolves a duplicate plug-in ID to the machine-wide file, and RWL cannot rewrite a machine registration without elevation; remove that key to launch the worktree copy. An existing current-user registration never blocks a launch: the temporary registration replaces it and restores it afterward.
+If a machine-wide registration claims the same plug-in ID and names a different file, for example an all-users install or a registration left by debugging another checkout, Rhino resolves the duplicate ID to that machine-wide file. Where your account holds write access to the machine `Plug-ins` key, granted once with an elevated account, the launch suspends that registration: it is journaled to disk, removed for the launch, and restored when the launch ends, so ordinary Rhino sessions keep the installed copy. A journal left by a crashed launch is restored by the next launch of the same plug-in. Without that access the launch refuses before Rhino starts and names the exact key, since RWL never elevates; grant the access or remove the key if it is stale. An existing current-user registration never blocks a launch: the temporary registration replaces it and restores it afterward.
+
+To grant the access, run once from an elevated PowerShell:
+
+```powershell
+$path = 'HKLM:\SOFTWARE\McNeel\Rhinoceros\8.0\Plug-ins'
+$acl = Get-Acl $path
+$acl.AddAccessRule([System.Security.AccessControl.RegistryAccessRule]::new(
+    "$env:USERDOMAIN\$env:USERNAME", 'FullControl', 'ContainerInherit', 'None', 'Allow'))
+Set-Acl $path $acl
+```
 
 The launched plug-in does not need to expose an RWL command, callback, or receipt writer. A build receipt is not used to infer freshness.
 

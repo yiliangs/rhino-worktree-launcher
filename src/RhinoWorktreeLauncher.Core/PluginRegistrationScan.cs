@@ -6,9 +6,10 @@ namespace RhinoWorktreeLauncher;
 // Rhino resolves a plug-in by ID across both registry hives, and a machine-wide
 // registration wins over a current-user one for the same ID (verified live on
 // 2026-08-17: with both present, Rhino 8 loaded the HKLM file, not the HKCU overlay).
-// RWL cannot write HKLM without elevation, so a machine registration naming a
-// different file makes the launch unwinnable and is reported with the exact key to
-// remove. A current-user registration is overlaid and restored by the lease.
+// A machine registration naming a different file is therefore suspended for the
+// launch where the user granted write access (ADR 0013), and otherwise refuses the
+// launch with the exact key named. A current-user registration is overlaid and
+// restored by the lease.
 internal static class PluginRegistrationScan
 {
     public static IReadOnlyList<PluginRegistrationConflict> FindConflicts(

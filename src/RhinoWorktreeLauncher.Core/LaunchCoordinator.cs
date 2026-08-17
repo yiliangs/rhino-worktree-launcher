@@ -64,6 +64,11 @@ internal sealed class LaunchCoordinator
                 return await FailAsync(build.Diagnostics[0]);
             PreparedLaunchArtifacts artifacts = build.Value!;
 
+            await MachineRegistrationSuspension.RecoverAsync(
+                _options.LocksDirectory,
+                context.RhinoVersion,
+                artifacts.PluginId,
+                token);
             IReadOnlyList<PluginRegistrationConflict> conflicts = _options.PluginRegistrationScanner(
                 context.RhinoVersion,
                 artifacts.PluginId,
@@ -76,30 +81,48 @@ internal sealed class LaunchCoordinator
                     DiagnosticSeverity.Warning));
             }
             // A machine-wide registration wins over the current-user overlay for the same
-            // plug-in ID, so starting Rhino would only reach the verification timeout.
+            // plug-in ID, so it is suspended for the launch where the user granted write
+            // access to the machine Plug-ins key (ADR 0013). Without that access, starting
+            // Rhino would only reach the verification timeout, so the launch refuses.
             PluginRegistrationConflict? machineConflict =
                 conflicts.FirstOrDefault(c => c.Scope == "machine");
-            if (machineConflict is not null)
-                return await FailAsync(new Diagnostic(
-                    "plugin_registration_conflict",
-                    Describe(machineConflict)));
-
-            await ReportAsync("registration", "Applying a temporary current-user plug-in registration.");
-            using (PluginRegistrationLease registrationLease = await PluginRegistrationLease.AcquireAsync(
-                _options.LocksDirectory,
-                context.RhinoVersion,
-                artifacts.PluginId.ToString("D"),
-                Path.GetFileNameWithoutExtension(artifacts.PluginPath),
-                artifacts.PluginPath,
-                token))
+            IDisposable? machineSuspension = machineConflict is null
+                ? null
+                : await _options.MachineRegistrationSuspender(
+                    _options.LocksDirectory,
+                    context.RhinoVersion,
+                    artifacts.PluginId,
+                    token);
+            using (machineSuspension)
             {
-                await ReportAsync("rhino", "Starting Rhino; the temporary registration loads the selected plug-in.");
-                launchedRhino = _options.RhinoProcessStarter(CreateRhinoStartInfo(context, artifacts));
+                if (machineConflict is not null && machineSuspension is null)
+                    return await FailAsync(new Diagnostic(
+                        "plugin_registration_conflict",
+                        Describe(machineConflict)));
+                if (machineConflict is not null)
+                    await LogDiagnosticAsync(new Diagnostic(
+                        "plugin_registration_suspended",
+                        $"The machine-wide registration naming '{machineConflict.RegisteredPath}' " +
+                            "is suspended for this launch and restored when it ends.",
+                        DiagnosticSeverity.Info));
 
-                await ReportAsync("verify", "Waiting for the Rhino process to hold the selected plug-in in use.");
-                await WaitForPluginInUseAsync(artifacts, launchedRhino, token);
+                await ReportAsync("registration", "Applying a temporary current-user plug-in registration.");
+                using (PluginRegistrationLease registrationLease = await PluginRegistrationLease.AcquireAsync(
+                    _options.LocksDirectory,
+                    context.RhinoVersion,
+                    artifacts.PluginId.ToString("D"),
+                    Path.GetFileNameWithoutExtension(artifacts.PluginPath),
+                    artifacts.PluginPath,
+                    token))
+                {
+                    await ReportAsync("rhino", "Starting Rhino; the temporary registration loads the selected plug-in.");
+                    launchedRhino = _options.RhinoProcessStarter(CreateRhinoStartInfo(context, artifacts));
+
+                    await ReportAsync("verify", "Waiting for the Rhino process to hold the selected plug-in in use.");
+                    await WaitForPluginInUseAsync(artifacts, launchedRhino, token);
+                }
+                launchVerified = true;
             }
-            launchVerified = true;
 
             LaunchResult result = new LaunchResult(
                 launchId,
@@ -200,8 +223,9 @@ internal sealed class LaunchCoordinator
     private static string Describe(PluginRegistrationConflict conflict) => conflict.Scope == "machine"
         ? $"A machine-wide registration for this plug-in ID names '{conflict.RegisteredPath}', " +
             "and Rhino loads that file instead of the selected worktree artifact. " +
-            "RWL never rewrites a machine registration because that requires elevation. " +
-            $"Remove '{conflict.RegistryKeyPath}' with an elevated account, then launch again."
+            "RWL never elevates: grant this account write access to the machine Plug-ins key " +
+            "with an elevated account so launches can suspend and restore that registration, " +
+            $"or remove '{conflict.RegistryKeyPath}' if it is stale."
         : $"An existing current-user registration for this plug-in ID names '{conflict.RegisteredPath}'. " +
             "The launch registration temporarily replaces it and restores it afterward.";
 
