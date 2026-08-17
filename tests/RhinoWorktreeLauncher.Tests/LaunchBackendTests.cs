@@ -15,6 +15,7 @@ public sealed class LaunchBackendTests
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
             RhinoProcessStarter = rhino.Start,
             FileInUseInspector = rhino.IsFileInUse
@@ -156,6 +157,7 @@ public sealed class LaunchBackendTests
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
             RhinoProcessStarter = rhino.Start,
             FileInUseInspector = rhino.IsFileInUse
@@ -193,14 +195,15 @@ public sealed class LaunchBackendTests
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
             RhinoProcessStarter = rhino.Start,
             FileInUseInspector = (_, _) => false,
-            PluginRegistrationScanner = (_, _, _) => new[]
-            {
-                new PluginRegistrationConflict("machine", competing, competingKey)
-            },
-            MachineRegistrationSuspender = (_, _, _, _) => Task.FromResult<IDisposable?>(null)
+            PluginNamespaceLeaseAcquirer = (_, _) => Task.FromResult(new PluginNamespaceLeaseResult(
+                Lease: null,
+                new PluginRegistrationConflict(competing, competingKey),
+                DisplacedMachineRegistration: null,
+                DisplacedUserRegistration: null))
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -230,22 +233,20 @@ public sealed class LaunchBackendTests
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
         FakeRhino rhino = new FakeRhino();
-        FakeSuspension suspension = new FakeSuspension();
+        FakeLease lease = new FakeLease();
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
             RhinoProcessStarter = rhino.Start,
             FileInUseInspector = rhino.IsFileInUse,
-            PluginRegistrationScanner = (_, _, _) => new[]
-            {
-                new PluginRegistrationConflict(
-                    "machine",
-                    @"C:\primary\Sample.rhp",
-                    @"HKEY_LOCAL_MACHINE\Software\McNeel\Rhinoceros\8.0\Plug-ins\11111111-2222-3333-4444-555555555555")
-            },
-            MachineRegistrationSuspender = (_, _, _, _) => Task.FromResult<IDisposable?>(suspension)
+            PluginNamespaceLeaseAcquirer = (_, _) => Task.FromResult(new PluginNamespaceLeaseResult(
+                lease,
+                Refusal: null,
+                @"C:\primary\Sample.rhp",
+                DisplacedUserRegistration: null))
         });
         await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -259,32 +260,32 @@ public sealed class LaunchBackendTests
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
-        Assert.True(suspension.Disposed);
+        Assert.True(lease.Disposed);
         string log = await File.ReadAllTextAsync(result.Value!.DiagnosticsLogPath);
         Assert.Contains("plugin_registration_suspended", log);
     }
 
     [Fact]
-    public async Task A_current_user_registration_is_warned_about_and_never_blocks_the_launch()
+    public async Task A_displaced_current_user_registration_is_logged_and_never_blocks_the_launch()
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
         string existing = @"C:\primary\Sample.rhp";
         FakeRhino rhino = new FakeRhino();
+        FakeLease lease = new FakeLease();
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
             RhinoProcessStarter = rhino.Start,
             FileInUseInspector = rhino.IsFileInUse,
-            PluginRegistrationScanner = (_, _, _) => new[]
-            {
-                new PluginRegistrationConflict(
-                    "user",
-                    existing,
-                    @"HKEY_CURRENT_USER\Software\McNeel\Rhinoceros\8.0\Plug-ins\11111111-2222-3333-4444-555555555555")
-            }
+            PluginNamespaceLeaseAcquirer = (_, _) => Task.FromResult(new PluginNamespaceLeaseResult(
+                lease,
+                Refusal: null,
+                DisplacedMachineRegistration: null,
+                existing))
         });
         await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -298,9 +299,10 @@ public sealed class LaunchBackendTests
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.True(lease.Disposed);
         string log = await File.ReadAllTextAsync(result.Value!.DiagnosticsLogPath);
-        Assert.Contains("plugin_registration_conflict", log);
-        Assert.Contains("current-user registration", log);
+        Assert.Contains("plugin_registration_displaced", log);
+        Assert.Contains(existing.Replace(@"\", @"\\"), log);
     }
 
     [Fact]
@@ -313,6 +315,7 @@ public sealed class LaunchBackendTests
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
             RhinoProcessStarter = rhino.Start,
             FileInUseInspector = rhino.IsFileInUse
@@ -333,7 +336,7 @@ public sealed class LaunchBackendTests
             argument.EndsWith(".rhp", StringComparison.OrdinalIgnoreCase));
     }
 
-    internal sealed class FakeSuspension : IDisposable
+    internal sealed class FakeLease : IDisposable
     {
         public bool Disposed { get; private set; }
 

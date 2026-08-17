@@ -12,6 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The projects target net8.0, but the solution is an .slnx and only the .NET 9.0.200
+      # SDK and later can read that format. The SDK pin is deliberate and matches
+      # global.json; do not lower it to the target framework.
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x

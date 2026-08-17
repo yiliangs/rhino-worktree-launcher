@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Amended 2026-08-17: the overlay's registration shape is the documented install seed or a redirect of an existing registration, not a hand-built complete registration (see Amendment). Amended by ADR 0013, which suspends a competing machine registration where the user granted write access.
+Accepted. Amended 2026-08-17: the overlay's registration shape is the documented install seed or a redirect of an existing registration, not a hand-built complete registration (see Amendment). Amended by ADR 0013, which suspends a competing machine registration where the user granted write access. Amended by ADR 0014, which makes the install seed the only current-user shape, deletes the redirect branch, and moves capture and restore onto a disk journal.
 
 ## Context
 
@@ -36,3 +36,5 @@ A live test falsified the original registration shape. A hand-built complete reg
 Rhino loads a plug-in it has never seen only through the documented install seed: a `Plug-ins\{id}` key holding exactly the root values `Name` and `FileName`. At its next startup Rhino installs that plug-in, loads the file, and fills in the full registration itself.
 
 The lease therefore writes one of two shapes. For a plug-in with no current-user registration it writes the install seed and nothing else. For a plug-in whose current-user registration already exists it redirects that registration, pointing `PlugIn\FileName` at the selected artifact and forcing `LoadMode` to a startup load. The capture-and-restore discipline is unchanged: a key the lease created is removed wholesale, which also removes everything Rhino filled in during the install.
+
+ADR 0014 later removed the redirect branch, which was never verified live, and made the install seed the only shape: an existing current-user registration is captured whole, removed, and reseeded.

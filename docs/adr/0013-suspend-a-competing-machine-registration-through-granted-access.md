@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Amends ADR 0012, whose refusal of a competing machine registration becomes the fallback rather than the only behavior.
+Accepted. Amends ADR 0012, whose refusal of a competing machine registration becomes the fallback rather than the only behavior. Amended by ADR 0014, which merges this suspension and the current-user lease into one journaled lease covering both hives, so the separate suspension lock, journal, and registration scan described below no longer exist as distinct mechanisms.
 
 ## Context
 
@@ -25,4 +25,4 @@ RWL still never elevates and never runs elevated. The current-user lease remains
 - Worktree launches work on machines carrying an all-users install of the same plug-in, and ordinary Rhino sessions keep loading the installed copy outside launch windows.
 - The user opts into a wider security surface: with write access granted on the machine `Plug-ins` key, any process running as that account can rewrite machine-wide plug-in registrations. The grant is per user and per Rhino version key, and refusing it keeps the ADR 0012 behavior.
 - A crash between removal and restore leaves the machine registration absent until the next launch of that plug-in restores the journal. A normal Rhino session started in that window does not load the installed plug-in.
-- Concurrent launches of the same plug-in serialize on a suspension lock file beside the existing registration lease lock.
+- Concurrent launches of the same plug-in serialize on a suspension lock file beside the existing registration lease lock. ADR 0014 collapsed those to a single lock.
