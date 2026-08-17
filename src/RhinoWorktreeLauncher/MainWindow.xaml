@@ -279,37 +279,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="ProjectTextItem" TargetType="ListBoxItem">
-            <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,0,10,0" />
-            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
-            <Setter Property="FontSize" Value="11.5" />
-            <Setter Property="FontWeight" Value="Medium" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border Padding="{TemplateBinding Padding}"
-                                Background="Transparent">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsSelected" Value="False">
-                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <Style x:Key="WorktreeRowItem" TargetType="ListBoxItem">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Padding" Value="13,11" />
@@ -555,58 +524,60 @@
                 </Button>
             </Grid>
 
-            <Grid Grid.Row="1" Margin="0,0,0,20">
+            <Grid Grid.Row="1" Margin="0,0,0,14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <ListBox x:Name="ProjectList"
-                         Grid.Column="0"
-                         VerticalAlignment="Center"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         ItemContainerStyle="{StaticResource ProjectTextItem}"
-                         SelectionChanged="ProjectList_SelectionChanged"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding DisplayName}"
-                                       LineHeight="13.8"
-                                       LineStackingStrategy="BlockLineHeight" />
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <ComboBox x:Name="ProjectSelector"
+                          Grid.Row="0"
+                          Grid.Column="0"
+                          Width="244"
+                          VerticalAlignment="Center"
+                          ItemTemplate="{StaticResource ProjectDropdownValue}"
+                          ItemContainerStyle="{StaticResource ProjectDropdownItem}"
+                          SelectionChanged="ProjectSelector_SelectionChanged"
+                          Tag="Add a project to begin"
+                          automation:AutomationProperties.Name="Project"
+                          Style="{StaticResource BuildCombo}" />
 
-                <Border Grid.Column="1"
-                        Width="1"
-                        Height="10"
-                        Margin="0,0,9,0"
-                        VerticalAlignment="Center"
-                        Background="{DynamicResource DividerBrush}" />
+                <Grid Grid.Row="1"
+                      Grid.Column="0"
+                      Grid.ColumnSpan="3"
+                      Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="RepositoryPathText"
-                           Grid.Column="2"
-                           VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis"
-                           TextWrapping="NoWrap"
-                           ToolTipService.ShowDuration="30000"
-                           Foreground="{DynamicResource TextFaintBrush}"
-                           FontFamily="{StaticResource MonoFont}"
-                           FontSize="10.5"
-                           LineHeight="12.6"
-                           LineStackingStrategy="BlockLineHeight"
-                           SizeChanged="RepositoryPathText_SizeChanged" />
+                    <Border Grid.Column="0"
+                            Width="1"
+                            Height="12"
+                            Margin="0,0,9,0"
+                            VerticalAlignment="Center"
+                            Background="{DynamicResource DividerBrush}" />
 
-                <StackPanel Grid.Column="3" Margin="8,0,0,0" Orientation="Horizontal">
+                    <TextBlock x:Name="RepositoryPathText"
+                               Grid.Column="1"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               TextWrapping="NoWrap"
+                               ToolTipService.ShowDuration="30000"
+                               Foreground="{DynamicResource TextFaintBrush}"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="10.5"
+                               LineHeight="12.6"
+                               LineStackingStrategy="BlockLineHeight"
+                               SizeChanged="RepositoryPathText_SizeChanged" />
+                </Grid>
+
+                <StackPanel Grid.Row="0" Grid.Column="2" Margin="8,0,0,0" Orientation="Horizontal">
                     <Button x:Name="ProjectConfigButton"
                             Margin="0,0,4,0"
                             Style="{StaticResource GhostButton}"

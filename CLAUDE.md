@@ -38,6 +38,9 @@ The backend is a one-off bootstrapper, not a Rhino session monitor. Do not add d
 ```powershell
 dotnet build RhinoWorktreeLauncher.slnx -c Debug
 dotnet test tests/RhinoWorktreeLauncher.Tests/RhinoWorktreeLauncher.Tests.csproj
+dotnet test tests/RhinoWorktreeLauncher.UiTests/RhinoWorktreeLauncher.UiTests.csproj
 ```
+
+`UiTests` is the seam for the WPF surface: it asserts against the XAML documents and the built desktop output, so any change to the native surface is verified there rather than by eye alone.
 
 The WPF design remains the completed fixed 720 x 1000 native surface. Preserve its theme, typography, scroll rail, shared corner-radius tokens, and current interaction details while changing backend behavior. `Config` is project-specific; global `Settings` owns MCP setup.

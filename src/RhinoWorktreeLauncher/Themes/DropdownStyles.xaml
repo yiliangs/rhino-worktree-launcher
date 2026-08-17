@@ -37,6 +37,9 @@
         </DrawingBrush.Drawing>
     </DrawingBrush>
 
+    <DataTemplate x:Key="ProjectDropdownValue">
+        <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+    </DataTemplate>
     <DataTemplate x:Key="PluginProjectDropdownValue">
         <TextBlock Text="{Binding PluginProjectPath}" TextTrimming="CharacterEllipsis" />
     </DataTemplate>
@@ -132,6 +135,10 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <Style x:Key="ProjectDropdownItem" TargetType="ComboBoxItem" BasedOn="{StaticResource DropdownItem}">
+        <Setter Property="AutomationProperties.Name" Value="{Binding DisplayName}" />
     </Style>
 
     <Style x:Key="BuildCombo" TargetType="ComboBox">

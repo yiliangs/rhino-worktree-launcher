@@ -179,7 +179,7 @@ public partial class MainWindow : Window
     {
         _backend = backend;
         InitializeComponent();
-        ProjectList.ItemsSource = _projects;
+        ProjectSelector.ItemsSource = _projects;
         WorktreeList.ItemsSource = _worktrees;
         SourceInitialized += OnSourceInitialized;
         _themeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
@@ -319,14 +319,14 @@ public partial class MainWindow : Window
             "bootstrap",
             "rwl.exe");
 
-    private async void ProjectList_SelectionChanged(
+    private async void ProjectSelector_SelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
     {
         if (_isUpdatingProjects)
             return;
 
-        ProjectSnapshot? project = ProjectList.SelectedItem as ProjectSnapshot;
+        ProjectSnapshot? project = ProjectSelector.SelectedItem as ProjectSnapshot;
         if (project is null || ReferenceEquals(project, _currentProject))
             return;
 
@@ -502,7 +502,7 @@ public partial class MainWindow : Window
                 project.ProjectId,
                 selectedProjectId,
                 StringComparison.OrdinalIgnoreCase)) ?? _projects.FirstOrDefault();
-            ProjectList.SelectedItem = _currentProject;
+            ProjectSelector.SelectedItem = _currentProject;
         }
         finally
         {
@@ -689,6 +689,7 @@ public partial class MainWindow : Window
     private void UpdateState()
     {
         WorktreeCountText.Text = _worktrees.Count.ToString(CultureInfo.InvariantCulture);
+        ProjectSelector.IsEnabled = _projects.Count > 0;
         ProjectConfigButton.IsEnabled = _currentProject is not null;
         PanelHintText.Text = _hint;
         EmptyStateText.Visibility = _worktrees.Count == 0
