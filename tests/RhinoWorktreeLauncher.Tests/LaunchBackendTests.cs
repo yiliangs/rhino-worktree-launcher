@@ -42,6 +42,95 @@ public sealed class LaunchBackendTests
     }
 
     [Fact]
+    public async Task Build_and_launch_reports_every_stage_in_order_so_adapters_can_show_progress()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        FakeRhino rhino = new FakeRhino();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoProcessStarter = rhino.Start,
+            FileInUseInspector = rhino.IsFileInUse
+        });
+        CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+        Assert.True(registration.Succeeded, registration.Diagnostics.FirstOrDefault()?.Message);
+
+        List<LaunchProgress> updates = new List<LaunchProgress>();
+        CommandResult<LaunchResult> result = await backend.LaunchAsync(
+            repository,
+            LaunchMode.BuildAndLaunch,
+            TimeSpan.FromSeconds(60),
+            new ImmediateProgress<LaunchProgress>(updates.Add),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.Equal(
+            new[]
+            {
+                LaunchStage.Resolve,
+                LaunchStage.Prepare,
+                LaunchStage.Build,
+                LaunchStage.Registration,
+                LaunchStage.Rhino,
+                LaunchStage.Verify,
+                LaunchStage.Complete
+            },
+            updates.Select(update => update.Stage).Distinct());
+        Assert.All(updates, update => Assert.Equal(result.Value!.LaunchId, update.LaunchId));
+        // The diagnostics log and the text adapters depend on the stable lowercase token.
+        Assert.Contains(updates, update => update.StageToken == "registration");
+    }
+
+    [Fact]
+    public async Task Direct_launch_reports_the_artifact_stage_instead_of_building()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        temporary.Run(
+            "dotnet",
+            repository,
+            "build",
+            temporary.PathFor("repository/Sample.slnx"),
+            "-c",
+            "Debug",
+            "-p:Platform=x64");
+
+        FakeRhino rhino = new FakeRhino();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoProcessStarter = rhino.Start,
+            FileInUseInspector = rhino.IsFileInUse
+        });
+        CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(
+                repository,
+                ProjectAccessGrant.Full,
+                LaunchMode: LaunchMode.DirectLaunch),
+            CancellationToken.None);
+        Assert.True(registration.Succeeded, registration.Diagnostics.FirstOrDefault()?.Message);
+
+        List<LaunchProgress> updates = new List<LaunchProgress>();
+        CommandResult<LaunchResult> result = await backend.LaunchAsync(
+            repository,
+            LaunchMode.DirectLaunch,
+            TimeSpan.FromSeconds(60),
+            new ImmediateProgress<LaunchProgress>(updates.Add),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.Contains(updates, update => update.Stage == LaunchStage.Artifact);
+        Assert.DoesNotContain(updates, update => update.Stage == LaunchStage.Build);
+    }
+
+    [Fact]
     public async Task Direct_launch_uses_the_existing_selected_artifact_without_rebuilding_changed_source()
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();

@@ -103,7 +103,13 @@ public sealed record WorktreeRefreshProgress(
     WorktreeRefreshStage Stage,
     ProjectWorktrees Worktrees);
 
-public sealed record BuildProgress(string Stage, string Message, DateTimeOffset Timestamp);
+public enum BuildStage
+{
+    Build,
+    Artifact
+}
+
+public sealed record BuildProgress(BuildStage Stage, string Message, DateTimeOffset Timestamp);
 
 public sealed record VerifiedDependency(string Name, string Path);
 
@@ -188,11 +194,29 @@ public enum LaunchStatus
     Failed
 }
 
+// The ordered stages a launch passes through. Adapters present the stage the user has
+// reached, so it is a closed contract rather than a free-form label.
+public enum LaunchStage
+{
+    Resolve,
+    Prepare,
+    Build,
+    Artifact,
+    Registration,
+    Rhino,
+    Verify,
+    Complete
+}
+
 public sealed record LaunchProgress(
     string LaunchId,
-    string Stage,
+    LaunchStage Stage,
     string Message,
-    DateTimeOffset Timestamp);
+    DateTimeOffset Timestamp)
+{
+    // The stable lowercase token diagnostics logs and text adapters have always written.
+    public string StageToken => Stage.ToString().ToLowerInvariant();
+}
 
 public sealed record LaunchResult(
     string LaunchId,

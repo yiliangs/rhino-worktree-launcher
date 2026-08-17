@@ -1,0 +1,117 @@
+using System.Collections;
+using System.IO;
+using System.Reflection;
+using System.Xml.Linq;
+
+namespace RhinoWorktreeLauncher.UiTests;
+
+public sealed class LaunchProgressSurfaceTests
+{
+    private static readonly XNamespace Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+    private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+    [Fact]
+    public void Launch_button_carries_an_idle_layer_and_a_collapsed_progress_layer()
+    {
+        XDocument document = LoadMainWindow();
+        XElement button = Named(document, "LaunchButton");
+        XElement run = Named(document, "LaunchRun");
+
+        // The idle caption moved into a named layer so the progress layer can replace it.
+        Assert.Null(button.Attribute("Content"));
+        Assert.NotNull(FindNamed(document, "LaunchIdleText"));
+        Assert.NotNull(FindNamed(document, "LaunchStageText"));
+        Assert.Equal("Collapsed", run.Attribute("Visibility")?.Value);
+    }
+
+    [Fact]
+    public void Launch_progress_starts_empty_and_sweeps_at_half_the_button_text_colour()
+    {
+        XDocument document = LoadMainWindow();
+        XElement fill = Named(document, "LaunchProgressFill");
+
+        Assert.Equal("0", fill.Attribute("Width")?.Value);
+        Assert.Equal("Left", fill.Attribute("HorizontalAlignment")?.Value);
+        // The button's own text colour, no accent hue on the primary surface.
+        Assert.Equal("{DynamicResource PrimaryTextBrush}", fill.Attribute("Background")?.Value);
+        Assert.Equal("0.5", fill.Attribute("Opacity")?.Value);
+    }
+
+    [Fact]
+    public void One_caption_carries_both_halves_of_the_sweep()
+    {
+        XDocument document = LoadMainWindow();
+
+        // At half strength the blend sits near mid grey, where an inverted caption
+        // would fall to 3.3:1. A single caption in the button's text colour clears
+        // AA on the swept and unswept halves alike, so there is no second layer.
+        Assert.Null(FindNamed(document, "LaunchStageFilledText"));
+        Assert.Null(Named(document, "LaunchStageText").Attribute("Foreground"));
+    }
+
+    [Fact]
+    public void The_progress_layer_is_rounded_to_the_button_corner()
+    {
+        XDocument document = LoadMainWindow();
+        XElement geometry = Named(document, "LaunchRun")
+            .Descendants(Presentation + "RectangleGeometry")
+            .Single();
+
+        Assert.Equal("0,0,162,46", geometry.Attribute("Rect")?.Value);
+        Assert.Equal("7", geometry.Attribute("RadiusX")?.Value);
+        Assert.Equal("7", geometry.Attribute("RadiusY")?.Value);
+    }
+
+    [Fact]
+    public void Every_launch_stage_has_a_caption_the_button_can_show()
+    {
+        IDictionary steps = PrivateStatic<IDictionary>("LaunchSteps");
+
+        IEnumerable<LaunchStage> covered = steps.Keys.Cast<LaunchStage>();
+
+        Assert.Equal(Enum.GetValues<LaunchStage>().OrderBy(stage => stage), covered.OrderBy(stage => stage));
+    }
+
+    [Fact]
+    public void Both_themes_define_the_same_brush_keys()
+    {
+        IReadOnlyDictionary<string, string> dark = PrivateStatic<IReadOnlyDictionary<string, string>>("DarkTheme");
+        IReadOnlyDictionary<string, string> light = PrivateStatic<IReadOnlyDictionary<string, string>>("LightTheme");
+
+        Assert.Equal(dark.Keys.OrderBy(key => key, StringComparer.Ordinal), light.Keys.OrderBy(key => key, StringComparer.Ordinal));
+    }
+
+    private static T PrivateStatic<T>(string name)
+    {
+        FieldInfo field = typeof(MainWindow).GetField(name, BindingFlags.NonPublic | BindingFlags.Static) ??
+            throw new InvalidOperationException($"MainWindow field '{name}' was not found.");
+        return (T)(field.GetValue(null) ??
+            throw new InvalidOperationException($"MainWindow field '{name}' was null."));
+    }
+
+    private static XElement Named(XDocument document, string name) =>
+        FindNamed(document, name) ?? throw new InvalidOperationException($"XAML element '{name}' was not found.");
+
+    private static XElement? FindNamed(XDocument document, string name) => document
+        .Descendants()
+        .FirstOrDefault(element => string.Equals(
+            element.Attribute(Xaml + "Name")?.Value,
+            name,
+            StringComparison.Ordinal));
+
+    private static XDocument LoadMainWindow() => XDocument.Load(Path.Combine(
+        RepositoryRoot(),
+        "src",
+        "RhinoWorktreeLauncher",
+        "MainWindow.xaml"));
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "RhinoWorktreeLauncher.slnx")))
+            directory = directory.Parent;
+        if (directory is null)
+            throw new DirectoryNotFoundException("Repository root was not found from the UI test output directory.");
+        return directory.FullName;
+    }
+}

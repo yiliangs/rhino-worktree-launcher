@@ -47,14 +47,14 @@ internal sealed class LaunchCoordinator
 
         try
         {
-            await ReportAsync("resolve", "Resolving the registered project and selected worktree.");
+            await ReportAsync(LaunchStage.Resolve, "Resolving the registered project and selected worktree.");
             CommandResult<ResolvedContext> contextResult = await _contextResolver.ResolveAsync(path, token);
             if (!contextResult.Succeeded)
                 return await FailAsync(contextResult.Diagnostics[0]);
             ResolvedContext context = contextResult.Value!;
             worktreePath = context.WorktreePath;
 
-            await ReportAsync("prepare", "Resolving the selected solution configuration and canonical artifact.");
+            await ReportAsync(LaunchStage.Prepare, "Resolving the selected solution configuration and canonical artifact.");
             CommandResult<PreparedLaunchArtifacts> build = await _buildCoordinator.PrepareAsync(
                 path,
                 launchMode,
@@ -72,7 +72,7 @@ internal sealed class LaunchCoordinator
                 artifacts.PluginId,
                 token);
 
-            await ReportAsync("registration", "Applying a temporary current-user plug-in registration.");
+            await ReportAsync(LaunchStage.Registration, "Applying a temporary current-user plug-in registration.");
             PluginNamespaceLeaseResult lease = await _options.PluginNamespaceLeaseAcquirer(
                 new PluginNamespaceLeaseRequest(
                     _options.LocksDirectory,
@@ -106,10 +106,10 @@ internal sealed class LaunchCoordinator
                             "is displaced for this launch and restored when it ends.",
                         DiagnosticSeverity.Info));
 
-                await ReportAsync("rhino", "Starting Rhino; the temporary registration loads the selected plug-in.");
+                await ReportAsync(LaunchStage.Rhino, "Starting Rhino; the temporary registration loads the selected plug-in.");
                 launchedRhino = _options.RhinoProcessStarter(CreateRhinoStartInfo(context, artifacts));
 
-                await ReportAsync("verify", "Waiting for the Rhino process to hold the selected plug-in in use.");
+                await ReportAsync(LaunchStage.Verify, "Waiting for the Rhino process to hold the selected plug-in in use.");
                 await WaitForPluginInUseAsync(artifacts, launchedRhino, token);
                 // Verified Rhino is the user's session from here: a fault while restoring
                 // registrations must not terminate it, and the journal covers the restore.
@@ -126,7 +126,7 @@ internal sealed class LaunchCoordinator
                 logPath,
                 startedAt,
                 DateTimeOffset.UtcNow);
-            await ReportAsync("complete", "Rhino is using the selected solution configuration's canonical binaries.");
+            await ReportAsync(LaunchStage.Complete, "Rhino is using the selected solution configuration's canonical binaries.");
             return CommandResult<LaunchResult>.Success(result);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -163,7 +163,7 @@ internal sealed class LaunchCoordinator
             launchedRhino?.Dispose();
         }
 
-        async Task ReportAsync(string stage, string message)
+        async Task ReportAsync(LaunchStage stage, string message)
         {
             LaunchProgress update = new LaunchProgress(launchId, stage, message, DateTimeOffset.UtcNow);
             progress?.Report(update);
@@ -171,7 +171,7 @@ internal sealed class LaunchCoordinator
             {
                 type = "progress",
                 update.LaunchId,
-                update.Stage,
+                Stage = update.StageToken,
                 update.Message,
                 update.Timestamp
             }, CancellationToken.None);
@@ -279,7 +279,7 @@ internal sealed class LaunchCoordinator
 
         public void Report(BuildProgress value) => _progress?.Report(new LaunchProgress(
             _launchId,
-            value.Stage,
+            value.Stage == BuildStage.Build ? LaunchStage.Build : LaunchStage.Artifact,
             value.Message,
             value.Timestamp));
     }

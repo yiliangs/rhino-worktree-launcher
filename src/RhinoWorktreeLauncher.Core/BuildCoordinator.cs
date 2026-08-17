@@ -42,7 +42,7 @@ internal sealed class BuildCoordinator
             if (profile.LaunchMode == LaunchMode.BuildAndLaunch)
             {
                 progress?.Report(new BuildProgress(
-                    "build",
+                    BuildStage.Build,
                     $"Building '{profile.SolutionPath}' ({profile.SelectedConfiguration.DisplayName}).",
                     DateTimeOffset.UtcNow));
                 await ProcessRunner.RunLinesAsync(
@@ -56,13 +56,13 @@ internal sealed class BuildCoordinator
                         profile.SelectedConfiguration.Configuration,
                         $"-p:Platform={profile.SelectedConfiguration.Platform}"
                     },
-                    line => ReportLineAsync(progress, "build", line),
+                    line => ReportLineAsync(progress, BuildStage.Build, line),
                     cancellationToken);
             }
             else
             {
                 progress?.Report(new BuildProgress(
-                    "artifact",
+                    BuildStage.Artifact,
                     $"Using the existing '{profile.SelectedConfiguration.DisplayName}' build without rebuilding.",
                     DateTimeOffset.UtcNow));
             }
@@ -159,7 +159,7 @@ internal sealed class BuildCoordinator
         return Path.GetFullPath(path);
     }
 
-    private static Task ReportLineAsync(IProgress<BuildProgress>? progress, string stage, string line)
+    private static Task ReportLineAsync(IProgress<BuildProgress>? progress, BuildStage stage, string line)
     {
         if (!string.IsNullOrWhiteSpace(line))
             progress?.Report(new BuildProgress(stage, line, DateTimeOffset.UtcNow));

@@ -1020,8 +1020,37 @@
                         Width="164"
                         Height="48"
                         Style="{StaticResource PrimaryButton}"
-                        Content="Launch Rhino"
-                        Click="Launch_Click" />
+                        Click="Launch_Click">
+                    <Grid Width="162" Height="46">
+                        <TextBlock x:Name="LaunchIdleText"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Text="Launch Rhino" />
+                        <Grid x:Name="LaunchRun" Visibility="Collapsed">
+                            <!-- Rounded to the button's inner radius so the opaque fill
+                                 never squares off the corners as it sweeps. -->
+                            <Grid.Clip>
+                                <RectangleGeometry Rect="0,0,162,46" RadiusX="7" RadiusY="7" />
+                            </Grid.Clip>
+                            <!-- Half-strength, so the caption stays in the button's text
+                                 colour across both the swept and unswept halves: an
+                                 inverted caption would drop under 3.3:1 on the blend. -->
+                            <Border x:Name="LaunchProgressFill"
+                                    Width="0"
+                                    HorizontalAlignment="Left"
+                                    Opacity="0.5"
+                                    Background="{DynamicResource PrimaryTextBrush}" />
+                            <local:TrackingTextBlock x:Name="LaunchStageText"
+                                       HorizontalAlignment="Stretch"
+                                       VerticalAlignment="Center"
+                                       Tracking="0.1"
+                                       LineHeight="11"
+                                       TextAlignment="Center"
+                                       FontSize="11"
+                                       FontWeight="Medium" />
+                        </Grid>
+                    </Grid>
+                </Button>
             </Grid>
         </Border>
 
