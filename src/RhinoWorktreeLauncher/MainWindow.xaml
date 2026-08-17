@@ -279,37 +279,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="ProjectTextItem" TargetType="ListBoxItem">
-            <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,0,10,0" />
-            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
-            <Setter Property="FontSize" Value="11.5" />
-            <Setter Property="FontWeight" Value="Medium" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border Padding="{TemplateBinding Padding}"
-                                Background="Transparent">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsSelected" Value="False">
-                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <Style x:Key="WorktreeRowItem" TargetType="ListBoxItem">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Padding" Value="13,11" />
@@ -563,28 +532,17 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <ListBox x:Name="ProjectList"
-                         Grid.Column="0"
-                         VerticalAlignment="Center"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         ItemContainerStyle="{StaticResource ProjectTextItem}"
-                         SelectionChanged="ProjectList_SelectionChanged"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding DisplayName}"
-                                       LineHeight="13.8"
-                                       LineStackingStrategy="BlockLineHeight" />
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <ComboBox x:Name="ProjectSelector"
+                          Grid.Column="0"
+                          Width="244"
+                          Margin="0,0,12,0"
+                          VerticalAlignment="Center"
+                          ItemTemplate="{StaticResource ProjectDropdownValue}"
+                          ItemContainerStyle="{StaticResource ProjectDropdownItem}"
+                          SelectionChanged="ProjectSelector_SelectionChanged"
+                          Tag="Add a project to begin"
+                          automation:AutomationProperties.Name="Project"
+                          Style="{StaticResource BuildCombo}" />
 
                 <Border Grid.Column="1"
                         Width="1"
