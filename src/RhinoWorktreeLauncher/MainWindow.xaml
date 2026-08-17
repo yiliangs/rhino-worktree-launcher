@@ -524,7 +524,7 @@
                 </Button>
             </Grid>
 
-            <Grid Grid.Row="1" Margin="0,0,0,20">
+            <Grid Grid.Row="1" Margin="0,0,0,14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -547,20 +547,35 @@
                           automation:AutomationProperties.Name="Project"
                           Style="{StaticResource BuildCombo}" />
 
-                <TextBlock x:Name="RepositoryPathText"
-                           Grid.Row="1"
-                           Grid.Column="0"
-                           Grid.ColumnSpan="3"
-                           Margin="0,9,0,0"
-                           TextTrimming="CharacterEllipsis"
-                           TextWrapping="NoWrap"
-                           ToolTipService.ShowDuration="30000"
-                           Foreground="{DynamicResource TextFaintBrush}"
-                           FontFamily="{StaticResource MonoFont}"
-                           FontSize="10.5"
-                           LineHeight="12.6"
-                           LineStackingStrategy="BlockLineHeight"
-                           SizeChanged="RepositoryPathText_SizeChanged" />
+                <Grid Grid.Row="1"
+                      Grid.Column="0"
+                      Grid.ColumnSpan="3"
+                      Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Width="1"
+                            Height="12"
+                            Margin="0,0,9,0"
+                            VerticalAlignment="Center"
+                            Background="{DynamicResource DividerBrush}" />
+
+                    <TextBlock x:Name="RepositoryPathText"
+                               Grid.Column="1"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               TextWrapping="NoWrap"
+                               ToolTipService.ShowDuration="30000"
+                               Foreground="{DynamicResource TextFaintBrush}"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="10.5"
+                               LineHeight="12.6"
+                               LineStackingStrategy="BlockLineHeight"
+                               SizeChanged="RepositoryPathText_SizeChanged" />
+                </Grid>
 
                 <StackPanel Grid.Row="0" Grid.Column="2" Margin="8,0,0,0" Orientation="Horizontal">
                     <Button x:Name="ProjectConfigButton"
