@@ -107,8 +107,6 @@ public sealed record BuildProgress(string Stage, string Message, DateTimeOffset 
 
 public sealed record VerifiedDependency(string Name, string Path);
 
-public sealed record PluginRegistrationConflict(string Scope, string RegisteredPath, string RegistryKeyPath);
-
 public sealed record PreparedLaunchArtifacts(
     Guid PluginId,
     string PackageDirectory,

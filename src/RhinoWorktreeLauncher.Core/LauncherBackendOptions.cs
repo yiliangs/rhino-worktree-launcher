@@ -23,16 +23,15 @@ public sealed class LauncherBackendOptions
         "System",
         "Rhino.exe");
     public Func<ProcessStartInfo, Process> RhinoProcessStarter { get; init; } = RhinoProcessBroker.Start;
-    public Func<int, Guid, string, IReadOnlyList<PluginRegistrationConflict>> PluginRegistrationScanner
+    // One seam owns the whole registration displacement: reading a registration and
+    // displacing it are the same decision, so no second component re-reads a key this one
+    // just read.
+    internal Func<PluginNamespaceLeaseRequest, CancellationToken, Task<PluginNamespaceLeaseResult>>
+        PluginNamespaceLeaseAcquirer
     {
         get;
         init;
-    } = PluginRegistrationScan.FindConflicts;
-    public Func<string, int, Guid, CancellationToken, Task<IDisposable?>> MachineRegistrationSuspender
-    {
-        get;
-        init;
-    } = MachineRegistrationSuspension.TryAcquireAsync;
+    } = PluginNamespaceLease.AcquireAsync;
     internal Func<string, ProjectBuildOptions> ProjectBuildOptionsDiscovery { get; init; } =
         BuildProfileDiscovery.DiscoverOptions;
 

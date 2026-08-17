@@ -34,12 +34,14 @@ A launch performs these steps:
 2. Revalidate the saved solution and configuration in that worktree.
 3. Build the selected solution when the mode is Build & Launch, or skip the build in Direct Launch.
 4. Ask MSBuild for the plug-in project's mapped `TargetPath` and require that exact `.rhp` to exist.
-5. Apply a serialized temporary current-user registration: Rhino's documented install seed for a plug-in it has never seen, or a redirect of the existing registration to the selected `.rhp`.
+5. Journal whatever is registered for that plug-in ID in both registry hives, then displace it: the current-user key is cleared and reseeded with Rhino's documented install seed, exactly `Name` and `FileName` naming the selected `.rhp`.
 6. Start Rhino. That registration is the only loading mechanism, and the `.rhp` is not passed on Rhino's command line.
 7. Wait for the launched Rhino process to map the selected `.rhp` into its address space.
-8. Fail closed unless that exact file is in use, then restore every registry value the launch wrote.
+8. Fail closed unless that exact file is in use, then restore both hives from the journal and delete it.
 
-If a machine-wide registration claims the same plug-in ID and names a different file, for example an all-users install or a registration left by debugging another checkout, Rhino resolves the duplicate ID to that machine-wide file. Where your account holds write access to the machine `Plug-ins` key, granted once with an elevated account, the launch suspends that registration: it is journaled to disk, removed for the launch, and restored when the launch ends, so ordinary Rhino sessions keep the installed copy. A journal left by a crashed launch is restored by the next launch of the same plug-in. Without that access the launch refuses before Rhino starts and names the exact key, since RWL never elevates; grant the access or remove the key if it is stale. An existing current-user registration never blocks a launch: the temporary registration replaces it and restores it afterward.
+The journal is written before anything is touched and removed only after a clean restore, so a launch killed mid-flight cannot leave the install seed behind. The next launch of the same plug-in restores the journal first: a displaced registration comes back, and a seed the killed launch left is deleted before it can make an ordinary Rhino session install the worktree artifact permanently.
+
+If a machine-wide registration claims the same plug-in ID and names a different file, for example an all-users install or a registration left by debugging another checkout, Rhino resolves the duplicate ID to that machine-wide file. Where your account holds write access to the machine `Plug-ins` key, granted once with an elevated account, the launch displaces that registration too and restores it when the launch ends, so ordinary Rhino sessions keep the installed copy. Without that access the launch refuses before Rhino starts and names the exact key, since RWL never elevates; grant the access or remove the key if it is stale. A machine registration already naming the selected `.rhp` is not a conflict. An existing current-user registration never blocks a launch: it is captured whole, displaced, and restored afterward.
 
 To grant the access, run once from an elevated PowerShell:
 
