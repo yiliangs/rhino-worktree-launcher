@@ -112,7 +112,7 @@ internal static class Program
         double timeoutSeconds = ParseTimeout(command.Timeout);
         Progress<LaunchProgress>? progress = command.Json
             ? null
-            : new Progress<LaunchProgress>(update => Console.Error.WriteLine($"[{update.Stage}] {update.Message}"));
+            : new Progress<LaunchProgress>(update => Console.Error.WriteLine($"[{update.StageToken}] {update.Message}"));
         return await WriteAsync(
             await backend.LaunchAsync(
                 command.Path,

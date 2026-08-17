@@ -139,7 +139,7 @@ internal sealed class RwlTools
             : new Progress<LaunchProgress>(update => progress.Report(new ProgressNotificationValue
             {
                 Progress = Interlocked.Increment(ref progressStep),
-                Message = $"{update.Stage}: {update.Message}"
+                Message = $"{update.StageToken}: {update.Message}"
             }));
         return ToToolResult(await _backend.LaunchAsync(
             path,

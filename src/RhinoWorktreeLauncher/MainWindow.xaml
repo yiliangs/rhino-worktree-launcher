@@ -73,6 +73,7 @@
         <SolidColorBrush x:Key="PrimaryBrush" Color="#F0F2F5" />
         <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#FFFFFF" />
         <SolidColorBrush x:Key="PrimaryTextBrush" Color="#16181B" />
+        <SolidColorBrush x:Key="PrimaryProgressBrush" Color="#3D3F7A44" />
         <SolidColorBrush x:Key="ScrollThumbBrush" Color="#343840" />
         <SolidColorBrush x:Key="ControlHighlightBrush" Color="#08FFFFFF" />
         <SolidColorBrush x:Key="ChipHighlightBrush" Color="#05FFFFFF" />
@@ -1020,8 +1021,30 @@
                         Width="164"
                         Height="48"
                         Style="{StaticResource PrimaryButton}"
-                        Content="Launch Rhino"
-                        Click="Launch_Click" />
+                        Click="Launch_Click">
+                    <Grid Width="162" Height="46">
+                        <TextBlock x:Name="LaunchIdleText"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Text="Launch Rhino" />
+                        <Grid x:Name="LaunchRun"
+                              ClipToBounds="True"
+                              Visibility="Collapsed">
+                            <Border x:Name="LaunchProgressFill"
+                                    Width="0"
+                                    HorizontalAlignment="Left"
+                                    Background="{DynamicResource PrimaryProgressBrush}" />
+                            <local:TrackingTextBlock x:Name="LaunchStageText"
+                                       HorizontalAlignment="Stretch"
+                                       VerticalAlignment="Center"
+                                       Tracking="0.12"
+                                       LineHeight="9.5"
+                                       TextAlignment="Center"
+                                       FontSize="9.5"
+                                       FontWeight="Medium" />
+                        </Grid>
+                    </Grid>
+                </Button>
             </Grid>
         </Border>
 

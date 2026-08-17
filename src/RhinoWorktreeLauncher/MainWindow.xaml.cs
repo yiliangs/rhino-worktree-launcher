@@ -20,6 +20,23 @@ public partial class MainWindow : Window
     private const double DesignWindowWidth = 720;
     private const double DesignWindowHeight = 1000;
     private const int DwmExtendedFrameBounds = 9;
+    private const double LaunchTrackWidth = 162;
+
+    // Where the launch bar stands when each stage begins working, plus how long that
+    // stage is expected to take. The fill eases toward the next boundary over that
+    // span, so a slow stage keeps moving without ever claiming the stage is finished.
+    private static readonly IReadOnlyDictionary<LaunchStage, LaunchStageStep> LaunchSteps =
+        new Dictionary<LaunchStage, LaunchStageStep>
+        {
+            [LaunchStage.Resolve] = new LaunchStageStep("RESOLVING", 0.06, 0.4),
+            [LaunchStage.Prepare] = new LaunchStageStep("PREPARING", 0.14, 0.6),
+            [LaunchStage.Build] = new LaunchStageStep("BUILDING", 0.62, 25),
+            [LaunchStage.Artifact] = new LaunchStageStep("EXISTING BUILD", 0.62, 0.4),
+            [LaunchStage.Registration] = new LaunchStageStep("REGISTERING", 0.70, 0.4),
+            [LaunchStage.Rhino] = new LaunchStageStep("STARTING RHINO", 0.80, 1.5),
+            [LaunchStage.Verify] = new LaunchStageStep("VERIFYING", 0.97, 30),
+            [LaunchStage.Complete] = new LaunchStageStep("VERIFIED", 1, 0.3)
+        };
 
     private static readonly IReadOnlyDictionary<string, string> DarkTheme =
         new Dictionary<string, string>
@@ -75,6 +92,9 @@ public partial class MainWindow : Window
             ["PrimaryBrush"] = "#F0F2F5",
             ["PrimaryHoverBrush"] = "#FFFFFF",
             ["PrimaryTextBrush"] = "#16181B",
+            // The primary button is an inverted surface, so its progress fill takes the
+            // opposite theme's accent to stay legible on it.
+            ["PrimaryProgressBrush"] = "#3D3F7A44",
             ["ScrollThumbBrush"] = "#343840",
             ["ControlHighlightBrush"] = "#08FFFFFF",
             ["ChipHighlightBrush"] = "#05FFFFFF"
@@ -134,6 +154,7 @@ public partial class MainWindow : Window
             ["PrimaryBrush"] = "#1B1E23",
             ["PrimaryHoverBrush"] = "#000000",
             ["PrimaryTextBrush"] = "#F4F6F8",
+            ["PrimaryProgressBrush"] = "#3D7FAE7A",
             ["ScrollThumbBrush"] = "#C3C8D0",
             ["ControlHighlightBrush"] = "#99FFFFFF",
             ["ChipHighlightBrush"] = "#B3FFFFFF"
@@ -153,6 +174,8 @@ public partial class MainWindow : Window
     private bool _isUpdatingProjects;
     private bool _isUpdatingWorktrees;
     private bool? _isLightTheme;
+    private bool _isLaunching;
+    private LaunchStage? _launchStage;
     private string _hint = string.Empty;
     private string _repositoryPath = string.Empty;
 
@@ -683,8 +706,10 @@ public partial class MainWindow : Window
     {
         WorktreeSnapshot? selected = WorktreeList.SelectedItem as WorktreeSnapshot;
         OpenFolderButton.IsEnabled = selected is not null;
-        LaunchButton.IsEnabled = selected?.HasBuildConfiguration == true;
-        LaunchButton.Content = selected is null || selected.LaunchMode == LaunchMode.DirectLaunch
+        // A launch in progress keeps the button enabled so the running stage stays at full
+        // strength; BeginLaunchProgress is what blocks a second click.
+        LaunchButton.IsEnabled = _isLaunching || selected?.HasBuildConfiguration == true;
+        LaunchIdleText.Text = selected is null || selected.LaunchMode == LaunchMode.DirectLaunch
             ? "Launch Rhino"
             : "Build & Launch";
     }
@@ -743,41 +768,93 @@ public partial class MainWindow : Window
 
     private async void Launch(WorktreeSnapshot worktree)
     {
+        if (_isLaunching)
+            return;
+
+        BeginLaunchProgress();
+        string? failure = null;
         try
         {
-            LaunchButton.IsEnabled = false;
-            Progress<LaunchProgress> progress = new Progress<LaunchProgress>(update =>
-            {
-                _hint = update.Message;
-                UpdateState();
-            });
+            DispatcherProgress<LaunchProgress> progress = new DispatcherProgress<LaunchProgress>(
+                Dispatcher,
+                update =>
+                {
+                    ShowLaunchStage(update.Stage);
+                    // The build stage reports one update per MSBuild line, so the detail
+                    // text is set directly rather than through a full state refresh.
+                    _hint = update.Message;
+                    PanelHintText.Text = _hint;
+                });
             CommandResult<LaunchResult> result = await _backend.LaunchAsync(
                 worktree.Path,
                 worktree.LaunchMode,
                 TimeSpan.FromMinutes(3),
                 progress,
                 CancellationToken.None);
-            if (!result.Succeeded)
-                throw new InvalidOperationException(result.Diagnostics[0].Message);
-
-            _hint = "Selected plug-in verified in Rhino";
-            UpdateState();
+            failure = result.Succeeded ? null : result.Diagnostics[0].Message;
         }
         catch (Exception ex)
         {
-            _hint = "Launch failed";
-            UpdateState();
+            failure = ex.Message;
+        }
+        finally
+        {
+            EndLaunchProgress();
+        }
+
+        _hint = failure is null ? "Selected plug-in verified in Rhino" : "Launch failed";
+        UpdateState();
+        if (failure is not null)
+        {
             MessageBox.Show(
                 this,
-                ex.Message,
+                failure,
                 "Rhino launch failed",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
-        finally
+    }
+
+    private void BeginLaunchProgress()
+    {
+        _isLaunching = true;
+        _launchStage = null;
+        LaunchButton.IsHitTestVisible = false;
+        LaunchButton.Cursor = Cursors.Arrow;
+        LaunchIdleText.Visibility = Visibility.Collapsed;
+        LaunchRun.Visibility = Visibility.Visible;
+        LaunchStageText.Text = "STARTING";
+        LaunchProgressFill.BeginAnimation(WidthProperty, null);
+        LaunchProgressFill.Width = 0;
+    }
+
+    private void ShowLaunchStage(LaunchStage stage)
+    {
+        if (_launchStage == stage || !LaunchSteps.TryGetValue(stage, out LaunchStageStep step))
+            return;
+
+        _launchStage = stage;
+        LaunchStageText.Text = step.Caption;
+        DoubleAnimation advance = new DoubleAnimation
         {
-            UpdateSelectionState();
-        }
+            From = LaunchProgressFill.ActualWidth,
+            To = LaunchTrackWidth * step.Target,
+            Duration = TimeSpan.FromSeconds(step.Seconds),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        LaunchProgressFill.BeginAnimation(WidthProperty, advance);
+    }
+
+    private void EndLaunchProgress()
+    {
+        _isLaunching = false;
+        _launchStage = null;
+        LaunchProgressFill.BeginAnimation(WidthProperty, null);
+        LaunchProgressFill.Width = 0;
+        LaunchRun.Visibility = Visibility.Collapsed;
+        LaunchIdleText.Visibility = Visibility.Visible;
+        LaunchButton.IsHitTestVisible = true;
+        LaunchButton.Cursor = Cursors.Hand;
     }
 
     private void RepositoryPathText_SizeChanged(
@@ -944,6 +1021,8 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
+
+    private readonly record struct LaunchStageStep(string Caption, double Target, double Seconds);
 
     private sealed class DispatcherProgress<T> : IProgress<T>
     {
