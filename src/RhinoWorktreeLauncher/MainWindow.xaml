@@ -73,7 +73,6 @@
         <SolidColorBrush x:Key="PrimaryBrush" Color="#F0F2F5" />
         <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#FFFFFF" />
         <SolidColorBrush x:Key="PrimaryTextBrush" Color="#16181B" />
-        <SolidColorBrush x:Key="PrimaryProgressBrush" Color="#3D3F7A44" />
         <SolidColorBrush x:Key="ScrollThumbBrush" Color="#343840" />
         <SolidColorBrush x:Key="ControlHighlightBrush" Color="#08FFFFFF" />
         <SolidColorBrush x:Key="ChipHighlightBrush" Color="#05FFFFFF" />
@@ -1027,21 +1026,40 @@
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
                                    Text="Launch Rhino" />
-                        <Grid x:Name="LaunchRun"
-                              ClipToBounds="True"
-                              Visibility="Collapsed">
-                            <Border x:Name="LaunchProgressFill"
-                                    Width="0"
-                                    HorizontalAlignment="Left"
-                                    Background="{DynamicResource PrimaryProgressBrush}" />
+                        <Grid x:Name="LaunchRun" Visibility="Collapsed">
+                            <!-- Rounded to the button's inner radius so the opaque fill
+                                 never squares off the corners as it sweeps. -->
+                            <Grid.Clip>
+                                <RectangleGeometry Rect="0,0,162,46" RadiusX="7" RadiusY="7" />
+                            </Grid.Clip>
                             <local:TrackingTextBlock x:Name="LaunchStageText"
                                        HorizontalAlignment="Stretch"
                                        VerticalAlignment="Center"
-                                       Tracking="0.12"
-                                       LineHeight="9.5"
+                                       Tracking="0.1"
+                                       LineHeight="11"
                                        TextAlignment="Center"
-                                       FontSize="9.5"
+                                       FontSize="11"
                                        FontWeight="Medium" />
+                            <!-- The filled layer repeats the caption at full track width and
+                                 left alignment, so it sits exactly over the base caption and
+                                 the clip inverts each glyph as the fill reaches it. -->
+                            <Grid x:Name="LaunchFillClip"
+                                  Width="0"
+                                  HorizontalAlignment="Left"
+                                  ClipToBounds="True">
+                                <Border x:Name="LaunchProgressFill"
+                                        Background="{DynamicResource PrimaryTextBrush}" />
+                                <local:TrackingTextBlock x:Name="LaunchStageFilledText"
+                                           Width="162"
+                                           HorizontalAlignment="Left"
+                                           VerticalAlignment="Center"
+                                           Tracking="0.1"
+                                           LineHeight="11"
+                                           TextAlignment="Center"
+                                           Foreground="{DynamicResource PrimaryBrush}"
+                                           FontSize="11"
+                                           FontWeight="Medium" />
+                            </Grid>
                         </Grid>
                     </Grid>
                 </Button>

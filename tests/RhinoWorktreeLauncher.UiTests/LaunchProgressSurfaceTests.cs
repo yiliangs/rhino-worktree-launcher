@@ -7,6 +7,7 @@ namespace RhinoWorktreeLauncher.UiTests;
 
 public sealed class LaunchProgressSurfaceTests
 {
+    private static readonly XNamespace Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
@@ -21,18 +22,51 @@ public sealed class LaunchProgressSurfaceTests
         Assert.NotNull(FindNamed(document, "LaunchIdleText"));
         Assert.NotNull(FindNamed(document, "LaunchStageText"));
         Assert.Equal("Collapsed", run.Attribute("Visibility")?.Value);
-        Assert.Equal("True", run.Attribute("ClipToBounds")?.Value);
     }
 
     [Fact]
-    public void Launch_progress_fill_starts_empty_on_the_inverted_primary_surface()
+    public void Launch_progress_starts_empty_and_fills_with_the_button_text_colour()
     {
         XDocument document = LoadMainWindow();
+        XElement clip = Named(document, "LaunchFillClip");
         XElement fill = Named(document, "LaunchProgressFill");
 
-        Assert.Equal("0", fill.Attribute("Width")?.Value);
-        Assert.Equal("Left", fill.Attribute("HorizontalAlignment")?.Value);
-        Assert.Equal("{DynamicResource PrimaryProgressBrush}", fill.Attribute("Background")?.Value);
+        Assert.Equal("0", clip.Attribute("Width")?.Value);
+        Assert.Equal("Left", clip.Attribute("HorizontalAlignment")?.Value);
+        Assert.Equal("True", clip.Attribute("ClipToBounds")?.Value);
+        // Solid, in the button's own two colours: no accent hue on the primary surface.
+        Assert.Equal("{DynamicResource PrimaryTextBrush}", fill.Attribute("Background")?.Value);
+        Assert.Null(fill.Attribute("Opacity"));
+    }
+
+    [Fact]
+    public void The_filled_caption_spans_the_whole_track_so_the_sweep_inverts_it_in_place()
+    {
+        XDocument document = LoadMainWindow();
+        XElement baseCaption = Named(document, "LaunchStageText");
+        XElement filledCaption = Named(document, "LaunchStageFilledText");
+
+        // The filled layer must sit exactly over the base caption: full track width,
+        // left aligned, same centring. Centring it inside the clip would slide the
+        // glyphs as the fill grows.
+        Assert.Equal("162", filledCaption.Attribute("Width")?.Value);
+        Assert.Equal("Left", filledCaption.Attribute("HorizontalAlignment")?.Value);
+        Assert.Equal("{DynamicResource PrimaryBrush}", filledCaption.Attribute("Foreground")?.Value);
+        foreach (string shared in new[] { "TextAlignment", "FontSize", "FontWeight", "Tracking" })
+            Assert.Equal(baseCaption.Attribute(shared)?.Value, filledCaption.Attribute(shared)?.Value);
+    }
+
+    [Fact]
+    public void The_progress_layer_is_rounded_to_the_button_corner()
+    {
+        XDocument document = LoadMainWindow();
+        XElement geometry = Named(document, "LaunchRun")
+            .Descendants(Presentation + "RectangleGeometry")
+            .Single();
+
+        Assert.Equal("0,0,162,46", geometry.Attribute("Rect")?.Value);
+        Assert.Equal("7", geometry.Attribute("RadiusX")?.Value);
+        Assert.Equal("7", geometry.Attribute("RadiusY")?.Value);
     }
 
     [Fact]
@@ -51,8 +85,6 @@ public sealed class LaunchProgressSurfaceTests
         IReadOnlyDictionary<string, string> dark = PrivateStatic<IReadOnlyDictionary<string, string>>("DarkTheme");
         IReadOnlyDictionary<string, string> light = PrivateStatic<IReadOnlyDictionary<string, string>>("LightTheme");
 
-        Assert.Contains("PrimaryProgressBrush", dark.Keys);
-        Assert.Contains("PrimaryProgressBrush", light.Keys);
         Assert.Equal(dark.Keys.OrderBy(key => key, StringComparer.Ordinal), light.Keys.OrderBy(key => key, StringComparer.Ordinal));
     }
 
