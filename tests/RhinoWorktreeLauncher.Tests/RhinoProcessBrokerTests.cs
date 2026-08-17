@@ -8,6 +8,10 @@ namespace RhinoWorktreeLauncher.Tests;
 
 public sealed class RhinoProcessBrokerTests
 {
+    // The broker reports a PID for a child it has already started, so a child that ends
+    // on its own races the handle lookup. Every test that expects a live handle keeps its
+    // child alive until the assertions are done and then ends it.
+    private const string ChildThatOutlivesTheHandshake = "ping 127.0.0.1 -n 60 > nul";
     private const string ChildThatExitsImmediately = "exit /b 0";
 
     [Fact]
@@ -27,9 +31,8 @@ public sealed class RhinoProcessBrokerTests
             });
         Assert.NotNull(brokerTask);
         BrokerObservation observation = await brokerTask;
-        await child.WaitForExitAsync();
 
-        Assert.Equal(0, child.ExitCode);
+        Assert.False(child.HasExited);
         Assert.Equal(child.Id, observation.ProcessId);
         Assert.Equal(configured.FileName, observation.Request.Executable);
         Assert.Equal(configured.ArgumentList, observation.Request.Arguments);
@@ -37,6 +40,7 @@ public sealed class RhinoProcessBrokerTests
             new Dictionary<string, string?> { [variable] = "selected-worktree" },
             observation.Request.Environment);
         Assert.Null(Environment.GetEnvironmentVariable(variable));
+        await TerminateAsync(child);
     }
 
     [Fact]
@@ -57,9 +61,9 @@ public sealed class RhinoProcessBrokerTests
                 }));
             Assert.NotNull(brokerTask);
             BrokerObservation observation = await brokerTask;
-            await child.WaitForExitAsync();
-            Assert.Equal(0, child.ExitCode);
+            Assert.False(child.HasExited);
             Assert.Equal(child.Id, observation.ProcessId);
+            await TerminateAsync(child);
             return observation;
         }
 
@@ -133,12 +137,12 @@ public sealed class RhinoProcessBrokerTests
 
         Assert.Same(completion.Task, finished);
         using Process child = await completion.Task;
-        await child.WaitForExitAsync();
-        Assert.Equal(0, child.ExitCode);
+        Assert.False(child.HasExited);
+        await TerminateAsync(child);
     }
 
     private static ProcessStartInfo CreateConfiguredStart(string variable, string value) =>
-        CreateConfiguredStart(variable, value, "ping 127.0.0.1 -n 2 > nul");
+        CreateConfiguredStart(variable, value, ChildThatOutlivesTheHandshake);
 
     private static ProcessStartInfo CreateConfiguredStart(string variable, string value, string command)
     {
@@ -154,6 +158,12 @@ public sealed class RhinoProcessBrokerTests
         configured.ArgumentList.Add(command);
         configured.Environment[variable] = value;
         return configured;
+    }
+
+    private static async Task TerminateAsync(Process child)
+    {
+        child.Kill(entireProcessTree: true);
+        await child.WaitForExitAsync();
     }
 
     private static Task<BrokerObservation> RunFakeBrokerAsync(string pipeName) =>
