@@ -525,17 +525,20 @@
             </Grid>
 
             <Grid Grid.Row="1" Margin="0,0,0,20">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <ComboBox x:Name="ProjectSelector"
+                          Grid.Row="0"
                           Grid.Column="0"
                           Width="244"
-                          Margin="0,0,12,0"
                           VerticalAlignment="Center"
                           ItemTemplate="{StaticResource ProjectDropdownValue}"
                           ItemContainerStyle="{StaticResource ProjectDropdownItem}"
@@ -544,16 +547,11 @@
                           automation:AutomationProperties.Name="Project"
                           Style="{StaticResource BuildCombo}" />
 
-                <Border Grid.Column="1"
-                        Width="1"
-                        Height="10"
-                        Margin="0,0,9,0"
-                        VerticalAlignment="Center"
-                        Background="{DynamicResource DividerBrush}" />
-
                 <TextBlock x:Name="RepositoryPathText"
-                           Grid.Column="2"
-                           VerticalAlignment="Center"
+                           Grid.Row="1"
+                           Grid.Column="0"
+                           Grid.ColumnSpan="3"
+                           Margin="13,9,0,0"
                            TextTrimming="CharacterEllipsis"
                            TextWrapping="NoWrap"
                            ToolTipService.ShowDuration="30000"
@@ -564,7 +562,7 @@
                            LineStackingStrategy="BlockLineHeight"
                            SizeChanged="RepositoryPathText_SizeChanged" />
 
-                <StackPanel Grid.Column="3" Margin="8,0,0,0" Orientation="Horizontal">
+                <StackPanel Grid.Row="0" Grid.Column="2" Margin="8,0,0,0" Orientation="Horizontal">
                     <Button x:Name="ProjectConfigButton"
                             Margin="0,0,4,0"
                             Style="{StaticResource GhostButton}"
