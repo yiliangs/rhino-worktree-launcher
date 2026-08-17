@@ -819,9 +819,9 @@ public partial class MainWindow : Window
         LaunchButton.Cursor = Cursors.Arrow;
         LaunchIdleText.Visibility = Visibility.Collapsed;
         LaunchRun.Visibility = Visibility.Visible;
-        SetLaunchCaption("STARTING");
-        LaunchFillClip.BeginAnimation(WidthProperty, null);
-        LaunchFillClip.Width = 0;
+        LaunchStageText.Text = "STARTING";
+        LaunchProgressFill.BeginAnimation(WidthProperty, null);
+        LaunchProgressFill.Width = 0;
     }
 
     private void ShowLaunchStage(LaunchStage stage)
@@ -830,30 +830,23 @@ public partial class MainWindow : Window
             return;
 
         _launchStage = stage;
-        SetLaunchCaption(step.Caption);
+        LaunchStageText.Text = step.Caption;
         DoubleAnimation advance = new DoubleAnimation
         {
-            From = LaunchFillClip.ActualWidth,
+            From = LaunchProgressFill.ActualWidth,
             To = LaunchTrackWidth * step.Target,
             Duration = TimeSpan.FromSeconds(step.Seconds),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
-        LaunchFillClip.BeginAnimation(WidthProperty, advance);
-    }
-
-    // Both layers carry the same caption; the fill clip is what inverts it as it sweeps.
-    private void SetLaunchCaption(string caption)
-    {
-        LaunchStageText.Text = caption;
-        LaunchStageFilledText.Text = caption;
+        LaunchProgressFill.BeginAnimation(WidthProperty, advance);
     }
 
     private void EndLaunchProgress()
     {
         _isLaunching = false;
         _launchStage = null;
-        LaunchFillClip.BeginAnimation(WidthProperty, null);
-        LaunchFillClip.Width = 0;
+        LaunchProgressFill.BeginAnimation(WidthProperty, null);
+        LaunchProgressFill.Width = 0;
         LaunchRun.Visibility = Visibility.Collapsed;
         LaunchIdleText.Visibility = Visibility.Visible;
         LaunchButton.IsHitTestVisible = true;
