@@ -228,6 +228,41 @@ public sealed class LaunchBackendTests
     }
 
     [Fact]
+    public async Task A_rhino_that_exited_before_verification_fails_with_its_own_diagnostic()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            // The process is already gone before the coordinator ever polls it, so the
+            // exited path is exercised without depending on a timing window.
+            RhinoProcessStarter = _ => StartExitedProcess(),
+            FileInUseInspector = (_, _) => false
+        });
+        CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+        Assert.True(registration.Succeeded, registration.Diagnostics.FirstOrDefault()?.Message);
+
+        CommandResult<LaunchResult> result = await backend.LaunchAsync(
+            repository,
+            LaunchMode.BuildAndLaunch,
+            TimeSpan.FromSeconds(25),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("rhino_exited_before_verification", diagnostic.Code);
+        string log = await File.ReadAllTextAsync(result.Value!.DiagnosticsLogPath);
+        Assert.Contains("rhino_exited_before_verification", log);
+    }
+
+    [Fact]
     public async Task A_competing_machine_registration_is_suspended_and_restored_when_access_is_granted()
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
@@ -334,6 +369,23 @@ public sealed class LaunchBackendTests
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
         Assert.DoesNotContain(rhino.Arguments, argument =>
             argument.EndsWith(".rhp", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static Process StartExitedProcess()
+    {
+        ProcessStartInfo startInfo = new ProcessStartInfo
+        {
+            FileName = Environment.GetEnvironmentVariable("ComSpec") ??
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe"),
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add("/d");
+        startInfo.ArgumentList.Add("/c");
+        startInfo.ArgumentList.Add("exit /b 0");
+        Process process = Process.Start(startInfo)!;
+        process.WaitForExit();
+        return process;
     }
 
     internal sealed class FakeLease : IDisposable
