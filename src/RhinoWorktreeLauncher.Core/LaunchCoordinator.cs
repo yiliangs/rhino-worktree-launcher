@@ -64,15 +64,36 @@ internal sealed class LaunchCoordinator
                 return await FailAsync(build.Diagnostics[0]);
             PreparedLaunchArtifacts artifacts = build.Value!;
 
-            await ReportAsync("registration", "Applying a temporary current-user plug-in path overlay.");
+            IReadOnlyList<PluginRegistrationConflict> conflicts = _options.PluginRegistrationScanner(
+                context.RhinoVersion,
+                artifacts.PluginId,
+                artifacts.PluginPath);
+            foreach (PluginRegistrationConflict conflict in conflicts.Where(c => c.Scope == "user"))
+            {
+                await LogDiagnosticAsync(new Diagnostic(
+                    "plugin_registration_conflict",
+                    Describe(conflict),
+                    DiagnosticSeverity.Warning));
+            }
+            // A machine-wide registration wins over the current-user overlay for the same
+            // plug-in ID, so starting Rhino would only reach the verification timeout.
+            PluginRegistrationConflict? machineConflict =
+                conflicts.FirstOrDefault(c => c.Scope == "machine");
+            if (machineConflict is not null)
+                return await FailAsync(new Diagnostic(
+                    "plugin_registration_conflict",
+                    Describe(machineConflict)));
+
+            await ReportAsync("registration", "Applying a temporary current-user plug-in registration.");
             using (PluginRegistrationLease registrationLease = await PluginRegistrationLease.AcquireAsync(
                 _options.LocksDirectory,
                 context.RhinoVersion,
                 artifacts.PluginId.ToString("D"),
+                Path.GetFileNameWithoutExtension(artifacts.PluginPath),
                 artifacts.PluginPath,
                 token))
             {
-                await ReportAsync("rhino", "Starting Rhino with the selected plug-in on its command line.");
+                await ReportAsync("rhino", "Starting Rhino; the temporary registration loads the selected plug-in.");
                 launchedRhino = _options.RhinoProcessStarter(CreateRhinoStartInfo(context, artifacts));
 
                 await ReportAsync("verify", "Waiting for the Rhino process to hold the selected plug-in in use.");
@@ -141,6 +162,15 @@ internal sealed class LaunchCoordinator
             }, CancellationToken.None);
         }
 
+        async Task LogDiagnosticAsync(Diagnostic diagnostic) => await AppendLogAsync(logPath, new
+        {
+            type = "diagnostic",
+            diagnostic.Code,
+            diagnostic.Message,
+            severity = diagnostic.Severity.ToString(),
+            timestamp = DateTimeOffset.UtcNow
+        }, CancellationToken.None);
+
         async Task<CommandResult<LaunchResult>> FailAsync(Diagnostic diagnostic)
         {
             DateTimeOffset completedAt = DateTimeOffset.UtcNow;
@@ -167,6 +197,14 @@ internal sealed class LaunchCoordinator
         }
     }
 
+    private static string Describe(PluginRegistrationConflict conflict) => conflict.Scope == "machine"
+        ? $"A machine-wide registration for this plug-in ID names '{conflict.RegisteredPath}', " +
+            "and Rhino loads that file instead of the selected worktree artifact. " +
+            "RWL never rewrites a machine registration because that requires elevation. " +
+            $"Remove '{conflict.RegistryKeyPath}' with an elevated account, then launch again."
+        : $"An existing current-user registration for this plug-in ID names '{conflict.RegisteredPath}'. " +
+            "The launch registration temporarily replaces it and restores it afterward.";
+
     private ProcessStartInfo CreateRhinoStartInfo(ResolvedContext context, PreparedLaunchArtifacts artifacts)
     {
         ProcessStartInfo startInfo = new ProcessStartInfo
@@ -178,9 +216,9 @@ internal sealed class LaunchCoordinator
         startInfo.ArgumentList.Add("/nosplash");
         startInfo.ArgumentList.Add("/notemplate");
         startInfo.ArgumentList.Add($"/{artifacts.RhinoRuntime}");
-        // Passing the .rhp path makes Rhino load it during startup; the registration
-        // lease alone does not make Rhino load a plug-in it has never seen.
-        startInfo.ArgumentList.Add(artifacts.PluginPath);
+        // The registration lease is the only loading mechanism. Also passing the .rhp on
+        // the command line asks Rhino to install an ID the lease has already registered,
+        // which Rhino rejects as an ID already in use.
         return startInfo;
     }
 

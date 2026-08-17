@@ -34,10 +34,12 @@ A launch performs these steps:
 2. Revalidate the saved solution and configuration in that worktree.
 3. Build the selected solution when the mode is Build & Launch, or skip the build in Direct Launch.
 4. Ask MSBuild for the plug-in project's mapped `TargetPath` and require that exact `.rhp` to exist.
-5. Apply a serialized temporary current-user Rhino plug-in path overlay.
-6. Start Rhino with RWL's bundled verifier plug-in.
-7. Have the verifier report the actual `.rhp` and critical assembly paths.
-8. Fail closed unless every loaded path matches the selected worktree artifacts, then restore the prior registration value.
+5. Apply a serialized temporary current-user registration that names the selected `.rhp` and loads it at startup.
+6. Start Rhino. That registration is the only loading mechanism, and the `.rhp` is not passed on Rhino's command line.
+7. Wait for the launched Rhino process to map the selected `.rhp` into its address space.
+8. Fail closed unless that exact file is in use, then restore every registry value the launch wrote.
+
+If a machine-wide registration claims the same plug-in ID and names a different file, for example one left by a previous install or by debugging another checkout, the launch refuses before Rhino starts and names the exact registry key. Rhino resolves a duplicate plug-in ID to the machine-wide file, and RWL cannot rewrite a machine registration without elevation; remove that key to launch the worktree copy. An existing current-user registration never blocks a launch: the temporary registration replaces it and restores it afterward.
 
 The launched plug-in does not need to expose an RWL command, callback, or receipt writer. A build receipt is not used to infer freshness.
 

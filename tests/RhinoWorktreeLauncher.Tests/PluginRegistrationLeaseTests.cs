@@ -25,6 +25,7 @@ public sealed class PluginRegistrationLeaseTests
                 temporary.CreateDirectory("locks"),
                 8,
                 pluginId,
+                "Sample",
                 selected,
                 CancellationToken.None))
             {
@@ -61,6 +62,7 @@ public sealed class PluginRegistrationLeaseTests
                 temporary.CreateDirectory("locks"),
                 8,
                 pluginId,
+                "Sample",
                 selected,
                 CancellationToken.None))
             {
@@ -97,12 +99,14 @@ public sealed class PluginRegistrationLeaseTests
                 locks,
                 8,
                 pluginId,
+                "Sample",
                 temporary.PathFor("first/Sample.rhp"),
                 CancellationToken.None);
             Task<PluginRegistrationLease> secondTask = PluginRegistrationLease.AcquireAsync(
                 locks,
                 8,
                 pluginId,
+                "Sample",
                 temporary.PathFor("second/Sample.rhp"),
                 CancellationToken.None);
 
@@ -115,6 +119,84 @@ public sealed class PluginRegistrationLeaseTests
         finally
         {
             Registry.CurrentUser.DeleteSubKeyTree(PluginRootKeyPath(pluginId), throwOnMissingSubKey: false);
+        }
+    }
+
+    [Fact]
+    public async Task Lease_registers_the_selected_artifact_as_a_startup_load()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string pluginId = Guid.NewGuid().ToString("D");
+        string rootPath = PluginRootKeyPath(pluginId);
+        string selected = temporary.PathFor("selected/Sample.rhp");
+
+        try
+        {
+            using (await PluginRegistrationLease.AcquireAsync(
+                temporary.CreateDirectory("locks"),
+                8,
+                pluginId,
+                "Sample",
+                selected,
+                CancellationToken.None))
+            {
+                using RegistryKey root = Registry.CurrentUser.OpenSubKey(rootPath)!;
+                Assert.Equal("Sample", root.GetValue("Name"));
+                Assert.Equal("Sample", root.GetValue("EnglishName"));
+                Assert.Equal(1, root.GetValue("LoadMode"));
+                Assert.Equal(1, root.GetValue("IsDotNETPlugIn"));
+                using RegistryKey plugIn = Registry.CurrentUser.OpenSubKey(PluginKeyPath(pluginId))!;
+                Assert.Equal(Path.GetFullPath(selected), plugIn.GetValue("FileName"));
+            }
+
+            Assert.Null(Registry.CurrentUser.OpenSubKey(rootPath));
+        }
+        finally
+        {
+            Registry.CurrentUser.DeleteSubKeyTree(rootPath, throwOnMissingSubKey: false);
+        }
+    }
+
+    [Fact]
+    public async Task Lease_restores_every_value_it_writes_over_an_existing_registration()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string pluginId = Guid.NewGuid().ToString("D");
+        string rootPath = PluginRootKeyPath(pluginId);
+        using (RegistryKey existing = Registry.CurrentUser.CreateSubKey(rootPath, writable: true)!)
+        {
+            existing.SetValue("Name", "Installed", RegistryValueKind.String);
+            existing.SetValue("LoadMode", 2, RegistryValueKind.DWord);
+        }
+
+        try
+        {
+            using (await PluginRegistrationLease.AcquireAsync(
+                temporary.CreateDirectory("locks"),
+                8,
+                pluginId,
+                "Sample",
+                temporary.PathFor("selected/Sample.rhp"),
+                CancellationToken.None))
+            {
+            }
+
+            using RegistryKey restored = Registry.CurrentUser.OpenSubKey(rootPath)!;
+            Assert.Equal("Installed", restored.GetValue("Name"));
+            Assert.Equal(2, restored.GetValue("LoadMode"));
+            Assert.Null(restored.GetValue("EnglishName"));
+            Assert.Null(restored.GetValue("IsDotNETPlugIn"));
+            Assert.Null(Registry.CurrentUser.OpenSubKey(PluginKeyPath(pluginId)));
+        }
+        finally
+        {
+            Registry.CurrentUser.DeleteSubKeyTree(rootPath, throwOnMissingSubKey: false);
         }
     }
 

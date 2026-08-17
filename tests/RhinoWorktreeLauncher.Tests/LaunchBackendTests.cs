@@ -91,12 +91,127 @@ public sealed class LaunchBackendTests
         Assert.Equal(builtArtifact, await File.ReadAllBytesAsync(pluginPath));
     }
 
+    [Fact]
+    public async Task A_competing_machine_registration_refuses_the_launch_before_starting_rhino()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        string competing = @"C:\primary\Sample.rhp";
+        string competingKey =
+            @"HKEY_LOCAL_MACHINE\Software\McNeel\Rhinoceros\8.0\Plug-ins\11111111-2222-3333-4444-555555555555";
+        FakeRhino rhino = new FakeRhino();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoProcessStarter = rhino.Start,
+            FileInUseInspector = (_, _) => false,
+            PluginRegistrationScanner = (_, _, _) => new[]
+            {
+                new PluginRegistrationConflict("machine", competing, competingKey)
+            }
+        });
+        CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+        Assert.True(registration.Succeeded, registration.Diagnostics.FirstOrDefault()?.Message);
+
+        CommandResult<LaunchResult> result = await backend.LaunchAsync(
+            repository,
+            LaunchMode.BuildAndLaunch,
+            TimeSpan.FromSeconds(25),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Null(rhino.ProcessId);
+        Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Contains(competing, diagnostic.Message);
+        Assert.Contains("machine-wide registration", diagnostic.Message);
+        Assert.Contains(competingKey, diagnostic.Message);
+        string log = await File.ReadAllTextAsync(result.Value!.DiagnosticsLogPath);
+        Assert.Contains("plugin_registration_conflict", log);
+    }
+
+    [Fact]
+    public async Task A_current_user_registration_is_warned_about_and_never_blocks_the_launch()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        string existing = @"C:\primary\Sample.rhp";
+        FakeRhino rhino = new FakeRhino();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoProcessStarter = rhino.Start,
+            FileInUseInspector = rhino.IsFileInUse,
+            PluginRegistrationScanner = (_, _, _) => new[]
+            {
+                new PluginRegistrationConflict(
+                    "user",
+                    existing,
+                    @"HKEY_CURRENT_USER\Software\McNeel\Rhinoceros\8.0\Plug-ins\11111111-2222-3333-4444-555555555555")
+            }
+        });
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        CommandResult<LaunchResult> result = await backend.LaunchAsync(
+            repository,
+            LaunchMode.BuildAndLaunch,
+            TimeSpan.FromSeconds(20),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        string log = await File.ReadAllTextAsync(result.Value!.DiagnosticsLogPath);
+        Assert.Contains("plugin_registration_conflict", log);
+        Assert.Contains("current-user registration", log);
+    }
+
+    [Fact]
+    public async Task Rhino_starts_without_the_plugin_on_its_command_line()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        FakeRhino rhino = new FakeRhino();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoProcessStarter = rhino.Start,
+            FileInUseInspector = rhino.IsFileInUse
+        });
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        CommandResult<LaunchResult> result = await backend.LaunchAsync(
+            repository,
+            LaunchMode.BuildAndLaunch,
+            TimeSpan.FromSeconds(20),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.DoesNotContain(rhino.Arguments, argument =>
+            argument.EndsWith(".rhp", StringComparison.OrdinalIgnoreCase));
+    }
+
     internal sealed class FakeRhino
     {
         public int? ProcessId { get; private set; }
 
+        public IReadOnlyList<string> Arguments { get; private set; } = Array.Empty<string>();
+
         public Process Start(ProcessStartInfo startInfo)
         {
+            Arguments = startInfo.ArgumentList.ToArray();
             Process process = StartSleepingProcess();
             ProcessId = process.Id;
             return process;

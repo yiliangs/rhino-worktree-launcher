@@ -23,6 +23,11 @@ public sealed class LauncherBackendOptions
         "System",
         "Rhino.exe");
     public Func<ProcessStartInfo, Process> RhinoProcessStarter { get; init; } = RhinoProcessBroker.Start;
+    public Func<int, Guid, string, IReadOnlyList<PluginRegistrationConflict>> PluginRegistrationScanner
+    {
+        get;
+        init;
+    } = PluginRegistrationScan.FindConflicts;
     internal Func<string, ProjectBuildOptions> ProjectBuildOptionsDiscovery { get; init; } =
         BuildProfileDiscovery.DiscoverOptions;
 

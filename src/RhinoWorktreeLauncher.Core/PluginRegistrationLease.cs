@@ -3,9 +3,15 @@ using System.Runtime.Versioning;
 
 namespace RhinoWorktreeLauncher;
 
+// Rhino loads a registered plug-in from the path named by its registration. A key
+// holding only a file name is registered but not loadable, and Rhino then rejects the
+// same plug-in offered on its command line as an ID already in use. The lease
+// therefore writes the whole registration Rhino needs to load the selected artifact at
+// startup, and restores every value it touched when the launch ends.
 internal sealed class PluginRegistrationLease : IDisposable
 {
     public const string Mode = "windows-registry-lease";
+    private const int LoadAtStartup = 1;
 
     private readonly FileStream _lock;
     private readonly Registration _registration;
@@ -21,6 +27,7 @@ internal sealed class PluginRegistrationLease : IDisposable
         string locksDirectory,
         int rhinoVersion,
         string pluginId,
+        string pluginName,
         string pluginPath,
         CancellationToken cancellationToken)
     {
@@ -46,26 +53,26 @@ internal sealed class PluginRegistrationLease : IDisposable
                 rootExisted = root is not null;
             using (RegistryKey? key = Registry.CurrentUser.OpenSubKey(pluginKeyPath, writable: false))
                 pluginKeyExisted = key is not null;
-            RegistryKey writable = Registry.CurrentUser.CreateSubKey(pluginKeyPath, writable: true) ??
-                throw new UnauthorizedAccessException($"The launcher cannot create HKCU\\{pluginKeyPath}.");
-            bool hadFileName = writable.GetValueNames().Contains("FileName", StringComparer.OrdinalIgnoreCase);
-            object? fileName = hadFileName
-                ? writable.GetValue("FileName", null, RegistryValueOptions.DoNotExpandEnvironmentNames)
-                : null;
-            RegistryValueKind? fileNameKind = hadFileName ? writable.GetValueKind("FileName") : null;
+
             string selectedPath = Path.GetFullPath(pluginPath);
-            writable.SetValue("FileName", selectedPath, RegistryValueKind.String);
-            writable.Dispose();
+            List<CapturedValue> captured = new List<CapturedValue>();
+            using (RegistryKey root = Registry.CurrentUser.CreateSubKey(pluginRootPath, writable: true) ??
+                throw new UnauthorizedAccessException($"The launcher cannot create HKCU\\{pluginRootPath}."))
+            {
+                Write(root, pluginRootPath, "Name", pluginName, RegistryValueKind.String, captured);
+                Write(root, pluginRootPath, "EnglishName", pluginName, RegistryValueKind.String, captured);
+                Write(root, pluginRootPath, "LoadMode", LoadAtStartup, RegistryValueKind.DWord, captured);
+                Write(root, pluginRootPath, "IsDotNETPlugIn", 1, RegistryValueKind.DWord, captured);
+            }
+            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(pluginKeyPath, writable: true) ??
+                throw new UnauthorizedAccessException($"The launcher cannot create HKCU\\{pluginKeyPath}."))
+            {
+                Write(key, pluginKeyPath, "FileName", selectedPath, RegistryValueKind.String, captured);
+            }
+
             return new PluginRegistrationLease(
                 registrationLock,
-                new Registration(
-                    pluginRootPath,
-                    pluginKeyPath,
-                    rootExisted,
-                    pluginKeyExisted,
-                    hadFileName,
-                    fileName,
-                    fileNameKind));
+                new Registration(pluginRootPath, pluginKeyPath, rootExisted, pluginKeyExisted, captured));
         }
         catch
         {
@@ -93,34 +100,52 @@ internal sealed class PluginRegistrationLease : IDisposable
     }
 
     [SupportedOSPlatform("windows")]
+    private static void Write(
+        RegistryKey key,
+        string keyPath,
+        string valueName,
+        object value,
+        RegistryValueKind kind,
+        List<CapturedValue> captured)
+    {
+        bool existed = key.GetValueNames().Contains(valueName, StringComparer.OrdinalIgnoreCase);
+        captured.Add(new CapturedValue(
+            keyPath,
+            valueName,
+            existed,
+            existed ? key.GetValue(valueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames) : null,
+            existed ? key.GetValueKind(valueName) : null));
+        key.SetValue(valueName, value, kind);
+    }
+
+    // Rhino writes its own values into a loaded plug-in's key, so a key RWL created is
+    // removed wholesale and a key that already existed keeps everything RWL did not write.
+    [SupportedOSPlatform("windows")]
     private static void Restore(Registration registration)
     {
-        if (!OperatingSystem.IsWindows())
-            throw new PlatformNotSupportedException("Rhino registry launch leases require Windows.");
-
         if (!registration.RootExisted)
         {
             Registry.CurrentUser.DeleteSubKeyTree(registration.RootPath, throwOnMissingSubKey: false);
             return;
         }
-        if (!registration.PluginKeyExisted)
-        {
-            Registry.CurrentUser.DeleteSubKeyTree(registration.PluginKeyPath, throwOnMissingSubKey: false);
-            return;
-        }
 
-        using RegistryKey key = Registry.CurrentUser.OpenSubKey(registration.PluginKeyPath, writable: true) ??
-            throw new InvalidOperationException("The temporary current-user plug-in registration disappeared before restoration.");
-        if (registration.HadFileName)
+        if (!registration.PluginKeyExisted)
+            Registry.CurrentUser.DeleteSubKeyTree(registration.PluginKeyPath, throwOnMissingSubKey: false);
+
+        foreach (IGrouping<string, CapturedValue> group in registration.Captured
+                     .Where(value => registration.PluginKeyExisted || value.KeyPath != registration.PluginKeyPath)
+                     .GroupBy(value => value.KeyPath))
         {
-            key.SetValue(
-                "FileName",
-                registration.FileName ?? string.Empty,
-                registration.FileNameKind ?? RegistryValueKind.String);
-        }
-        else
-        {
-            key.DeleteValue("FileName", throwOnMissingValue: false);
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(group.Key, writable: true);
+            if (key is null)
+                continue;
+            foreach (CapturedValue value in group)
+            {
+                if (value.Existed)
+                    key.SetValue(value.Name, value.Value ?? string.Empty, value.Kind ?? RegistryValueKind.String);
+                else
+                    key.DeleteValue(value.Name, throwOnMissingValue: false);
+            }
         }
     }
 
@@ -142,12 +167,17 @@ internal sealed class PluginRegistrationLease : IDisposable
         }
     }
 
+    private sealed record CapturedValue(
+        string KeyPath,
+        string Name,
+        bool Existed,
+        object? Value,
+        RegistryValueKind? Kind);
+
     private sealed record Registration(
         string RootPath,
         string PluginKeyPath,
         bool RootExisted,
         bool PluginKeyExisted,
-        bool HadFileName,
-        object? FileName,
-        RegistryValueKind? FileNameKind);
+        IReadOnlyList<CapturedValue> Captured);
 }
