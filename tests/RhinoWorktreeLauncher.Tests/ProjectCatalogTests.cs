@@ -171,6 +171,51 @@ public sealed class ProjectCatalogTests
         Assert.False(reloaded.Access.ReadRemote);
     }
 
+    [Fact]
+    public async Task Deleting_the_last_plugin_project_degrades_the_registration_without_pruning_it()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        ProjectCatalog catalog = new ProjectCatalog(temporary.PathFor("launcher/projects.json"));
+        await RegisterAsync(catalog, repository);
+
+        Directory.Delete(Path.Combine(repository, "Sample"), recursive: true);
+        ProjectSnapshot project = Assert.Single(await catalog.LoadAsync(CancellationToken.None));
+
+        Assert.Equal("repository", project.ProjectId);
+        Assert.Equal(ProjectAvailability.Degraded, project.Availability);
+        Assert.Equal("plugin_project_absent", Assert.Single(project.Diagnostics).Code);
+    }
+
+    [Fact]
+    public async Task Moving_the_plugin_project_warns_without_degrading_the_registration()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        ProjectCatalog catalog = new ProjectCatalog(temporary.PathFor("launcher/projects.json"));
+        await RegisterAsync(catalog, repository);
+
+        Directory.Move(Path.Combine(repository, "Sample"), Path.Combine(repository, "Renamed"));
+        ProjectSnapshot project = Assert.Single(await catalog.LoadAsync(CancellationToken.None));
+
+        Assert.Equal(ProjectAvailability.Available, project.Availability);
+        Diagnostic diagnostic = Assert.Single(project.Diagnostics);
+        Assert.Equal("plugin_project_missing", diagnostic.Code);
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+    }
+
+    [Fact]
+    public async Task A_repository_without_a_plugin_project_cannot_be_registered()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string repository = RepositoryFixture.Initialize(temporary, "repository");
+        Directory.Delete(Path.Combine(repository, "Sample"), recursive: true);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => RegisterAsync(
+            new ProjectCatalog(temporary.PathFor("launcher/projects.json")),
+            repository));
+    }
+
     private static Task<ProjectRegistration> RegisterAsync(ProjectCatalog catalog, string repository) =>
         catalog.RegisterAsync(
             repository,

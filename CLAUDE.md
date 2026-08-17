@@ -18,6 +18,7 @@ The backend is a one-off bootstrapper, not a Rhino session monitor. Do not add d
 - Project settings belong only in `%LOCALAPPDATA%\RhinoWorktreeLauncher\projects.json`; never require or create repository configuration JSON.
 - Catalog schema v6 stores project identity, Git common directory, primary checkout, explicit grants, Rhino version, canonical plug-in project, solution Configuration and Platform, and the desktop launch-mode default. Repositories contain no RWL driver or configuration file.
 - Schema-v2 catalog data is imported once under the catalog lock and atomically replaced. Ordinary catalog reads never write or prune; invalid registrations remain visible as degraded until explicit removal or re-registration.
+- A saved build profile is checked against the primary checkout on every catalog read, cheaply: two existence checks on the saved solution and plug-in project. Only when those fail does the read scan for any remaining Rhino plug-in project. One remaining keeps the project available with a warning to choose it again in Config; none remaining degrades the project, because Config has nothing left to offer. Registration already refuses a repository with no Rhino plug-in project, so the two gates agree.
 - Catalog writes re-read while holding the file lock and replace atomically.
 - Remote failures are warnings and never hide local worktrees. Remote reads use an RWL-owned mirror and never fetch into a registered repository.
 - The selected Git worktree is the single source of truth. Do not create an app-owned source or build tree.

@@ -169,15 +169,7 @@ public sealed class ProjectCatalog
         try
         {
             Validate(registration);
-            List<Diagnostic> diagnostics = new List<Diagnostic>();
-            if (!registration.BuildProfile.IsConfigured)
-            {
-                diagnostics.Add(new Diagnostic(
-                    "build_configuration_incomplete",
-                    "Choose a canonical solution build configuration in Config before launching.",
-                    DiagnosticSeverity.Warning));
-            }
-            return new ProjectSnapshot(registration, ProjectAvailability.Available, diagnostics);
+            return Classify(registration);
         }
         catch (Exception exception) when (exception is IOException or
             UnauthorizedAccessException or
@@ -187,6 +179,32 @@ public sealed class ProjectCatalog
         {
             return Degraded(registration, "project_configuration_invalid", exception.Message);
         }
+    }
+
+    // A registration stays visible whatever its state; only its availability changes.
+    // Absent is the one case that cannot be repaired in Config, because there is nothing left to choose.
+    private static ProjectSnapshot Classify(ProjectRegistration registration)
+    {
+        if (!registration.BuildProfile.IsConfigured)
+        {
+            return Warned(
+                registration,
+                "build_configuration_incomplete",
+                "Choose a canonical solution build configuration in Config before launching.");
+        }
+
+        return BuildProfileResolver.Evaluate(registration.PrimaryCheckout, registration.BuildProfile) switch
+        {
+            BuildProfileState.Absent => Degraded(
+                registration,
+                "plugin_project_absent",
+                $"'{registration.PrimaryCheckout}' no longer contains a Rhino plug-in project. Remove this project or register it again."),
+            BuildProfileState.Relocated => Warned(
+                registration,
+                "plugin_project_missing",
+                $"Canonical plug-in project '{registration.BuildProfile.PluginProjectPath}' was not found in the primary checkout. Choose it again in Config."),
+            _ => new ProjectSnapshot(registration, ProjectAvailability.Available, Array.Empty<Diagnostic>())
+        };
     }
 
     private static void Validate(ProjectRegistration registration)
@@ -214,6 +232,14 @@ public sealed class ProjectCatalog
         registration,
         ProjectAvailability.Degraded,
         new[] { new Diagnostic(code, message) });
+
+    private static ProjectSnapshot Warned(
+        ProjectRegistration registration,
+        string code,
+        string message) => new ProjectSnapshot(
+        registration,
+        ProjectAvailability.Available,
+        new[] { new Diagnostic(code, message, DiagnosticSeverity.Warning) });
 
     private async Task EnsureMigratedAsync(CancellationToken cancellationToken)
     {

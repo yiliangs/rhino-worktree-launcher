@@ -6,6 +6,18 @@ internal enum BuildProfileResolutionMode
     RediscoverCanonicalSelection
 }
 
+internal enum BuildProfileState
+{
+    /// <summary>The saved solution and plug-in project both exist in the tree.</summary>
+    Resolved,
+
+    /// <summary>The saved paths are gone, but the tree still holds a Rhino plug-in project to re-select.</summary>
+    Relocated,
+
+    /// <summary>The tree holds no Rhino plug-in project at all, so the registration can no longer launch.</summary>
+    Absent
+}
+
 internal sealed record ResolvedBuildProfile(
     BuildProfile Profile,
     string SolutionPath,
@@ -73,6 +85,33 @@ internal static class BuildProfileResolver
             ArgumentException or
             NotSupportedException or
             InvalidDataException)
+        {
+            return false;
+        }
+    }
+
+    // Catalog reads run this on every load, so the common case must stay at two stat calls.
+    // Only an already-broken registration pays for the recursive plug-in project scan.
+    public static BuildProfileState Evaluate(string repositoryRoot, BuildProfile profile)
+    {
+        string root = Path.GetFullPath(repositoryRoot);
+        if (SavedPathsExist(root, profile))
+            return BuildProfileState.Resolved;
+        return BuildProfileDiscovery.ContainsPluginProject(root)
+            ? BuildProfileState.Relocated
+            : BuildProfileState.Absent;
+    }
+
+    private static bool SavedPathsExist(string root, BuildProfile profile)
+    {
+        try
+        {
+            return File.Exists(ResolveContainedPath(root, profile.SolutionPath, "registered project")) &&
+                File.Exists(ResolveContainedPath(root, profile.PluginProjectPath, "registered project"));
+        }
+        catch (Exception exception) when (exception is InvalidDataException or
+            ArgumentException or
+            NotSupportedException)
         {
             return false;
         }

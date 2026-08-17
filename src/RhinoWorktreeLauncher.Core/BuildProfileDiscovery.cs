@@ -84,6 +84,12 @@ internal static class BuildProfileDiscovery
             .ToArray());
     }
 
+    public static bool ContainsPluginProject(string repositoryRoot)
+    {
+        string root = Path.GetFullPath(repositoryRoot);
+        return EnumerateProjectFiles(root).Any(path => ReadCandidate(root, path) is not null);
+    }
+
     private static ProjectCandidate SelectPluginProject(string root, string? selectedPluginProjectPath)
     {
         ProjectCandidate[] projects = FindPluginProjects(root);
