@@ -139,6 +139,12 @@ internal sealed class LaunchCoordinator
         {
             return await FailAsync(new Diagnostic("launch_cancelled", "Launch was cancelled."));
         }
+        // Rhino exiting before verification is one condition whether the process was
+        // already gone when RWL looked it up or exited while RWL waited on it.
+        catch (RhinoExitedBeforeVerificationException exception)
+        {
+            return await FailAsync(new Diagnostic("rhino_exited_before_verification", exception.Message));
+        }
         catch (Exception exception)
         {
             return await FailAsync(new Diagnostic("launch_failed", exception.Message));
@@ -252,7 +258,9 @@ internal sealed class LaunchCoordinator
             if (_options.FileInUseInspector(rhino.Id, artifacts.PluginPath))
                 return;
             if (rhino.HasExited)
-                throw new InvalidOperationException("Rhino exited before it held the selected plug-in in use.");
+                throw new RhinoExitedBeforeVerificationException(
+                    rhino.Id,
+                    "Rhino exited before it held the selected plug-in in use.");
             await Task.Delay(FileUsePollDelay, cancellationToken);
         }
     }

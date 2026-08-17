@@ -73,7 +73,7 @@ internal static class RhinoProcessBroker
             if (response.ProcessId <= 0)
                 throw new InvalidDataException("The Rhino launch broker returned an invalid process ID.");
 
-            return Process.GetProcessById(response.ProcessId);
+            return Attach(response.ProcessId);
         }
         catch (OperationCanceledException exception)
         {
@@ -104,6 +104,25 @@ internal static class RhinoProcessBroker
             overrides[removed] = null;
 
         return overrides;
+    }
+
+    // The broker reports the PID only after it has already started the child, so the
+    // child can exit before this process opens a handle to it. The reported PID is still
+    // valid information; only the live-handle lookup fails, and .NET reports that as a
+    // bare ArgumentException that would escape as a generic launch failure.
+    private static Process Attach(int processId)
+    {
+        try
+        {
+            return Process.GetProcessById(processId);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new RhinoExitedBeforeVerificationException(
+                processId,
+                $"Rhino started as process {processId} and exited before it held the selected plug-in in use.",
+                exception);
+        }
     }
 
     private static IDisposable LaunchThroughExplorer(string bootstrapPath, string pipeName)

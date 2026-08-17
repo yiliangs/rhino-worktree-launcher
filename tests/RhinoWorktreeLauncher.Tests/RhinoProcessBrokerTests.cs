@@ -8,6 +8,8 @@ namespace RhinoWorktreeLauncher.Tests;
 
 public sealed class RhinoProcessBrokerTests
 {
+    private const string ChildThatExitsImmediately = "exit /b 0";
+
     [Fact]
     public async Task Broker_returns_the_real_child_and_sends_only_private_environment_overrides()
     {
@@ -72,6 +74,31 @@ public sealed class RhinoProcessBrokerTests
     }
 
     [Fact]
+    public async Task A_child_that_is_already_gone_names_the_process_instead_of_failing_the_handle_lookup()
+    {
+        string variable = "RWL_TEST_" + Guid.NewGuid().ToString("N");
+        Task<BrokerObservation>? brokerTask = null;
+
+        RhinoExitedBeforeVerificationException exited =
+            Assert.Throws<RhinoExitedBeforeVerificationException>(() => RhinoProcessBroker.Start(
+                CreateConfiguredStart(variable, "already-gone", ChildThatExitsImmediately),
+                "test-bootstrap.exe",
+                (_, pipeName) =>
+                {
+                    // The fake broker reports the PID only after the child has fully
+                    // exited, so the handle lookup deterministically has nothing to open.
+                    brokerTask = RunFakeBrokerAsync(pipeName, waitForChildExit: true);
+                    return NoopDisposable.Instance;
+                }));
+
+        Assert.NotNull(brokerTask);
+        BrokerObservation observation = await brokerTask;
+        Assert.Equal(observation.ProcessId, exited.ProcessId);
+        Assert.Contains(observation.ProcessId.ToString(), exited.Message);
+        Assert.IsType<ArgumentException>(exited.InnerException);
+    }
+
+    [Fact]
     public async Task Broker_does_not_capture_the_callers_synchronization_context()
     {
         string variable = "RWL_TEST_" + Guid.NewGuid().ToString("N");
@@ -110,7 +137,10 @@ public sealed class RhinoProcessBrokerTests
         Assert.Equal(0, child.ExitCode);
     }
 
-    private static ProcessStartInfo CreateConfiguredStart(string variable, string value)
+    private static ProcessStartInfo CreateConfiguredStart(string variable, string value) =>
+        CreateConfiguredStart(variable, value, "ping 127.0.0.1 -n 2 > nul");
+
+    private static ProcessStartInfo CreateConfiguredStart(string variable, string value, string command)
     {
         ProcessStartInfo configured = new ProcessStartInfo
         {
@@ -121,12 +151,15 @@ public sealed class RhinoProcessBrokerTests
         };
         configured.ArgumentList.Add("/d");
         configured.ArgumentList.Add("/c");
-        configured.ArgumentList.Add("ping 127.0.0.1 -n 2 > nul");
+        configured.ArgumentList.Add(command);
         configured.Environment[variable] = value;
         return configured;
     }
 
-    private static async Task<BrokerObservation> RunFakeBrokerAsync(string pipeName)
+    private static Task<BrokerObservation> RunFakeBrokerAsync(string pipeName) =>
+        RunFakeBrokerAsync(pipeName, waitForChildExit: false);
+
+    private static async Task<BrokerObservation> RunFakeBrokerAsync(string pipeName, bool waitForChildExit)
     {
         using NamedPipeClientStream pipe = new NamedPipeClientStream(
             ".",
@@ -160,6 +193,8 @@ public sealed class RhinoProcessBrokerTests
         }
         Process process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start test child.");
         int processId = process.Id;
+        if (waitForChildExit)
+            await process.WaitForExitAsync();
         process.Dispose();
         await writer.WriteLineAsync(JsonSerializer.Serialize(new { processId }));
         return new BrokerObservation(request, processId);
