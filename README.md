@@ -1,6 +1,12 @@
-﻿# Rhino Worktree Launcher
+# Rhino Worktree Launcher
 
 Rhino Worktree Launcher is a native Windows tool for registering Rhino plug-in projects, inspecting their Git worktrees, and launching the exact selected `.rhp` with loaded-binary verification. A shared .NET 8 backend serves the WPF desktop application, `rwl` CLI, and local stdio MCP server.
+
+## Requirements
+
+- Windows x64 and Rhino 8. A registered project records Rhino 8, and the launch resolves `Rhino.exe` from that version's default installation directory. Rhino 7 and Rhino 9 are not supported yet.
+- Git and the .NET SDK on `PATH`. RWL runs the plug-in solution's ordinary build, so the SDK must be the one that solution needs. Run `rwl doctor` to check both.
+- A repository containing at least one Rhino plug-in project. Registration refuses a repository with none.
 
 ## Project and build model
 
@@ -21,7 +27,7 @@ RWL-owned state remains under `%LOCALAPPDATA%\RhinoWorktreeLauncher`:
 
 - `projects.json`: project grants and canonical solution selections
 - `remotes\<project-id>.git`: remote mirror used for ahead/behind calculation
-- `launches`: verifier request and response state
+- `locks`: the per (Rhino version, plug-in ID) registration lock and journal
 - `logs`: terminal launch diagnostics
 
 Refresh uses read-only Git commands against the project. It does not fetch into the repository or update repository refs.

@@ -17,12 +17,12 @@ The choice for one launch request between Build & Launch and Direct Launch. Desk
 _Avoid_: project-wide launch mode, freshness mode, build receipt
 
 **Loaded-binary verification**:
-Proof produced inside Rhino that the expected plug-in and declared critical dependencies were loaded from their exact canonical paths. It does not claim plug-in authentication or application initialization succeeded.
+Proof, observed from outside Rhino, that the launched Rhino process holds the canonical plug-in artifact mapped in its address space. It does not claim plug-in authentication or application initialization succeeded, and it makes no claim about critical dependencies, which are existence-checked beside the plug-in during prepare rather than load-gated.
 _Avoid_: launch receipt, plug-in readiness
 
-**RWL verifier**:
-An app-owned Rhino integration that observes loaded plug-in and assembly paths and produces loaded-binary verification without requiring code in the launched plug-in.
-_Avoid_: receipt writer, project bootstrap
+**File-use attribution**:
+The external inspection that attributes an open file to the process holding it, which is how RWL observes the launched Rhino process using the canonical plug-in artifact. It requires no code inside Rhino and no integration in the launched plug-in, because a plug-in can never verify its own loading.
+_Avoid_: RWL verifier, in-Rhino verification, receipt writer
 
 **Project access grant**:
 The user's consent for RWL to inspect one Git repository and every worktree sharing its Git common directory. Build & Launch also authorizes the selected solution to write its ordinary outputs in the selected worktree.

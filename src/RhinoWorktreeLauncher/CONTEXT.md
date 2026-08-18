@@ -1,6 +1,6 @@
 # WPF adapter
 
-This project owns only the native Windows presentation surface. `MainWindow` binds backend DTOs, invokes `LauncherBackend` commands, displays progress, and presents terminal diagnostics. It must not duplicate Git scanning, canonical solution validation, build execution, Rhino launch, or verifier logic from `RhinoWorktreeLauncher.Core`.
+This project owns only the native Windows presentation surface. `MainWindow` binds backend DTOs, invokes `LauncherBackend` commands, displays progress, and presents terminal diagnostics. It must not duplicate Git scanning, canonical solution validation, build execution, Rhino launch, or launch-verification logic from `RhinoWorktreeLauncher.Core`.
 
 The fixed 720 x 1000 main interface follows `AppsUseLightTheme`, embeds the approved IBM Plex Sans and Geist Mono static fonts, and uses Ideal metrics, Fixed hinting, and ClearType. Keep the DWM-visible frame sizing, shared corner-radius tokens, dedicated right scrollbar rail, full-height non-scroll indicator, project identity block (fixed-width drop-down selector above, quote-ruled repository path centred in the gap below), Refresh progress control, and Add project ghost-button behavior.
 
