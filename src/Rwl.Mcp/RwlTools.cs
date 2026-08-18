@@ -79,7 +79,7 @@ internal sealed class RwlTools
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(CommandResult<WorktreeInspection>))]
-    [Description("Inspect whether a worktree has its configured solution build configuration, the bundled verifier, and the required Rhino runtime.")]
+    [Description("Inspect whether a worktree has its configured solution build configuration and the required Rhino runtime.")]
     public async Task<CallToolResult> InspectAsync(
         [Description("Absolute path inside the exact worktree to inspect.")] string path,
         CancellationToken cancellationToken) => ToToolResult(
@@ -94,7 +94,7 @@ internal sealed class RwlTools
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(CommandResult<LaunchResult>))]
-    [Description("Build the exact worktree's configured solution, start Rhino 8, and wait until the bundled verifier confirms the expected binaries.")]
+    [Description("Build the exact worktree's configured solution, start the registered Rhino version, and wait until that Rhino process holds the configured plug-in artifact in use.")]
     public async Task<CallToolResult> BuildAndLaunchAsync(
         [Description("Absolute path inside the exact worktree to build and launch.")] string path,
         [Description("Terminal timeout in seconds. Must be between 1 and 1800.")] double timeoutSeconds = 180,
@@ -111,7 +111,7 @@ internal sealed class RwlTools
         OpenWorld = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(CommandResult<LaunchResult>))]
-    [Description("Launch the exact worktree's existing configured artifact without rebuilding or claiming freshness, then wait until the bundled verifier confirms the expected binaries.")]
+    [Description("Launch the exact worktree's existing configured artifact without rebuilding or claiming freshness, then wait until the launched Rhino process holds that artifact in use.")]
     public async Task<CallToolResult> LaunchExistingAsync(
         [Description("Absolute path inside the exact worktree whose existing artifact should be launched.")] string path,
         [Description("Terminal timeout in seconds. Must be between 1 and 1800.")] double timeoutSeconds = 180,
