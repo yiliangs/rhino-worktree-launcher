@@ -1,8 +1,8 @@
-# 0014: Displace one plug-in namespace through one journaled lease
+﻿# 0014: Displace one plug-in namespace through one journaled lease
 
 ## Status
 
-Accepted. Amends ADR 0012 and ADR 0013, whose two separate displacement mechanisms become one. Amended 2026-08-17: the seed carries the load mode the displaced registration recorded, because a seed without one installs as a demand load (see Amendment).
+Accepted. Amends ADR 0012 and ADR 0013, whose two separate displacement mechanisms become one. Amended 2026-08-17: the seed carries the load mode the displaced registration recorded, because a seed without one installs as a demand load. Amended 2026-08-18: no seed is written where a machine registration already names the selected artifact, because two registrations for one ID collide.
 
 ## Context
 
@@ -22,7 +22,7 @@ One component owns everything registered for one (Rhino version, plug-in ID) pai
 
 The journal is written before any registry mutation and holds both hives' pre-state. A null entry means the key did not exist, so restoring it deletes the key. That is what erases a killed launch's install seed. The journal is deleted only after a successful restore, and every launch restores a pending journal before reading any registration.
 
-The current-user key is always cleared and reseeded with the documented install seed, the root values `Name` and `FileName`, and, per the amendment below, the load mode the displaced registration recorded. The redirect branch is deleted. Every launch is a fresh install-load, and an existing current-user registration is displaced for the launch rather than edited in place, which also removes the unverified second shape.
+The current-user key is always cleared, and reseeded with the documented install seed, the root values `Name` and `FileName`, and, per the amendments below, the load mode the displaced registration recorded, except where a machine registration already names the selected artifact. The redirect branch is deleted. Every launch is a fresh install-load, and an existing current-user registration is displaced for the launch rather than edited in place, which also removes the unverified second shape.
 
 A machine registration for the same ID that names a different file is displaced the same way where the user granted write access, and refuses the launch otherwise with the registered path and the exact key named, before Rhino starts. RWL still never elevates. A machine registration naming the selected artifact is not a competitor and is left alone.
 
@@ -54,3 +54,17 @@ Two rules make the carry well defined. The machine hive's value wins over the cu
 This shape is verified live. On 2026-08-17 a worktree launch of a plug-in declaring `PlugInLoadTime.AtStartup` loaded it at startup with no command typed, and verification completed 16 seconds after Rhino started. That launch suspended a machine registration naming a different file, so it exercised the seed path rather than resolving an existing complete registration. Rhino honours `LoadMode` in a seed and still installs the plug-in, so the extra value does not make Rhino read the key as already installed. That was the failure this amendment risked, and it would have loaded nothing at all, which is worse than the demand load being replaced.
 
 The ADR 0012 amendment remains accurate for the shape it tested. A hand-built complete registration carrying `LoadMode` is still ignored, and that registration also lacked `Type`, `CommandList`, `RegPath`, and `DirectoryInstall`, so it never isolated `LoadMode`. A seed carrying a load mode and a hand-built complete registration are different shapes, and only the first one loads.
+
+## Amendment (2026-08-18): no seed beside a machine registration naming the selected artifact
+
+This ADR treats a machine registration that names the selected artifact as not a competitor and leaves it in place, which is correct. It then seeded the current-user hive anyway, which is not.
+
+That combination gives Rhino two registrations for one plug-in ID: a complete machine registration holding `LoadMode` and `PlugIn\FileName`, and a bare current-user seed naming the same file. A seed is a request to install an ID, and ADR 0012 already recorded Rhino rejecting an ID already in use when a launch offered one plug-in through two mechanisms at once. The same collision appears here across the two hives, and the plug-in does not load.
+
+The case is common rather than exotic. It is every launch of the checkout the plug-in is normally installed from, so the launch that most resembles ordinary use was the one that failed.
+
+The launch therefore writes no current-user seed where the machine registration already names the selected artifact. Nothing is needed: Rhino holds a complete registration for exactly the file the launch wants loaded, including the load mode it derived when it last loaded it. The current-user key is still cleared under the same journal, because a current-user registration naming a different file would otherwise win the ID, and clearing it is what the restore later undoes.
+
+This also bounds the previous amendment. A carried load mode matters only where the launch writes a seed, which is now only where no surviving registration already names the selected artifact.
+
+The collision is inferred from two observed states rather than isolated by a controlled test: a Start menu session resolving the machine registration alone loads the plug-in at startup, and an RWL launch of the same artifact with a seed added does not load it. One live launch of the primary checkout confirms the fix.

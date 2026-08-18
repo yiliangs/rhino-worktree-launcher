@@ -1,4 +1,4 @@
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
 using System.Runtime.Versioning;
 using System.Security;
 using System.Text.Json;
@@ -14,7 +14,9 @@ namespace RhinoWorktreeLauncher;
 // Rhino installs and loads that file at its next startup and fills in the rest of the
 // registration itself; a hand-built complete registration is silently ignored (verified
 // live on 2026-08-17). Every launch is a fresh install-load, so a previous occupant is
-// displaced rather than edited in place.
+// displaced rather than edited in place. The key is cleared but not reseeded when a
+// machine registration already names the selected artifact: Rhino loads the file from
+// there, and a seed beside it claims an ID Rhino has already registered.
 //
 // Local machine: a registration for the same ID naming a different file wins over the
 // current-user seed, so it is removed for the launch where the user granted write
@@ -126,7 +128,8 @@ internal sealed class PluginNamespaceLease : IDisposable
             // resolved before anything is written: a refusal must precede every mutation
             // and therefore reaches the caller before Rhino starts.
             string? competing = ReadRegisteredPath(machineHive, machinePluginsKeyPath, registration);
-            bool machineCompetes = competing is not null && !NamesSelectedArtifact(competing, selectedPath);
+            bool machineNamesSelected = competing is not null && NamesSelectedArtifact(competing, selectedPath);
+            bool machineCompetes = competing is not null && !machineNamesSelected;
             using RegistryKey? machinePluginsKey = machineCompetes
                 ? OpenWritable(machineHive, machinePluginsKeyPath)
                 : null;
@@ -167,13 +170,22 @@ internal sealed class PluginNamespaceLease : IDisposable
                 // Delete-then-seed: an install seed left beside an earlier occupant's
                 // values reads as an already installed registration, which Rhino ignores.
                 userPluginsKey.DeleteSubKeyTree(registration, throwOnMissingSubKey: false);
-                using RegistryKey seed = userPluginsKey.CreateSubKey(registration, writable: true) ??
-                    throw new UnauthorizedAccessException(
-                        $@"The launcher cannot create '{userHive.Name}\{userPluginsKeyPath}\{registration}'.");
-                seed.SetValue("Name", pluginName, RegistryValueKind.String);
-                seed.SetValue("FileName", selectedPath, RegistryValueKind.String);
-                if (carriedLoadMode is int loadMode)
-                    seed.SetValue(LoadModeValue, loadMode, RegistryValueKind.DWord);
+                // A machine registration that already names the selected artifact leaves
+                // the launch nothing to write here. Rhino holds a complete registration for
+                // exactly the file the launch wants loaded, and a seed beside it asks Rhino
+                // to install an ID that is already registered, which it rejects. The
+                // current-user key is still cleared above, because a registration naming
+                // another file would otherwise win the ID.
+                if (!machineNamesSelected)
+                {
+                    using RegistryKey seed = userPluginsKey.CreateSubKey(registration, writable: true) ??
+                        throw new UnauthorizedAccessException(
+                            $@"The launcher cannot create '{userHive.Name}\{userPluginsKeyPath}\{registration}'.");
+                    seed.SetValue("Name", pluginName, RegistryValueKind.String);
+                    seed.SetValue("FileName", selectedPath, RegistryValueKind.String);
+                    if (carriedLoadMode is int loadMode)
+                        seed.SetValue(LoadModeValue, loadMode, RegistryValueKind.DWord);
+                }
             }
             catch
             {

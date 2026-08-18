@@ -1,4 +1,4 @@
-# Rhino Worktree Launcher
+﻿# Rhino Worktree Launcher
 
 Rhino Worktree Launcher is a native Windows tool for registering Rhino plug-in projects, inspecting their Git worktrees, and launching the exact selected `.rhp` with loaded-binary verification. A shared .NET 8 backend serves the WPF desktop application, `rwl` CLI, and local stdio MCP server.
 
@@ -34,7 +34,7 @@ A launch performs these steps:
 2. Revalidate the saved solution and configuration in that worktree.
 3. Build the selected solution when the mode is Build & Launch, or skip the build in Direct Launch.
 4. Ask MSBuild for the plug-in project's mapped `TargetPath` and require that exact `.rhp` to exist.
-5. Journal whatever is registered for that plug-in ID in both registry hives, then displace it: the current-user key is cleared and reseeded with Rhino's documented install seed, `Name` and `FileName` naming the selected `.rhp`, plus the `LoadMode` the displaced registration recorded so a plug-in that loads at startup keeps doing so.
+5. Journal whatever is registered for that plug-in ID in both registry hives, then displace it: the current-user key is cleared and reseeded with Rhino's documented install seed, `Name` and `FileName` naming the selected `.rhp`, plus the `LoadMode` the displaced registration recorded so a plug-in that loads at startup keeps doing so. Where a machine registration already names the selected `.rhp`, the key is cleared and left empty, because Rhino loads the file from that registration already.
 6. Start Rhino. That registration is the only loading mechanism, and the `.rhp` is not passed on Rhino's command line.
 7. Wait for the launched Rhino process to map the selected `.rhp` into its address space.
 8. Fail closed unless that exact file is in use, then restore both hives from the journal and delete it.

@@ -1,4 +1,4 @@
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
 using System.Runtime.Versioning;
 
 namespace RhinoWorktreeLauncher.Tests;
@@ -260,6 +260,68 @@ public sealed class PluginNamespaceLeaseTests
         Assert.Null(result.DisplacedMachineRegistration);
         Assert.NotNull(sandbox.OpenMachineRegistration());
         result.Lease!.Dispose();
+    }
+
+    // Rhino already holds a complete registration for exactly the file the launch wants
+    // loaded, so a seed beside it only asks Rhino to install an ID that is already
+    // registered. The launch needs no current-user shape at all here.
+    [Fact]
+    public async Task No_seed_is_written_when_the_machine_registration_already_names_the_selected_artifact()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using LeaseSandbox sandbox = new LeaseSandbox();
+        string selected = sandbox.PathFor("selected/Sample.rhp");
+        using (RegistryKey installed = sandbox.CreateMachineRegistration())
+        {
+            installed.SetValue("LoadMode", 1, RegistryValueKind.DWord);
+            using RegistryKey plugin = installed.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", Path.GetFullPath(selected), RegistryValueKind.String);
+        }
+
+        PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(selected);
+
+        Assert.Null(result.Refusal);
+        Assert.Null(sandbox.OpenUserRegistration());
+        Assert.NotNull(sandbox.OpenMachineRegistration());
+
+        result.Lease!.Dispose();
+
+        Assert.Null(sandbox.OpenUserRegistration());
+    }
+
+    // The current-user hive is still cleared: a registration naming another file would
+    // otherwise stay live for the launch.
+    [Fact]
+    public async Task A_current_user_registration_is_cleared_even_when_no_seed_is_written()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using LeaseSandbox sandbox = new LeaseSandbox();
+        string selected = sandbox.PathFor("selected/Sample.rhp");
+        using (RegistryKey stale = sandbox.CreateUserRegistration())
+        {
+            using RegistryKey plugin = stale.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", @"C:\other\Sample.rhp", RegistryValueKind.String);
+        }
+        using (RegistryKey installed = sandbox.CreateMachineRegistration())
+        {
+            using RegistryKey plugin = installed.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", Path.GetFullPath(selected), RegistryValueKind.String);
+        }
+
+        PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(selected);
+
+        Assert.Equal(@"C:\other\Sample.rhp", result.DisplacedUserRegistration);
+        Assert.Null(sandbox.OpenUserRegistration());
+
+        result.Lease!.Dispose();
+
+        using RegistryKey restored = sandbox.OpenUserRegistration()!;
+        using RegistryKey restoredPlugin = restored.OpenSubKey("PlugIn")!;
+        Assert.Equal(@"C:\other\Sample.rhp", restoredPlugin.GetValue("FileName"));
     }
 
     [Fact]
