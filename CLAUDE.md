@@ -1,4 +1,4 @@
-﻿# Rhino Worktree Launcher
+# Rhino Worktree Launcher
 
 Independent .NET 8 Windows application with one backend and three adapters: native WPF, `rwl` CLI, and stdio MCP.
 

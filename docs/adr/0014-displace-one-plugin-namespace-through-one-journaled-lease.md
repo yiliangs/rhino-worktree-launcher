@@ -1,4 +1,4 @@
-﻿# 0014: Displace one plug-in namespace through one journaled lease
+# 0014: Displace one plug-in namespace through one journaled lease
 
 ## Status
 
