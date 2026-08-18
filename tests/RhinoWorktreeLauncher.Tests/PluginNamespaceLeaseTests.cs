@@ -26,8 +26,8 @@ public sealed class PluginNamespaceLeaseTests
         {
             Assert.Equal("Sample", seed.GetValue("Name"));
             Assert.Equal(Path.GetFullPath(selected), seed.GetValue("FileName"));
-            // The seed must stay exactly Name and FileName: extra values risk reading as
-            // an already installed registration, which Rhino ignores.
+            // Nothing was displaced, so there is no recorded load mode to carry and the
+            // seed stays exactly Name and FileName.
             Assert.Equal(2, seed.GetValueNames().Length);
             Assert.Empty(seed.GetSubKeyNames());
         }
@@ -63,9 +63,11 @@ public sealed class PluginNamespaceLeaseTests
         using (RegistryKey seed = sandbox.OpenUserRegistration()!)
         {
             // Every launch is a fresh install-load, so the earlier occupant's values are
-            // gone for the duration rather than merged with the seed.
-            Assert.Equal(2, seed.GetValueNames().Length);
+            // gone for the duration rather than merged with the seed. Only the recorded
+            // load mode is deliberately carried forward.
+            Assert.Equal("Sample", seed.GetValue("Name"));
             Assert.Empty(seed.GetSubKeyNames());
+            Assert.Equal(3, seed.GetValueNames().Length);
         }
 
         result.Lease!.Dispose();
@@ -79,6 +81,114 @@ public sealed class PluginNamespaceLeaseTests
         Assert.Equal(
             original,
             restoredPlugin.GetValue("FileName", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
+    }
+
+    [Fact]
+    public async Task Seed_carries_the_load_mode_the_displaced_user_registration_recorded()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using LeaseSandbox sandbox = new LeaseSandbox();
+        using (RegistryKey installed = sandbox.CreateUserRegistration())
+        {
+            installed.SetValue("LoadMode", 1, RegistryValueKind.DWord);
+            using RegistryKey plugin = installed.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", @"C:\primary\Sample.rhp", RegistryValueKind.String);
+        }
+
+        PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(
+            sandbox.PathFor("selected/Sample.rhp"));
+
+        using (RegistryKey seed = sandbox.OpenUserRegistration()!)
+        {
+            Assert.Equal(1, seed.GetValue("LoadMode"));
+            Assert.Equal(RegistryValueKind.DWord, seed.GetValueKind("LoadMode"));
+        }
+
+        result.Lease!.Dispose();
+    }
+
+    [Fact]
+    public async Task Seed_carries_the_load_mode_a_displaced_machine_registration_recorded()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using LeaseSandbox sandbox = new LeaseSandbox();
+        using (RegistryKey competing = sandbox.CreateMachineRegistration())
+        {
+            competing.SetValue("LoadMode", 1, RegistryValueKind.DWord);
+            using RegistryKey plugin = competing.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", @"C:\primary\Sample.rhp", RegistryValueKind.String);
+        }
+
+        PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(
+            sandbox.PathFor("selected/Sample.rhp"));
+
+        using (RegistryKey seed = sandbox.OpenUserRegistration()!)
+            Assert.Equal(1, seed.GetValue("LoadMode"));
+
+        result.Lease!.Dispose();
+    }
+
+    // Rhino resolves a duplicate plug-in ID to the machine registration, so the machine
+    // hive holds the load mode Rhino was actually using for this ID.
+    [Fact]
+    public async Task A_displaced_machine_load_mode_wins_over_the_current_user_one()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using LeaseSandbox sandbox = new LeaseSandbox();
+        using (RegistryKey user = sandbox.CreateUserRegistration())
+        {
+            user.SetValue("LoadMode", 2, RegistryValueKind.DWord);
+            using RegistryKey plugin = user.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", @"C:\other\Sample.rhp", RegistryValueKind.String);
+        }
+        using (RegistryKey competing = sandbox.CreateMachineRegistration())
+        {
+            competing.SetValue("LoadMode", 1, RegistryValueKind.DWord);
+            using RegistryKey plugin = competing.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", @"C:\primary\Sample.rhp", RegistryValueKind.String);
+        }
+
+        PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(
+            sandbox.PathFor("selected/Sample.rhp"));
+
+        using (RegistryKey seed = sandbox.OpenUserRegistration()!)
+            Assert.Equal(1, seed.GetValue("LoadMode"));
+
+        result.Lease!.Dispose();
+    }
+
+    // A disabled registration is the one load mode the launch must not reproduce: the
+    // launch exists to load the selected artifact, and verification waits on it.
+    [Fact]
+    public async Task A_disabled_load_mode_is_not_carried_into_the_seed()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using LeaseSandbox sandbox = new LeaseSandbox();
+        using (RegistryKey disabled = sandbox.CreateUserRegistration())
+        {
+            disabled.SetValue("LoadMode", 0, RegistryValueKind.DWord);
+            using RegistryKey plugin = disabled.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", @"C:\primary\Sample.rhp", RegistryValueKind.String);
+        }
+
+        PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(
+            sandbox.PathFor("selected/Sample.rhp"));
+
+        using (RegistryKey seed = sandbox.OpenUserRegistration()!)
+        {
+            Assert.Null(seed.GetValue("LoadMode"));
+            Assert.Equal(2, seed.GetValueNames().Length);
+        }
+
+        result.Lease!.Dispose();
     }
 
     [Fact]

@@ -9,11 +9,12 @@ namespace RhinoWorktreeLauncher;
 // plug-in ID) pair, across both registry hives, under one lock and one disk journal
 // (ADR 0014).
 //
-// Current user: the key is cleared and reseeded with Rhino's documented install seed,
-// exactly the root values Name and FileName. Rhino installs and loads that file at its
-// next startup and fills in the rest of the registration itself; a hand-built complete
-// registration is silently ignored (verified live on 2026-08-17). Every launch is a
-// fresh install-load, so a previous occupant is displaced rather than edited in place.
+// Current user: the key is cleared and reseeded with Rhino's documented install seed, the
+// root values Name and FileName plus the load mode the displaced registration recorded.
+// Rhino installs and loads that file at its next startup and fills in the rest of the
+// registration itself; a hand-built complete registration is silently ignored (verified
+// live on 2026-08-17). Every launch is a fresh install-load, so a previous occupant is
+// displaced rather than edited in place.
 //
 // Local machine: a registration for the same ID naming a different file wins over the
 // current-user seed, so it is removed for the launch where the user granted write
@@ -25,6 +26,9 @@ namespace RhinoWorktreeLauncher;
 // plug-in restores the journal first.
 internal sealed class PluginNamespaceLease : IDisposable
 {
+    private const string LoadModeValue = "LoadMode";
+    private const int DisabledLoadMode = 0;
+
     private readonly FileStream _lock;
     private readonly RegistryKey _userHive;
     private readonly string _userPluginsKeyPath;
@@ -146,6 +150,7 @@ internal sealed class PluginNamespaceLease : IDisposable
             RegistryKeySnapshot? machineSnapshot = machinePluginsKey is null
                 ? null
                 : Capture(machinePluginsKey, registration);
+            int? carriedLoadMode = CarriedLoadMode(machineSnapshot, userSnapshot);
 
             PluginNamespaceJournal journal = new PluginNamespaceJournal(
                 registration,
@@ -167,6 +172,8 @@ internal sealed class PluginNamespaceLease : IDisposable
                         $@"The launcher cannot create '{userHive.Name}\{userPluginsKeyPath}\{registration}'.");
                 seed.SetValue("Name", pluginName, RegistryValueKind.String);
                 seed.SetValue("FileName", selectedPath, RegistryValueKind.String);
+                if (carriedLoadMode is int loadMode)
+                    seed.SetValue(LoadModeValue, loadMode, RegistryValueKind.DWord);
             }
             catch
             {
@@ -300,6 +307,29 @@ internal sealed class PluginNamespaceLease : IDisposable
     {
         using RegistryKey? key = pluginsKey.OpenSubKey(registration, writable: false);
         return key is null ? null : RegistryKeySnapshot.Capture(key);
+    }
+
+    // Rhino derives a plug-in's load mode only by instantiating the plug-in, so a seed
+    // holding only Name and FileName always installs as a demand load, and a plug-in
+    // declaring PlugInLoadTime.AtStartup never loads at startup under a launch. The
+    // displaced registration already holds Rhino's own answer for this ID, so the seed
+    // carries it forward. The machine hive wins, because Rhino resolves a duplicate ID
+    // there. A disabled mode is never carried: the launch exists to load the selected
+    // artifact, and verification waits on that load.
+    [SupportedOSPlatform("windows")]
+    private static int? CarriedLoadMode(RegistryKeySnapshot? machine, RegistryKeySnapshot? user)
+    {
+        int? recorded = RootLoadMode(machine) ?? RootLoadMode(user);
+        return recorded == DisabledLoadMode ? null : recorded;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static int? RootLoadMode(RegistryKeySnapshot? registration)
+    {
+        RegistryValueSnapshot? recorded = registration?.Values.FirstOrDefault(value =>
+            value.Kind == RegistryValueKind.DWord &&
+            string.Equals(value.Name, LoadModeValue, StringComparison.OrdinalIgnoreCase));
+        return recorded?.Number is long number ? unchecked((int)number) : null;
     }
 
     // An installed registration names its file under PlugIn and an install seed names it
