@@ -130,3 +130,12 @@ pwsh -NoProfile -File eng/New-RwlPackage.ps1 `
 ```
 
 The WPF application remains a fixed 720 x 1000 native surface with embedded IBM Plex Sans and Geist Mono fonts. Backend code is in `RhinoWorktreeLauncher.Core`; WPF, CLI, and MCP projects contain presentation or transport logic only.
+
+## License
+
+Rhino Worktree Launcher is released under the MIT License. See [LICENSE](LICENSE).
+
+The embedded IBM Plex Sans and Geist Mono font files are not covered by that
+license. They remain under the SIL Open Font License, Version 1.1, with the
+full text and attribution in
+[`src/RhinoWorktreeLauncher/Assets/Fonts/LICENSES.txt`](src/RhinoWorktreeLauncher/Assets/Fonts/LICENSES.txt).
