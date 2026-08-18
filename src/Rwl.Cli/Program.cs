@@ -290,7 +290,8 @@ internal static class SessionContextWriter
                 output,
                 $"This session is inside the registered Rhino project \"{context.DisplayName}\" at worktree \"{context.WorktreePath}\". " +
                 "Use the rhino-worktree-launcher MCP tools for Rhino launch and loaded-binary verification. " +
-                "Do not launch Rhino.exe directly or edit plug-in registration. Ordinary editing, Git operations, and repository-owned headless verification remain outside RWL.");
+                "Do not launch Rhino.exe directly or edit plug-in registration. Ordinary editing, Git operations, and repository-owned tests that never start Rhino remain outside RWL. " +
+                "A repository-owned harness that does start Rhino is not an exception: it competes for the same plug-in registration, so report it and ask before running it.");
             return 0;
         }
     }

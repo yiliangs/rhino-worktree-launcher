@@ -59,6 +59,26 @@ public sealed class SessionContextTests
         Assert.Contains(Path.GetFullPath(temporary.PathFor("repository")), context, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Registered_repository_exempts_only_tests_that_never_start_rhino()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        LauncherBackend backend = CreateBackend(temporary);
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),
+            CancellationToken.None);
+        StringWriter output = new StringWriter();
+
+        await SessionContextWriter.WriteAsync(
+            backend,
+            new StringReader(JsonSerializer.Serialize(new { cwd = temporary.PathFor("repository") })),
+            output);
+
+        string context = ReadAdditionalContext(output);
+        Assert.Contains("tests that never start Rhino", context, StringComparison.Ordinal);
+        Assert.Contains("is not an exception", context, StringComparison.Ordinal);
+    }
+
     private static LauncherBackend CreateBackend(TemporaryDirectory temporary) => new LauncherBackend(
         new LauncherBackendOptions
         {
