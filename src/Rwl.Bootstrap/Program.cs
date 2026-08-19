@@ -227,6 +227,9 @@ internal static class Program
     // This bootstrap is the whole session for the server it forwards to: the client's streams
     // reach that server only through here. When this end of the bridge closes, the session is
     // over, and a child that stays running is an orphan nobody can reach and nobody notices.
+    // Watching input is enough on this side, because the client holds the writing end of it:
+    // a client that dies closes this stream with it. The server watches its parent as well,
+    // for the case this process is the one that dies.
     private static async Task EndWithInputAsync(Process process)
     {
         await PumpInputAsync(process);
