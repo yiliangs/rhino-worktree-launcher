@@ -89,6 +89,8 @@ The primary action follows Config and reads **Build & Launch** or **Launch Rhino
 
 Download `RhinoWorktreeLauncher-<version>-win-x64.zip` from a GitHub release, extract it, and double-click `Install.bat`. The package is self-contained, so the user does not need the .NET SDK. It installs a versioned payload and the stable `%LOCALAPPDATA%\RhinoWorktreeLauncher\bootstrap\rwl.exe`, then opens the desktop application.
 
+The packaged install needs nothing beyond Windows itself. The payload's own `rwl.exe` performs it, so there is no PowerShell to install and no execution policy to change. Pass `--no-shortcut` to skip the Start Menu entry.
+
 Each release publishes a SHA-256 checksum beside the archive. The binaries are not yet Authenticode-signed, so Windows SmartScreen may warn until a signing certificate is added to the release pipeline.
 
 Use **Settings** in the desktop application to configure Claude Code or Codex. RWL updates only its owned client entry, creates a `.rwl-backup` beside an existing client configuration before changing it, and reports whether the stable bootstrap is available. Restart the client after setup.

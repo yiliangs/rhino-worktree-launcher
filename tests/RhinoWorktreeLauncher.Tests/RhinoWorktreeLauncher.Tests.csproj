@@ -21,6 +21,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The installer is exercised in process. The bootstrap is referenced without its
+         output assembly, and driving it as a child process is the pattern that fails to
+         terminate on a hosted runner (#65), so its source is linked instead. -->
+    <Compile Include="..\..\src\Rwl.Bootstrap\Installer.cs" Link="Bootstrap\Installer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 
