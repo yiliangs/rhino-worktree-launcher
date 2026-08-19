@@ -61,6 +61,43 @@ public sealed class LaunchExecutorEngineTests
         Assert.Equal(request.PluginPath, seededFileName);
     }
 
+    // Concurrent launches leave several Rhino processes running, each a different build, so
+    // the launched process carries its own launch identity. Nothing reads it back from
+    // outside: this is what lets code inside Rhino answer the question for itself.
+    [Fact]
+    public async Task A_launch_stamps_its_identity_on_the_rhino_it_starts_and_records_that()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        using StandInRhino rhino = new StandInRhino(sandbox);
+        LaunchExecutorRequest request = Request(sandbox);
+        string? identityInsideTheProcess = null;
+
+        LaunchExecutorEvent result = await RunAsync(
+            sandbox,
+            rhino,
+            request,
+            observe: value =>
+            {
+                if (value.Code == LaunchExecutorCodes.RhinoStarted)
+                    identityInsideTheProcess = rhino.ReadFirstOutputLine();
+            });
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal($"launch-id={request.LaunchId}", identityInsideTheProcess);
+        Assert.Equal(
+            request.LaunchId,
+            rhino.Requested!.Environment[LaunchIdentity.LaunchIdVariable]);
+        Assert.Equal(
+            request.PluginPath,
+            rhino.Requested.Environment[LaunchIdentity.ArtifactVariable]);
+        Assert.Contains(
+            LaunchExecutorCodes.RhinoIdentityStamped,
+            ReadWhileOpen(result.ExecutorLogPath!));
+    }
+
     [Fact]
     public async Task A_competing_machine_registration_ends_the_launch_before_rhino_starts()
     {
@@ -403,16 +440,23 @@ internal sealed class StandInRhino : IDisposable
 
     public int? ProcessId { get; private set; }
 
+    /// <summary>The start request the executor built, as it was handed over.</summary>
+    public ProcessStartInfo? Requested { get; private set; }
+
     public Process Start(ProcessStartInfo requested)
     {
+        Requested = requested;
         string artifact = _sandbox.PathFor("selected/Sample.rhp");
-        string script = _exitImmediately
-            ? "exit"
-            : _mapArtifact
-                ? "$file = [System.IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile(" +
-                    $"'{artifact}', [System.IO.FileMode]::Open); " +
-                    "$view = $file.CreateViewAccessor(); Start-Sleep -Seconds 120"
-                : "Start-Sleep -Seconds 120";
+        string hold = _mapArtifact
+            ? "$file = [System.IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile(" +
+                $"'{artifact}', [System.IO.FileMode]::Open); " +
+                "$view = $file.CreateViewAccessor(); Start-Sleep -Seconds 120"
+            : "Start-Sleep -Seconds 120";
+        // The stand-in reports the identity it was started with before holding the
+        // artifact, so a test reads what the launched process's own environment carries
+        // rather than what the start request asked for.
+        string script = $"Write-Output \"launch-id=$env:{LaunchIdentity.LaunchIdVariable}\"; " +
+            (_exitImmediately ? "exit" : hold);
         ProcessStartInfo startInfo = new ProcessStartInfo
         {
             FileName = "pwsh",
@@ -421,6 +465,8 @@ internal sealed class StandInRhino : IDisposable
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
+        foreach (KeyValuePair<string, string?> variable in requested.Environment)
+            startInfo.Environment[variable.Key] = variable.Value;
         startInfo.ArgumentList.Add("-NoProfile");
         startInfo.ArgumentList.Add("-Command");
         startInfo.ArgumentList.Add(script);
@@ -428,6 +474,12 @@ internal sealed class StandInRhino : IDisposable
         ProcessId = _process.Id;
         return _process;
     }
+
+    /// <summary>
+    /// The first line the stand-in wrote. Read it while the launch is in flight: the engine
+    /// disposes the process object it was handed once the launch ends.
+    /// </summary>
+    public string? ReadFirstOutputLine() => _process?.StandardOutput.ReadLine();
 
     public static bool HasExited(int processId)
     {
