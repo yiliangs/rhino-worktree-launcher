@@ -120,6 +120,8 @@ rwl integration install <claude|codex> [--no-session-context]
 rwl integration remove <claude|codex>
 ```
 
+`rwl doctor` also lists the RWL processes that are running: role, release directory, start time, and whether the process that started each one is still alive. It warns about a server whose parent is gone, which can serve nobody, and about one still serving a release the installation has replaced. Servers end with the session that started them, so an orphan means a process from an earlier release.
+
 Claude Code can optionally receive a SessionStart message resolving the exact registered worktree. The MCP server independently publishes tool descriptions, JSON schemas, server instructions, side-effect annotations, cancellation behavior, and backend-enforced project grants. Its separate build-and-launch and launch-existing tools make the per-request build choice explicit while preserving RWL verification in both paths.
 
 ## Build and verify

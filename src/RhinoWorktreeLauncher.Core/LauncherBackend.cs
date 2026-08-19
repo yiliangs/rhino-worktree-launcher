@@ -255,6 +255,7 @@ public sealed class LauncherBackend
         await CheckProcessAsync("git", Options.GitExecutable, new[] { "--version" });
         await CheckProcessAsync("dotnet", Options.DotNetExecutable, new[] { "--version" });
         checks.Add(await CheckRegistryVisibilityAsync(cancellationToken));
+        checks.AddRange(CheckProcesses());
 
         CommandResult<IReadOnlyList<ProjectSnapshot>> projectsResult = await GetProjectsAsync(cancellationToken);
         checks.Add(new DoctorCheck(
@@ -322,6 +323,92 @@ public sealed class LauncherBackend
                     false,
                     $"[{exception.Code}] {exception.Message}",
                     DiagnosticSeverity.Warning);
+            }
+        }
+
+        // What RWL has running, which of it nobody can reach, and which of it is serving a
+        // release the installation has already replaced. Doctor reports; it never ends a
+        // process it found.
+        IEnumerable<DoctorCheck> CheckProcesses()
+        {
+            IReadOnlyList<RunningProcess> snapshot;
+            try
+            {
+                snapshot = Options.ProcessSnapshotReader();
+            }
+            catch (Exception exception)
+            {
+                return new[]
+                {
+                    new DoctorCheck(
+                        "processes",
+                        false,
+                        $"The live RWL processes could not be listed: {exception.Message}",
+                        DiagnosticSeverity.Error)
+                };
+            }
+
+            string? currentReleaseId = null;
+            string? releaseUnavailable = null;
+            try
+            {
+                currentReleaseId = RwlProcessInventory.ReadCurrentReleaseId(Options.CurrentReleasePath);
+            }
+            // Not being able to name the installed release is only a finding when something is
+            // running from a release directory to compare against it, which is decided below.
+            catch (Exception exception)
+            {
+                releaseUnavailable = exception.Message;
+            }
+
+            IReadOnlyList<RwlProcess> processes = RwlProcessInventory.Describe(snapshot, currentReleaseId);
+            List<DoctorCheck> processChecks = new List<DoctorCheck>
+            {
+                new DoctorCheck(
+                    "processes",
+                    true,
+                    $"{processes.Count} live RWL process(es); installed release " +
+                    $"{currentReleaseId ?? "unknown"}." +
+                    string.Concat(processes.Select(process => $" {process.Describe()}.")),
+                    DiagnosticSeverity.Info)
+            };
+            foreach (RwlProcess process in processes.Where(process => process.IsOrphan || process.ReleaseIsStale))
+            {
+                processChecks.Add(new DoctorCheck(
+                    $"process:{process.ProcessId}",
+                    false,
+                    $"{process.Describe()}. {string.Join(" ", Findings(process, currentReleaseId))}",
+                    DiagnosticSeverity.Warning));
+            }
+            if (releaseUnavailable is not null && processes.Any(process => process.ReleaseId is not null))
+            {
+                processChecks.Add(new DoctorCheck(
+                    "processes:release",
+                    false,
+                    $"{releaseUnavailable} RWL processes are running from release directories, so " +
+                    "one of them may be serving code this installation has replaced, and that " +
+                    "cannot be checked until the pointer is readable. Reinstall RWL.",
+                    DiagnosticSeverity.Warning));
+            }
+            return processChecks;
+        }
+
+        IEnumerable<string> Findings(RwlProcess process, string? currentReleaseId)
+        {
+            if (process.IsOrphan)
+            {
+                yield return $"It is orphaned: process {process.ParentProcessId}, which started it " +
+                    "and bridged its client's standard streams, is gone, so nobody can reach it " +
+                    "and nothing reads what it answers. End it from Task Manager. RWL servers now " +
+                    "end with their session, so an orphan means a process from a release older " +
+                    "than that change.";
+            }
+            if (process.ReleaseIsStale)
+            {
+                yield return $"It is serving release {process.ReleaseId} while the installed " +
+                    $"release is {currentReleaseId}. A process resolves its executable once, when " +
+                    "it starts, so it keeps serving that release until it ends. Restart the " +
+                    "client that owns it to pick up the installed one.";
             }
         }
 
