@@ -22,6 +22,16 @@ internal static class Program
             if (mode == "registry-probe" && OperatingSystem.IsWindows())
                 return await RunRegistryProbeAsync(args);
 
+            // Install is the other mode that cannot be forwarded, and for the same reason
+            // the probe cannot: it runs before there is a release to forward to. On a first
+            // install current.json does not exist yet, and this is what writes it.
+            if (mode == "install" && OperatingSystem.IsWindows())
+            {
+                if (!Console.IsOutputRedirected)
+                    _ = AttachConsole(AttachParentProcess);
+                return RunInstall(args);
+            }
+
             if (mode is not "desktop" and not "mcp" and not "launch-executor" &&
                 !Console.IsOutputRedirected)
             {
@@ -35,7 +45,7 @@ internal static class Program
                 throw new FileNotFoundException("Rhino Worktree Launcher is not installed.", currentPath);
             CurrentRelease current = JsonSerializer.Deserialize<CurrentRelease>(
                 await File.ReadAllTextAsync(currentPath),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ??
+                CurrentRelease.Read) ??
                 throw new InvalidDataException($"Release pointer '{currentPath}' is empty.");
 
             string executable;
@@ -296,14 +306,93 @@ internal static class Program
         }
     }
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool AttachConsole(uint processId);
-
-    private sealed class CurrentRelease
+    [SupportedOSPlatform("windows")]
+    private static int RunInstall(string[] args)
     {
-        public string Desktop { get; init; } = string.Empty;
-        public string Cli { get; init; } = string.Empty;
-        public string Mcp { get; init; } = string.Empty;
+        string executable = Environment.ProcessPath ??
+            throw new InvalidOperationException("The installing executable could not be located.");
+        // This runs as <package>\bootstrap\rwl.exe, so the payload is its own parent.
+        string packageRoot = Option(args, "--package") ??
+            Path.GetDirectoryName(Path.GetDirectoryName(executable)!)!;
+        string dataRoot = Environment.GetEnvironmentVariable("RWL_DATA_ROOT") ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "RhinoWorktreeLauncher");
+
+        InstallResult result = Installer.Install(new InstallRequest(
+            packageRoot,
+            dataRoot,
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Microsoft",
+                "Windows",
+                "Start Menu",
+                "Programs"),
+            Installer.CreateReleaseId(DateTimeOffset.Now))
+        {
+            // The Start Menu is a real shell folder and does not follow RWL_DATA_ROOT, so
+            // an install directed elsewhere has to be able to leave the user's entry alone.
+            CreateShortcut = !args.Contains("--no-shortcut", StringComparer.OrdinalIgnoreCase)
+        });
+
+        Console.WriteLine($"Installed release: {result.ReleaseDirectory}");
+        Console.WriteLine($"Stable bootstrap: {result.StableBootstrapPath}");
+        if (result.ShortcutPath is not null)
+            Console.WriteLine($"Shortcut: {result.ShortcutPath}");
+
+        string? project = Option(args, "--project");
+        if (project is not null)
+        {
+            RunStable(result.StableBootstrapPath, new[] { "project", "register", Path.GetFullPath(project) });
+            Console.WriteLine($"Registered project: {Path.GetFullPath(project)}");
+        }
+        foreach (string client in new[] { "claude", "codex" })
+        {
+            if (!args.Contains("--" + client, StringComparer.OrdinalIgnoreCase))
+                continue;
+            RunStable(
+                result.StableBootstrapPath,
+                new[] { "integration", "install", client, "--bootstrap", result.StableBootstrapPath });
+            Console.WriteLine($"Installed {client} integration.");
+        }
+
+        if (args.Contains("--launch", StringComparer.OrdinalIgnoreCase))
+        {
+            using Process? _ = Process.Start(new ProcessStartInfo
+            {
+                FileName = result.StableBootstrapPath,
+                Arguments = "desktop",
+                UseShellExecute = false
+            });
+        }
+        return 0;
     }
 
+    private static void RunStable(string bootstrap, IReadOnlyList<string> arguments)
+    {
+        ProcessStartInfo startInfo = new ProcessStartInfo
+        {
+            FileName = bootstrap,
+            UseShellExecute = false
+        };
+        foreach (string argument in arguments)
+            startInfo.ArgumentList.Add(argument);
+        using Process process = Process.Start(startInfo) ??
+            throw new InvalidOperationException($"'{bootstrap}' did not start.");
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"'{string.Join(' ', arguments)}' failed with exit code {process.ExitCode}.");
+        }
+    }
+
+    private static string? Option(string[] args, string name)
+    {
+        int index = Array.FindIndex(args, argument =>
+            string.Equals(argument, name, StringComparison.OrdinalIgnoreCase));
+        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool AttachConsole(uint processId);
 }
