@@ -5,7 +5,9 @@
 Accepted. Amends ADR 0012, ADR 0013, and ADR 0014 in one respect: the registration
 mechanism they describe is unchanged, but no launcher host process may execute it. It
 supersedes the Rhino launch broker introduced alongside ADR 0009's bootstrap, which is
-deleted rather than kept beside the executor.
+deleted rather than kept beside the executor. ADR 0012 and ADR 0014 carry 2026-08-18
+amendments scoping their live-test conclusions to hosts whose current-user registry writes
+reach the registry, which is the condition this decision stops assuming.
 
 ## Context
 
