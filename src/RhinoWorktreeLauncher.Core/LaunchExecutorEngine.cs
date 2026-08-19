@@ -291,6 +291,13 @@ internal sealed class LaunchExecutorEngine
         startInfo.ArgumentList.Add("/nosplash");
         startInfo.ArgumentList.Add("/notemplate");
         startInfo.ArgumentList.Add($"/{request.RhinoRuntime}");
+        // Rhino otherwise inherits the interactive shell's environment, which is what an
+        // ordinary Rhino start gets (ADR 0015). These two variables are the one deliberate
+        // difference: they let code inside Rhino identify its own launch with one
+        // environment read, which matters because concurrent launches leave several Rhino
+        // processes running, each a different build.
+        startInfo.Environment[LaunchIdentity.LaunchIdVariable] = request.LaunchId;
+        startInfo.Environment[LaunchIdentity.ArtifactVariable] = request.PluginPath;
         // The registration lease is the only loading mechanism. Also passing the .rhp on
         // the command line asks Rhino to install an ID the lease has already registered,
         // which Rhino rejects as an ID already in use. This process was started by the
@@ -305,6 +312,13 @@ internal sealed class LaunchExecutorEngine
             LaunchStage.Rhino,
             LaunchExecutorCodes.RhinoStarted,
             $"Rhino started as process {rhino.Id}.");
+        channel.Progress(
+            LaunchStage.Rhino,
+            LaunchExecutorCodes.RhinoIdentityStamped,
+            $"Rhino process {rhino.Id} carries " +
+            $"{LaunchIdentity.LaunchIdVariable}={request.LaunchId} and " +
+            $"{LaunchIdentity.ArtifactVariable}='{request.PluginPath}', so code running inside " +
+            "it can identify this launch without asking another process.");
         return rhino;
     }
 

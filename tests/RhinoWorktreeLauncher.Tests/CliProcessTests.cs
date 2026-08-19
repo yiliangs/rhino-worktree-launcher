@@ -14,6 +14,7 @@ public sealed class CliProcessTests
           rwl worktree list --project <id> [--local-only] [--json]
           rwl worktree inspect --path <path> [--json]
           rwl launch --path <path> [--timeout <seconds>] [--json]
+          rwl rhino instances [--json]
           rwl doctor [--json]
           rwl integration status [claude|codex] [--json]
           rwl integration install <claude|codex> [--bootstrap <path>] [--no-session-context] [--json]
@@ -140,6 +141,23 @@ public sealed class CliProcessTests
         Assert.Equal(2, resolved.ExitCode);
         Assert.Equal(string.Empty, resolved.StandardOutput);
         Assert.Equal("--timeout must be a positive number." + Environment.NewLine, resolved.StandardError);
+    }
+
+    // Read-only and machine-independent: whatever Rhino processes this machine has, the
+    // command answers in the command-result shape and starts nothing.
+    [Fact]
+    public async Task Rhino_instances_answers_from_the_live_machine()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+
+        CliResult result = await RunAsync(temporary, new[] { "rhino", "instances", "--json" });
+
+        Assert.Equal(0, result.ExitCode);
+        using JsonDocument document = JsonDocument.Parse(result.StandardOutput);
+        Assert.True(document.RootElement.GetProperty("succeeded").GetBoolean());
+        JsonElement value = document.RootElement.GetProperty("value");
+        Assert.True(value.GetProperty("observedAt").GetDateTimeOffset() > DateTimeOffset.MinValue);
+        Assert.Equal(JsonValueKind.Array, value.GetProperty("instances").ValueKind);
     }
 
     [Theory]

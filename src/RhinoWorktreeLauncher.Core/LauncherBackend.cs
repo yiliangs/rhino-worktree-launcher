@@ -237,6 +237,37 @@ public sealed class LauncherBackend
         return CommandResult<WorktreeInspection>.Success(inspection, diagnostics);
     }
 
+    /// <summary>
+    /// Which live Rhino processes exist and which plug-in artifacts each one holds mapped.
+    /// Concurrent launches legitimately leave several verified Rhino instances running, each
+    /// a different build, so this is how a caller binds an interaction to the right one when
+    /// it does not already hold the launch result's process id.
+    /// </summary>
+    public async Task<CommandResult<RhinoInstanceAttribution>> DescribeRhinoInstancesAsync(
+        CancellationToken cancellationToken)
+    {
+        RhinoInstanceAttribution attribution;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            attribution = await Task.Run(
+                () => RhinoInstanceReader.Describe(
+                    Options.ProcessSnapshotReader(),
+                    Options.MappedPlugInReader),
+                cancellationToken).ConfigureAwait(false);
+        }
+        // Without the process table there is no partial answer to give: a list missing an
+        // unknown number of Rhino processes is worse than a named refusal to answer.
+        catch (Exception exception)
+        {
+            return CommandResult<RhinoInstanceAttribution>.Failure(new Diagnostic(
+                "rhino_instance_scan_failed",
+                $"The live Rhino processes could not be attributed: {exception.Message}"));
+        }
+
+        return CommandResult<RhinoInstanceAttribution>.Success(attribution, Unattributable(attribution));
+    }
+
     public Task<CommandResult<LaunchResult>> LaunchAsync(
         string path,
         LaunchMode launchMode,
@@ -255,7 +286,20 @@ public sealed class LauncherBackend
         await CheckProcessAsync("git", Options.GitExecutable, new[] { "--version" });
         await CheckProcessAsync("dotnet", Options.DotNetExecutable, new[] { "--version" });
         checks.Add(await CheckRegistryVisibilityAsync(cancellationToken));
-        checks.AddRange(CheckProcesses());
+        IReadOnlyList<RunningProcess>? snapshot = null;
+        string? snapshotFailure = null;
+        try
+        {
+            snapshot = Options.ProcessSnapshotReader();
+        }
+        // Both process checks below are answers about the same table, so the failure to read
+        // it is recorded once here and named by each of them.
+        catch (Exception exception)
+        {
+            snapshotFailure = exception.Message;
+        }
+        checks.AddRange(CheckProcesses(snapshot, snapshotFailure));
+        checks.Add(CheckRhinoInstances(snapshot, snapshotFailure));
 
         CommandResult<IReadOnlyList<ProjectSnapshot>> projectsResult = await GetProjectsAsync(cancellationToken);
         checks.Add(new DoctorCheck(
@@ -329,21 +373,18 @@ public sealed class LauncherBackend
         // What RWL has running, which of it nobody can reach, and which of it is serving a
         // release the installation has already replaced. Doctor reports; it never ends a
         // process it found.
-        IEnumerable<DoctorCheck> CheckProcesses()
+        IEnumerable<DoctorCheck> CheckProcesses(
+            IReadOnlyList<RunningProcess>? snapshot,
+            string? snapshotFailure)
         {
-            IReadOnlyList<RunningProcess> snapshot;
-            try
-            {
-                snapshot = Options.ProcessSnapshotReader();
-            }
-            catch (Exception exception)
+            if (snapshot is null)
             {
                 return new[]
                 {
                     new DoctorCheck(
                         "processes",
                         false,
-                        $"The live RWL processes could not be listed: {exception.Message}",
+                        $"The live RWL processes could not be listed: {snapshotFailure}",
                         DiagnosticSeverity.Error)
                 };
             }
@@ -393,6 +434,32 @@ public sealed class LauncherBackend
             return processChecks;
         }
 
+        // Which Rhino runs which build. Several live Rhino processes are the ordinary result
+        // of concurrent launches, so this reports and never warns; only a table it cannot
+        // read is a failure, and a Rhino it cannot attribute is named in the line.
+        DoctorCheck CheckRhinoInstances(
+            IReadOnlyList<RunningProcess>? snapshot,
+            string? snapshotFailure)
+        {
+            if (snapshot is null)
+            {
+                return new DoctorCheck(
+                    "rhino-instances",
+                    false,
+                    $"The live Rhino processes could not be attributed: {snapshotFailure}",
+                    DiagnosticSeverity.Error);
+            }
+
+            RhinoInstanceAttribution attribution = RhinoInstanceReader.Describe(
+                snapshot,
+                Options.MappedPlugInReader);
+            return new DoctorCheck(
+                "rhino-instances",
+                true,
+                attribution.Describe(),
+                DiagnosticSeverity.Info);
+        }
+
         IEnumerable<string> Findings(RwlProcess process, string? currentReleaseId)
         {
             if (process.IsOrphan)
@@ -438,4 +505,15 @@ public sealed class LauncherBackend
         }
     }
 
+    // A Rhino this account may not read stays in the list and is also a warning: the caller
+    // learns that one of the running instances is running an unknown build.
+    private static IReadOnlyList<Diagnostic> Unattributable(RhinoInstanceAttribution attribution) =>
+        attribution.Instances
+            .Where(instance => !instance.IsAttributed)
+            .Select(instance => new Diagnostic(
+                "rhino_instance_unattributable",
+                $"Rhino process {instance.ProcessId} is running and which plug-in it holds could " +
+                $"not be read: {instance.UnattributableReason}",
+                DiagnosticSeverity.Warning))
+            .ToArray();
 }

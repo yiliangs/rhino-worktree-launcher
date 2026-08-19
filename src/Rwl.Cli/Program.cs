@@ -51,6 +51,13 @@ internal static class Program
                     inspect.Json,
                     value => value.CanLaunch ? "Ready to launch." : "Not ready to launch."),
                 LaunchCommand launch => await LaunchAsync(backend, launch),
+                RhinoInstancesCommand instances => await WriteAsync(
+                    await backend.DescribeRhinoInstancesAsync(CancellationToken.None),
+                    instances.Json,
+                    value => string.Join(
+                        Environment.NewLine,
+                        new[] { $"{value.Instances.Count} live Rhino process(es)." }
+                            .Concat(value.Instances.Select(instance => instance.Describe())))),
                 DoctorCommand doctor => await DoctorAsync(backend, doctor),
                 IntegrationStatusCommand status => await IntegrationStatusAsync(status),
                 IntegrationInstallCommand install => await InstallIntegrationAsync(install),
@@ -297,6 +304,7 @@ internal static class SessionContextWriter
                 "Use the rhino-worktree-launcher MCP tools for Rhino launch and loaded-binary verification, and use them normally: a launch runs in a separate executor process started by the interactive Windows shell, and that process owns the plug-in registration, the Rhino start, verification, and the restore. " +
                 "Do not launch Rhino.exe directly or edit plug-in registration. Ordinary editing, Git operations, and repository-owned tests that never start Rhino remain outside RWL. " +
                 "A repository-owned harness that does start Rhino is not an exception: it competes for the same plug-in registration, so report it and ask before running it. " +
+                "Concurrent launches mean several Rhino processes can be running, each a different build, so bind every post-launch check or interaction to the rhinoProcessId in the launch result, or ask the rhino_worktree_attribution tool which process holds which artifact. " +
                 "A failed launch names the step that failed with a diagnostic code and gives the path of its JSONL log; quote that code when reporting the failure and read the log before retrying. " +
                 "The codes interactive_spawn_unavailable and registry_seed_not_visible mean this host's own current-user registry writes are being intercepted rather than anything being wrong with the worktree: the fallback is to run the same launch as `rwl launch --path <worktree>` from an ordinary terminal outside this session, then report what it reports.");
             return 0;

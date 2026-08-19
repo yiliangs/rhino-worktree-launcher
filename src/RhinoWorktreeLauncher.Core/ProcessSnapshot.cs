@@ -19,13 +19,13 @@ internal sealed record RunningProcess(
 
 /// <summary>
 /// Reads the machine's process table. This is the one process-enumeration mechanism in RWL:
-/// the doctor inventory classifies what it returns, and a stdio server resolves its own
-/// parent from it rather than carrying a second way to ask the same question.
+/// the doctor inventory classifies what it returns, instance attribution reads the Rhino
+/// processes out of it, and a stdio server resolves its own parent from it rather than
+/// carrying a second way to ask the same question.
 /// </summary>
 internal static class ProcessSnapshot
 {
-    // Names RWL owns. Anything else is enumerated (parents have to be findable) but never
-    // described, so no handle is opened for an unrelated process.
+    // Names RWL owns.
     public static readonly IReadOnlyList<string> RwlExecutableNames = new[]
     {
         "rwl.exe",
@@ -34,10 +34,17 @@ internal static class ProcessSnapshot
         "RhinoWorktreeLauncher.exe"
     };
 
+    // What RWL describes: its own processes, and Rhino, which RWL starts, verifies, and
+    // attributes. Anything else is enumerated (parents have to be findable) but never
+    // described, so no handle is opened for an unrelated process.
+    public static readonly IReadOnlyList<string> DescribedExecutableNames = RwlExecutableNames
+        .Append(RhinoInstanceReader.RhinoExecutableName)
+        .ToArray();
+
     /// <summary>
-    /// Every live process, with the executable path and start time filled for RWL processes
-    /// and for the parents of RWL processes. A parent's start time is what tells an
-    /// orphaned child from one whose parent's process id was reused.
+    /// Every live process, with the executable path and start time filled for the processes
+    /// RWL describes and for their parents. A parent's start time is what tells an orphaned
+    /// child from one whose parent's process id was reused.
     /// </summary>
     public static IReadOnlyList<RunningProcess> Read()
     {
@@ -45,12 +52,12 @@ internal static class ProcessSnapshot
             throw new PlatformNotSupportedException("Process enumeration requires Windows.");
 
         List<RunningProcess> processes = Enumerate();
-        // The current process is described whether or not it is an RWL executable, so a
-        // caller resolving its own parent gets the start time the reuse guard needs.
+        // The current process is described whether or not RWL owns its name, so a caller
+        // resolving its own parent gets the start time the reuse guard needs.
         HashSet<int> describe = new HashSet<int> { Environment.ProcessId };
         foreach (RunningProcess process in processes)
         {
-            if (!IsRwl(process.Name) && process.ProcessId != Environment.ProcessId)
+            if (!IsDescribed(process.Name) && process.ProcessId != Environment.ProcessId)
                 continue;
             _ = describe.Add(process.ProcessId);
             _ = describe.Add(process.ParentProcessId);
@@ -64,7 +71,7 @@ internal static class ProcessSnapshot
         return processes;
     }
 
-    public static bool IsRwl(string executableName) => RwlExecutableNames.Any(name =>
+    public static bool IsDescribed(string executableName) => DescribedExecutableNames.Any(name =>
         string.Equals(name, executableName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>

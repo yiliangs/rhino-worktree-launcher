@@ -41,9 +41,14 @@ public sealed class LauncherBackendOptions
     // Doctor's independent reader. It is spawned through the interactive shell, because the
     // condition it checks for is this process's own writes being intercepted.
     internal RegistryProbeRunner RegistryProbeRunner { get; init; } = BootstrapRegistryProbe.RunAsync;
-    // Doctor's view of the machine's process table, injectable so what doctor concludes from a
-    // process list is decided by tests rather than by whatever happens to be running.
+    // The machine's process table, injectable so what doctor and instance attribution
+    // conclude from a process list is decided by tests rather than by whatever happens to be
+    // running.
     internal Func<IReadOnlyList<RunningProcess>> ProcessSnapshotReader { get; init; } = ProcessSnapshot.Read;
+    // The plug-in artifacts one live process holds mapped in its address space. Same
+    // mechanism as launch verification (ADR 0002), asked without an expected path.
+    internal Func<int, IReadOnlyList<string>> MappedPlugInReader { get; init; } =
+        RhinoInstanceReader.MappedPlugIns;
     internal Func<string, ProjectBuildOptions> ProjectBuildOptionsDiscovery { get; init; } =
         BuildProfileDiscovery.DiscoverOptions;
 

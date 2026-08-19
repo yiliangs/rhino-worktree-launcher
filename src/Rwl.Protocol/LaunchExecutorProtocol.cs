@@ -72,11 +72,23 @@ internal static class LaunchExecutorCodes
     public const string RegistrationWriteBackCorrected = "registration_write_back_corrected";
     public const string RegistrationWriteBackUnrestorable = "registration_write_back_unrestorable";
     public const string RhinoStarted = "rhino_started";
+    public const string RhinoIdentityStamped = "rhino_identity_stamped";
     public const string RhinoExitedBeforeVerification = "rhino_exited_before_verification";
     public const string LaunchVerified = "launch_verified";
     public const string LaunchTimeout = "launch_timeout";
     public const string LaunchCancelled = "launch_cancelled";
     public const string LaunchFailed = "launch_failed";
+}
+
+// The launch's identity, as the launched Rhino carries it. Code running inside Rhino reads
+// these from its own environment and knows which launch started it and which artifact that
+// launch resolved, with no callback, no receipt, and no process asking another process what
+// it is holding. Nothing in RWL reads them back: the process id to launch id mapping is
+// already in every launch result and launch log.
+internal static class LaunchIdentity
+{
+    public const string LaunchIdVariable = "RWL_LAUNCH_ID";
+    public const string ArtifactVariable = "RWL_ARTIFACT";
 }
 
 // Everything the executor needs to run one launch. The host resolves the worktree, builds
