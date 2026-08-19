@@ -51,6 +51,13 @@ internal static class Program
                     inspect.Json,
                     value => value.CanLaunch ? "Ready to launch." : "Not ready to launch."),
                 LaunchCommand launch => await LaunchAsync(backend, launch),
+                RhinoInstancesCommand instances => await WriteAsync(
+                    await backend.DescribeRhinoInstancesAsync(CancellationToken.None),
+                    instances.Json,
+                    value => string.Join(
+                        Environment.NewLine,
+                        new[] { $"{value.Instances.Count} live Rhino process(es)." }
+                            .Concat(value.Instances.Select(instance => instance.Describe())))),
                 DoctorCommand doctor => await DoctorAsync(backend, doctor),
                 IntegrationStatusCommand status => await IntegrationStatusAsync(status),
                 IntegrationInstallCommand install => await InstallIntegrationAsync(install),

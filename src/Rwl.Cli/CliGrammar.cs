@@ -30,6 +30,8 @@ internal sealed record LaunchCommand(
     string? Timeout,
     bool Json) : CliCommand;
 
+internal sealed record RhinoInstancesCommand(bool Json) : CliCommand;
+
 internal sealed record DoctorCommand(bool Json) : CliCommand;
 
 internal sealed record IntegrationStatusCommand(
@@ -190,6 +192,14 @@ internal static class CliGrammar
                     arguments.Required(PathOption),
                     arguments.Optional(TimeoutOption),
                     arguments.HasFlag(JsonOption))),
+            new CommandSpec(
+                new[]
+                {
+                    OperandSpec.Literal("rhino"),
+                    OperandSpec.Literal("instances")
+                },
+                new[] { OptionGroupSpec.Optional(JsonOption) },
+                (arguments, _) => new RhinoInstancesCommand(arguments.HasFlag(JsonOption))),
             new CommandSpec(
                 new[] { OperandSpec.Literal("doctor") },
                 new[] { OptionGroupSpec.Optional(JsonOption) },

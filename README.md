@@ -114,11 +114,14 @@ rwl context --cwd <path> --json
 rwl worktree list --project <id> [--local-only] --json
 rwl worktree inspect --path <path> --json
 rwl launch --path <path> --timeout <seconds> --json
+rwl rhino instances --json
 rwl doctor --json
 rwl integration status [claude|codex] --json
 rwl integration install <claude|codex> [--no-session-context]
 rwl integration remove <claude|codex>
 ```
+
+`rwl rhino instances` lists every live Rhino process with its start time and the plug-in artifacts it holds mapped in its address space, read the same way a launch verifies its own Rhino. Concurrent launches legitimately leave several verified Rhino processes running, each a different build, so this is how a caller that does not already hold a launch result's `rhinoProcessId` decides which process to act on. A Rhino this account may not read is listed as unattributable with the reason rather than omitted. MCP clients call `rhino_worktree_attribution` for the same answer, and `rwl doctor` includes it beside its process inventory.
 
 `rwl doctor` also lists the RWL processes that are running: role, release directory, start time, and whether the process that started each one is still alive. It warns about a server whose parent is gone, which can serve nobody, and about one still serving a release the installation has replaced. Servers end with the session that started them, so an orphan means a process from an earlier release.
 

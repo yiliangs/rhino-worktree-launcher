@@ -223,9 +223,51 @@ public sealed class McpServerTests
             StringComparison.Ordinal);
     }
 
+    // The tool an agent reaches for when several Rhino processes are live and it has to know
+    // which one runs which build before touching one.
+    [Fact]
+    public async Task Attribution_tool_reports_each_live_rhino_with_the_artifact_it_holds()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            ProcessSnapshotReader = () => new[]
+            {
+                new RunningProcess(
+                    4242,
+                    900,
+                    "Rhino.exe",
+                    @"C:\Program Files\Rhino 8\System\Rhino.exe",
+                    new DateTimeOffset(2026, 8, 19, 9, 0, 0, TimeSpan.Zero))
+            },
+            MappedPlugInReader = _ => new[] { @"C:\worktrees\branch\Sample.rhp" }
+        });
+        RwlTools tools = new RwlTools(backend, TestReadiness.Ready);
+
+        CallToolResult result = await tools.AttributionAsync(CancellationToken.None);
+
+        Assert.False(result.IsError);
+        JsonElement instance = Assert.Single(result.StructuredContent!.Value
+            .GetProperty("value")
+            .GetProperty("instances")
+            .EnumerateArray()
+            .ToArray());
+        Assert.Equal(4242, instance.GetProperty("processId").GetInt32());
+        Assert.Equal(
+            @"C:\worktrees\branch\Sample.rhp",
+            instance.GetProperty("plugInPaths")[0].GetString());
+    }
+
     [Fact]
     public void Tool_annotations_distinguish_local_reads_remote_refresh_and_launch()
     {
+        McpServerToolAttribute attribution = AttributeFor(nameof(RwlTools.AttributionAsync));
+        Assert.True(attribution.ReadOnly);
+        Assert.False(attribution.Destructive);
+        Assert.False(attribution.OpenWorld);
+
         McpServerToolAttribute list = AttributeFor(nameof(RwlTools.ListWorktreesAsync));
         McpServerToolAttribute refresh = AttributeFor(nameof(RwlTools.RefreshWorktreesAsync));
         McpServerToolAttribute buildAndLaunch = AttributeFor(nameof(RwlTools.BuildAndLaunchAsync));
@@ -283,7 +325,15 @@ public sealed class McpServerTests
                 .GetProperty("tools")
                 .EnumerateArray()
                 .ToArray();
-            Assert.Equal(7, tools.Length);
+            Assert.Equal(8, tools.Length);
+            JsonElement attribution = Assert.Single(
+                tools,
+                tool => tool.GetProperty("name").GetString() == "rhino_worktree_attribution");
+            Assert.Contains(
+                "when more than one Rhino is running",
+                attribution.GetProperty("description").GetString(),
+                StringComparison.Ordinal);
+            Assert.True(attribution.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean());
             JsonElement buildAndLaunch = Assert.Single(
                 tools,
                 tool => tool.GetProperty("name").GetString() == "rhino_worktree_build_and_launch");

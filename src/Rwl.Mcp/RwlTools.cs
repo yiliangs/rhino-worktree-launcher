@@ -17,7 +17,9 @@ internal sealed class RwlTools
         "Call rhino_worktree_inspect before launch when readiness is uncertain. Choose rhino_worktree_build_and_launch when current source should be compiled. " +
         "Choose rhino_worktree_launch_existing only when an existing artifact is intended; it never rebuilds or claims freshness. Both launch tools temporarily change the " +
         "Rhino plug-in registration, start Rhino, and wait for binary verification. Treat returned diagnostics as authoritative and do not bypass " +
-        "registration, access grants, readiness checks, or verification failures.";
+        "registration, access grants, readiness checks, or verification failures. " +
+        "Concurrent launches leave more than one Rhino running, each holding a different build, so bind every post-launch check or interaction to the " +
+        "rhinoProcessId in the launch result, and call rhino_worktree_attribution when you need to know which live Rhino process holds which artifact.";
 
     private readonly LauncherBackend _backend;
     private readonly LaunchHostReadiness _readiness;
@@ -160,6 +162,19 @@ internal sealed class RwlTools
             launchProgress,
             cancellationToken));
     }
+
+    [McpServerTool(
+        Name = "rhino_worktree_attribution",
+        Title = "Attribute live Rhino processes to plug-in builds",
+        ReadOnly = true,
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(CommandResult<RhinoInstanceAttribution>))]
+    [Description("List every live Rhino process with the plug-in artifacts it holds mapped in its address space. Use this when more than one Rhino is running, to identify which process runs which build before interacting with one: concurrent launches from separate sessions legitimately leave several verified Rhino processes running, each a different build. A Rhino this account cannot read is listed as unattributable with the reason rather than omitted.")]
+    public async Task<CallToolResult> AttributionAsync(CancellationToken cancellationToken) => ToToolResult(
+        await _backend.DescribeRhinoInstancesAsync(cancellationToken));
 
     [McpServerTool(
         Name = "rhino_worktree_doctor",
