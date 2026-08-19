@@ -16,7 +16,10 @@ internal static class Program
         builder.Logging.AddConsole(options =>
             options.LogToStandardErrorThreshold = LogLevel.Trace);
 
-        builder.Services.AddSingleton<LauncherBackend>();
+        builder.Services.AddSingleton(_ => new LauncherBackend(new LauncherBackendOptions
+        {
+            HostKind = "mcp"
+        }));
         builder.Services
             .AddMcpServer(options =>
             {

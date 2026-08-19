@@ -1,5 +1,4 @@
 ﻿using Microsoft.Win32;
-using System.Runtime.Versioning;
 
 namespace RhinoWorktreeLauncher.Tests;
 
@@ -14,7 +13,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         string selected = sandbox.PathFor("selected/Sample.rhp");
 
         PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(selected);
@@ -45,7 +44,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         const string original = @"%TEMP%\Sample\Sample.rhp";
         using (RegistryKey existing = sandbox.CreateUserRegistration())
         {
@@ -89,7 +88,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         using (RegistryKey installed = sandbox.CreateUserRegistration())
         {
             installed.SetValue("LoadMode", 1, RegistryValueKind.DWord);
@@ -115,7 +114,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         using (RegistryKey competing = sandbox.CreateMachineRegistration())
         {
             competing.SetValue("LoadMode", 1, RegistryValueKind.DWord);
@@ -140,7 +139,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         using (RegistryKey user = sandbox.CreateUserRegistration())
         {
             user.SetValue("LoadMode", 2, RegistryValueKind.DWord);
@@ -171,7 +170,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         using (RegistryKey disabled = sandbox.CreateUserRegistration())
         {
             disabled.SetValue("LoadMode", 0, RegistryValueKind.DWord);
@@ -197,7 +196,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         using (RegistryKey competing = sandbox.CreateMachineRegistration())
         {
             using RegistryKey plugin = competing.CreateSubKey("PlugIn", writable: true)!;
@@ -225,7 +224,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         // A seed carries FileName at the root and no PlugIn subkey, and still claims the
         // ID: Rhino installs it at its next startup.
         using (RegistryKey competing = sandbox.CreateMachineRegistration())
@@ -246,7 +245,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         string selected = sandbox.PathFor("selected/Sample.rhp");
         using (RegistryKey installed = sandbox.CreateMachineRegistration())
         {
@@ -271,7 +270,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         string selected = sandbox.PathFor("selected/Sample.rhp");
         using (RegistryKey installed = sandbox.CreateMachineRegistration())
         {
@@ -299,7 +298,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         string selected = sandbox.PathFor("selected/Sample.rhp");
         using (RegistryKey stale = sandbox.CreateUserRegistration())
         {
@@ -330,7 +329,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(
             sandbox.PathFor("selected/Sample.rhp"));
         Assert.NotNull(result.Lease);
@@ -352,7 +351,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         using (RegistryKey competing = sandbox.CreateMachineRegistration())
         {
             using RegistryKey plugin = competing.CreateSubKey("PlugIn", writable: true)!;
@@ -377,7 +376,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         using (RegistryKey untouched = sandbox.CreateUserRegistration())
             untouched.SetValue("FileName", @"C:\primary\Sample.rhp", RegistryValueKind.String);
 
@@ -393,7 +392,7 @@ public sealed class PluginNamespaceLeaseTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using LeaseSandbox sandbox = new LeaseSandbox();
+        using RegistrySandbox sandbox = new RegistrySandbox();
         PluginNamespaceLeaseResult first = await sandbox.AcquireAsync(sandbox.PathFor("first/Sample.rhp"));
         Task<PluginNamespaceLeaseResult> secondTask = sandbox.AcquireAsync(
             sandbox.PathFor("second/Sample.rhp"));
@@ -406,100 +405,195 @@ public sealed class PluginNamespaceLeaseTests
         second.Lease!.Dispose();
     }
 
-    // Two isolated current-user keys stand in for the two hives, so the full cycle runs
-    // without ever writing the machine registry.
-    [SupportedOSPlatform("windows")]
-    private sealed class LeaseSandbox : IDisposable
+    // A launch that queues behind another must be able to say who it is waiting for, so the
+    // holder records itself beside the lock and removes that record when it releases.
+    [Fact]
+    public async Task A_held_lock_names_its_holder_beside_it_and_stops_naming_one_when_released()
     {
-        private readonly TemporaryDirectory _temporary = new TemporaryDirectory();
-        private readonly string _root = $@"Software\RhinoWorktreeLauncherTests\{Guid.NewGuid():N}";
-        private readonly Guid _pluginId = Guid.NewGuid();
-        private readonly List<IDisposable> _leases = new List<IDisposable>();
+        if (!OperatingSystem.IsWindows())
+            return;
 
-        public LeaseSandbox() => Directory.CreateDirectory(_temporary.PathFor("locks"));
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        PluginNamespaceLeaseResult held = await sandbox.AcquireAsync(sandbox.PathFor("first/Sample.rhp"));
 
-        public string JournalPath => _temporary.PathFor("locks/namespace.json");
+        FileLockHolder holder = Assert.IsType<FileLockHolder>(
+            FileLock.ReadHolder(FileLock.HolderPath(sandbox.LockPath)));
+        Assert.Equal("test-launch", holder.LaunchId);
+        Assert.Equal(Environment.ProcessId, holder.ProcessId);
+        Assert.Equal("test", holder.HostKind);
+        Assert.Contains(holder.LaunchId, holder.Describe(), StringComparison.Ordinal);
 
-        private string LockPath => _temporary.PathFor("locks/namespace.lock");
+        held.Lease!.Dispose();
 
-        private string UserPluginsKeyPath => $@"{_root}\user";
+        Assert.Null(FileLock.ReadHolder(FileLock.HolderPath(sandbox.LockPath)));
+    }
 
-        private string MachinePluginsKeyPath => $@"{_root}\machine";
+    [Fact]
+    public async Task A_waiting_caller_is_told_which_launch_holds_the_lock()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
 
-        public string PathFor(string relativePath) => _temporary.PathFor(relativePath);
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        PluginNamespaceLeaseResult held = await sandbox.AcquireAsync(sandbox.PathFor("first/Sample.rhp"));
+        List<FileLockWait> waits = new List<FileLockWait>();
+        using CancellationTokenSource abandon = new CancellationTokenSource(TimeSpan.FromSeconds(3));
 
-        public async Task<PluginNamespaceLeaseResult> AcquireAsync(string pluginPath)
-        {
-            PluginNamespaceLeaseResult result = await PluginNamespaceLease.AcquireAsync(
-                Registry.CurrentUser,
-                UserPluginsKeyPath,
-                Registry.CurrentUser,
-                MachinePluginsKeyPath,
-                JournalPath,
-                LockPath,
-                _pluginId,
+        Task<PluginNamespaceLeaseResult> queued = sandbox.AcquireAsync(
+            new PluginNamespaceLeaseRequest(
+                sandbox.LocksDirectory,
+                RegistrySandbox.RhinoVersion,
+                sandbox.PluginId,
                 "Sample",
-                pluginPath,
-                CancellationToken.None);
-            // Tracked so a failed assertion releases the lock file instead of masking
-            // itself behind a locked-directory teardown error.
-            if (result.Lease is not null)
-                _leases.Add(result.Lease);
-            return result;
+                sandbox.PathFor("second/Sample.rhp"),
+                RegistrySandbox.Holder("queued-launch")),
+            new ImmediateProgress<FileLockWait>(waits.Add),
+            abandon.Token);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
+
+        FileLockWait wait = waits[0];
+        Assert.Equal("test-launch", wait.Holder!.LaunchId);
+        Assert.Contains("test-launch", wait.HolderDescription, StringComparison.Ordinal);
+        held.Lease!.Dispose();
+    }
+
+    // Rhino writes the artifact it loaded back into its registration, and it does that while
+    // the launch that started it has already restored and returned. The correction runs
+    // after Rhino exits and puts the pre-launch state back once more.
+    [Fact]
+    public async Task The_post_exit_correction_puts_back_a_machine_registration_rhino_rewrote()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        string selected = sandbox.PathFor("selected/Sample.rhp");
+        using (RegistryKey installed = sandbox.CreateMachineRegistration())
+        {
+            using RegistryKey plugin = installed.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", @"C:\primary\Sample.rhp", RegistryValueKind.String);
         }
 
-        public Task RecoverAsync() => PluginNamespaceLease.RecoverAsync(
-            Registry.CurrentUser,
-            UserPluginsKeyPath,
-            Registry.CurrentUser,
-            MachinePluginsKeyPath,
-            JournalPath,
-            LockPath,
+        PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(selected);
+        result.Lease!.RestoreRetainingJournal();
+
+        // The journal survives the launch's own restore, because that restore ran while
+        // Rhino was still able to write.
+        Assert.True(File.Exists(sandbox.JournalPath));
+        using (RegistryKey rewritten = sandbox.CreateMachineRegistration())
+        {
+            using RegistryKey plugin = rewritten.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", Path.GetFullPath(selected), RegistryValueKind.String);
+        }
+
+        RegistrationDrift drift = await sandbox.CorrectAfterExitAsync(
+            new PluginNamespaceLeaseRequest(
+                sandbox.LocksDirectory,
+                RegistrySandbox.RhinoVersion,
+                sandbox.PluginId,
+                "Sample",
+                selected,
+                RegistrySandbox.Holder("post-exit")),
             CancellationToken.None);
 
-        public RegistryKey CreateUserRegistration() =>
-            Registry.CurrentUser.CreateSubKey($@"{UserPluginsKeyPath}\{_pluginId:D}", writable: true)!;
+        Assert.True(drift.MachineDrifted);
+        Assert.Equal(Path.GetFullPath(selected), drift.ObservedMachineRegistration);
+        Assert.Equal(@"C:\primary\Sample.rhp", drift.ExpectedMachineRegistration);
+        using RegistryKey corrected = sandbox.OpenMachineRegistration()!;
+        using RegistryKey correctedPlugin = corrected.OpenSubKey("PlugIn")!;
+        Assert.Equal(@"C:\primary\Sample.rhp", correctedPlugin.GetValue("FileName"));
+        Assert.False(File.Exists(sandbox.JournalPath));
+    }
 
-        public RegistryKey CreateMachineRegistration() =>
-            Registry.CurrentUser.CreateSubKey($@"{MachinePluginsKeyPath}\{_pluginId:D}", writable: true)!;
+    // The dangerous case the journal alone could not describe: no machine registration
+    // existed, so a written-back one has to be removed rather than restored.
+    [Fact]
+    public async Task The_post_exit_correction_removes_a_machine_registration_rhino_created()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
 
-        public RegistryKey? OpenUserRegistration() =>
-            Registry.CurrentUser.OpenSubKey($@"{UserPluginsKeyPath}\{_pluginId:D}", writable: false);
-
-        public RegistryKey? OpenMachineRegistration() =>
-            Registry.CurrentUser.OpenSubKey($@"{MachinePluginsKeyPath}\{_pluginId:D}", writable: false);
-
-        // Simulates the killed process: the lock is released without restoring, so the
-        // journal and the mutated hives stay as the launch left them.
-        public void Abandon(IDisposable lease)
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        string selected = sandbox.PathFor("selected/Sample.rhp");
+        PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(selected);
+        result.Lease!.RestoreRetainingJournal();
+        using (RegistryKey created = sandbox.CreateMachineRegistration())
         {
-            string journal = File.ReadAllText(JournalPath);
-            lease.Dispose();
-            File.WriteAllText(JournalPath, journal);
-            Registry.CurrentUser.DeleteSubKeyTree($@"{UserPluginsKeyPath}\{_pluginId:D}", throwOnMissingSubKey: false);
-            using RegistryKey seed = CreateUserRegistration();
-            seed.SetValue("Name", "Sample", RegistryValueKind.String);
-            seed.SetValue("FileName", PathFor("selected/Sample.rhp"), RegistryValueKind.String);
-            Registry.CurrentUser.DeleteSubKeyTree(
-                $@"{MachinePluginsKeyPath}\{_pluginId:D}",
-                throwOnMissingSubKey: false);
+            using RegistryKey plugin = created.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", Path.GetFullPath(selected), RegistryValueKind.String);
         }
 
-        public void Dispose()
+        RegistrationDrift drift = await sandbox.CorrectAfterExitAsync(
+            new PluginNamespaceLeaseRequest(
+                sandbox.LocksDirectory,
+                RegistrySandbox.RhinoVersion,
+                sandbox.PluginId,
+                "Sample",
+                selected,
+                RegistrySandbox.Holder("post-exit")),
+            CancellationToken.None);
+
+        Assert.True(drift.MachineDrifted);
+        Assert.Null(drift.ExpectedMachineRegistration);
+        Assert.Null(sandbox.OpenMachineRegistration());
+        Assert.False(File.Exists(sandbox.JournalPath));
+    }
+
+    [Fact]
+    public async Task The_post_exit_correction_leaves_an_unchanged_registration_alone()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        string selected = sandbox.PathFor("selected/Sample.rhp");
+        using (RegistryKey installed = sandbox.CreateUserRegistration())
         {
-            foreach (IDisposable lease in _leases)
-            {
-                try
-                {
-                    lease.Dispose();
-                }
-                catch (IOException)
-                {
-                    // Teardown must not mask the assertion that ended the test.
-                }
-            }
-            Registry.CurrentUser.DeleteSubKeyTree(_root, throwOnMissingSubKey: false);
-            _temporary.Dispose();
+            installed.SetValue("Name", "Installed", RegistryValueKind.String);
+            using RegistryKey plugin = installed.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", @"C:\primary\Sample.rhp", RegistryValueKind.String);
         }
+        PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(selected);
+        result.Lease!.RestoreRetainingJournal();
+
+        RegistrationDrift drift = await sandbox.CorrectAfterExitAsync(
+            new PluginNamespaceLeaseRequest(
+                sandbox.LocksDirectory,
+                RegistrySandbox.RhinoVersion,
+                sandbox.PluginId,
+                "Sample",
+                selected,
+                RegistrySandbox.Holder("post-exit")),
+            CancellationToken.None);
+
+        Assert.True(drift.JournalFound);
+        Assert.False(drift.Drifted);
+        using RegistryKey untouched = sandbox.OpenUserRegistration()!;
+        Assert.Equal("Installed", untouched.GetValue("Name"));
+        Assert.False(File.Exists(sandbox.JournalPath));
+    }
+
+    // Another launch of the same plug-in restores and deletes a pending journal before it
+    // reads anything, so a correction that arrives after it has nothing left to do.
+    [Fact]
+    public async Task The_post_exit_correction_is_a_no_op_once_another_launch_restored_the_journal()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+
+        RegistrationDrift drift = await sandbox.CorrectAfterExitAsync(
+            new PluginNamespaceLeaseRequest(
+                sandbox.LocksDirectory,
+                RegistrySandbox.RhinoVersion,
+                sandbox.PluginId,
+                "Sample",
+                sandbox.PathFor("selected/Sample.rhp"),
+                RegistrySandbox.Holder("post-exit")),
+            CancellationToken.None);
+
+        Assert.False(drift.JournalFound);
+        Assert.False(drift.Drifted);
     }
 }

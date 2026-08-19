@@ -59,4 +59,11 @@ internal static class JsonDefaults
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true
     };
+
+    // One record per line, for the JSONL diagnostics the launch and its executor append to.
+    public static JsonSerializerOptions Line { get; } = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false
+    };
 }

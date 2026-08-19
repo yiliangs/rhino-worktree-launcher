@@ -559,15 +559,6 @@ public sealed class WorktreeBackendTests
     }
 }
 
-internal sealed class ImmediateProgress<T> : IProgress<T>
-{
-    private readonly Action<T> _report;
-
-    public ImmediateProgress(Action<T> report) => _report = report;
-
-    public void Report(T value) => _report(value);
-}
-
 internal static class RepositoryFixture
 {
     public static TemporaryDirectory Create()

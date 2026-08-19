@@ -14,7 +14,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        LauncherBackend backend = new LauncherBackend();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions { HostKind = "desktop" });
         MainWindow window = new MainWindow(backend);
         MainWindow = window;
         window.Show();

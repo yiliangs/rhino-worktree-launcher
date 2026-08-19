@@ -48,6 +48,8 @@ internal sealed record IntegrationRemoveCommand(
 
 internal sealed record SessionContextCommand(bool Json) : CliCommand;
 
+internal sealed record LaunchExecutorCommand(string PipeName) : CliCommand;
+
 internal static class CliGrammar
 {
     private const string ClientChoices = "claude|codex";
@@ -56,6 +58,7 @@ internal static class CliGrammar
     private static readonly OptionSpec ProjectOption = OptionSpec.Value("--project", "<id>");
     private static readonly OptionSpec PathOption = OptionSpec.Value("--path", "<path>");
     private static readonly OptionSpec TimeoutOption = OptionSpec.Value("--timeout", "<seconds>");
+    private static readonly OptionSpec PipeOption = OptionSpec.Value("--pipe", "<name>");
     private static readonly OptionSpec BootstrapOption = OptionSpec.Value("--bootstrap", "<path>");
     private static readonly OptionSpec PluginProjectOption = OptionSpec.Value("--plugin-project", "<path>");
     private static readonly OptionSpec SolutionOption = OptionSpec.Value("--solution", "<path>");
@@ -235,6 +238,14 @@ internal static class CliGrammar
                 new[] { OperandSpec.Literal("session-context") },
                 Array.Empty<OptionGroupSpec>(),
                 (arguments, _) => new SessionContextCommand(arguments.HasFlag(JsonOption)),
+                Visible: false),
+            // Not a user-facing command. The interactive Windows shell resolves the
+            // bootstrap into this, which is how a launch escapes a sandboxed host
+            // (ADR 0015).
+            new CommandSpec(
+                new[] { OperandSpec.Literal("launch-executor") },
+                new[] { OptionGroupSpec.Required(PipeOption) },
+                (arguments, _) => new LaunchExecutorCommand(arguments.Required(PipeOption)),
                 Visible: false)
         };
 

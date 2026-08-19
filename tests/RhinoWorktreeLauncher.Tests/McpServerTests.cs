@@ -3,10 +3,12 @@ using ModelContextProtocol.Server;
 using RhinoWorktreeLauncher;
 using Rwl.Mcp;
 using System.Diagnostics;
+using System.Runtime.Versioning;
 using System.Text.Json;
 
 namespace RhinoWorktreeLauncher.Tests;
 
+[SupportedOSPlatform("windows")]
 public sealed class McpServerTests
 {
     [Fact]
@@ -79,13 +81,13 @@ public sealed class McpServerTests
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
         LaunchBackendTests.FakeRhino rhino = new LaunchBackendTests.FakeRhino();
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = rhino.Start,
-            FileInUseInspector = rhino.IsFileInUse
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(
@@ -130,13 +132,13 @@ public sealed class McpServerTests
             "namespace Sample; public static class ChangedAfterBuild { public const int Value = 2; }");
 
         LaunchBackendTests.FakeRhino rhino = new LaunchBackendTests.FakeRhino();
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = rhino.Start,
-            FileInUseInspector = rhino.IsFileInUse
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
