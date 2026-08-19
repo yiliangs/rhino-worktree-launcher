@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Amended 2026-08-17: the overlay's registration shape is the documented install seed or a redirect of an existing registration, not a hand-built complete registration (see Amendment). Amended by ADR 0013, which suspends a competing machine registration where the user granted write access. Amended by ADR 0014, which makes the install seed the only current-user shape, deletes the redirect branch, and moves capture and restore onto a disk journal.
+Accepted. Amended 2026-08-17: the overlay's registration shape is the documented install seed or a redirect of an existing registration, not a hand-built complete registration (see Amendment). Amended 2026-08-18: every live-test conclusion recorded here holds only for a host whose current-user registry writes reach the registry, which not every launcher host does (see the second Amendment and ADR 0015). Amended by ADR 0013, which suspends a competing machine registration where the user granted write access. Amended by ADR 0014, which makes the install seed the only current-user shape, deletes the redirect branch, and moves capture and restore onto a disk journal.
 
 ## Context
 
@@ -38,3 +38,13 @@ Rhino loads a plug-in it has never seen only through the documented install seed
 The lease therefore writes one of two shapes. For a plug-in with no current-user registration it writes the install seed and nothing else. For a plug-in whose current-user registration already exists it redirects that registration, pointing `PlugIn\FileName` at the selected artifact and forcing `LoadMode` to a startup load. The capture-and-restore discipline is unchanged: a key the lease created is removed wholesale, which also removes everything Rhino filled in during the install.
 
 ADR 0014 later removed the redirect branch, which was never verified live, and made the install seed the only shape: an existing current-user registration is captured whole, removed, and reseeded.
+
+## Amendment (2026-08-18): the live tests above hold only where the write reached the registry
+
+The two conclusions this ADR draws from live tests, that a hand-built complete registration is silently ignored and that Rhino loads a plug-in it has never seen only through the documented install seed, were reached on 2026-08-17 from a process whose current-user registry writes reached the registry. They stay accurate for that condition, which is the only condition they were ever observed in, and this ADR never stated it because no one knew it could fail.
+
+On 2026-08-18 a launcher host was found that does not meet it. RWL's MCP server, spawned by its client, ran with its current-user registry writes intercepted. It wrote the install seed, read the key back, and saw exactly what it had written, while an external sampler polling every 100 ms never observed that key exist, across several launches. The machine hive passed through in the same process, so its HKLM reads and writes were real. The same release's CLI, started from an ordinary shell, wrote a seed that an external reader could see and loaded the worktree plug-in in 15 to 24 seconds. The process ran as the same user at high integrity, with no AppContainer, no UAC virtualisation and no restricted token, and the shipped binary decompiled identically to its source. The component performing the interception was not identified.
+
+Nothing above is falsified by that, because a registration shape can only be tested where the write lands, and each of these was tested where it did. The finding bounds the conclusions instead. A launch from an intercepted host says nothing about registration shapes at all: Rhino resolves the plug-in from a hive the seed never reached, so every shape fails there identically, and the writing process cannot tell the difference by reading its own key.
+
+ADR 0015 is the response. Every registry mutation moves into a launch executor that the interactive Windows shell starts, which is outside the interception, and an independently spawned reader must confirm the seed before Rhino starts, so a write that never landed ends the launch with `registry_seed_not_visible` instead of producing a registration this ADR's mechanism cannot make Rhino load.

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using RhinoWorktreeLauncher;
 using Rwl.Cli;
+using Rwl.Protocol;
 
 namespace RhinoWorktreeLauncher.Tests;
 
@@ -77,6 +78,47 @@ public sealed class SessionContextTests
         string context = ReadAdditionalContext(output);
         Assert.Contains("tests that never start Rhino", context, StringComparison.Ordinal);
         Assert.Contains("is not an exception", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Registered_repository_names_the_sandbox_codes_and_their_fallback()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        LauncherBackend backend = CreateBackend(temporary);
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),
+            CancellationToken.None);
+        StringWriter output = new StringWriter();
+
+        await SessionContextWriter.WriteAsync(
+            backend,
+            new StringReader(JsonSerializer.Serialize(new { cwd = temporary.PathFor("repository") })),
+            output);
+
+        string context = ReadAdditionalContext(output);
+        Assert.Contains(LaunchExecutorCodes.InteractiveSpawnUnavailable, context, StringComparison.Ordinal);
+        Assert.Contains(LaunchExecutorCodes.RegistrySeedNotVisible, context, StringComparison.Ordinal);
+        Assert.Contains("rwl launch --path", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Registered_repository_asks_for_the_diagnostic_code_of_a_failed_launch()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        LauncherBackend backend = CreateBackend(temporary);
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),
+            CancellationToken.None);
+        StringWriter output = new StringWriter();
+
+        await SessionContextWriter.WriteAsync(
+            backend,
+            new StringReader(JsonSerializer.Serialize(new { cwd = temporary.PathFor("repository") })),
+            output);
+
+        string context = ReadAdditionalContext(output);
+        Assert.Contains("diagnostic code", context, StringComparison.Ordinal);
+        Assert.Contains("executor process", context, StringComparison.Ordinal);
     }
 
     private static LauncherBackend CreateBackend(TemporaryDirectory temporary) => new LauncherBackend(

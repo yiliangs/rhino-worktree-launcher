@@ -16,6 +16,14 @@ _Avoid_: RWL artifact, copied plug-in
 The choice for one launch request between Build & Launch and Direct Launch. Desktop Config stores a project-specific default for mechanical launches; MCP agents choose explicitly per request. Build & Launch builds the canonical solution before resolving its artifact, while Direct Launch loads the existing artifact without building or claiming it is fresh.
 _Avoid_: project-wide launch mode, freshness mode, build receipt
 
+**Launch executor**:
+The process that carries out one launch: pending-journal recovery, the registration lease across both registry hives, the Rhino start, loaded-binary verification, the restore, and the correction once Rhino exits. The interactive Windows shell starts it, because a launcher host can run with its current-user registry writes intercepted and cannot detect that by reading its own writes. A launcher host is the desktop, CLI, or MCP server that asked for the launch: it resolves the worktree, builds, and names the artifact, and it never mutates a registration.
+_Avoid_: launch broker, launch service, background launcher
+
+**Registration visibility check**:
+The confirmation by a separately spawned reader that the registration this launch just wrote is present in the registry, distinguished from an identical one left by an earlier launch through a per-launch nonce removed once confirmed. A launch whose registration no independent reader can see ends before Rhino starts.
+_Avoid_: seed self-check, registry readback
+
 **Loaded-binary verification**:
 Proof, observed from outside Rhino, that the launched Rhino process holds the canonical plug-in artifact mapped in its address space. It does not claim plug-in authentication or application initialization succeeded, and it makes no claim about critical dependencies, which are existence-checked beside the plug-in during prepare rather than load-gated.
 _Avoid_: launch receipt, plug-in readiness
