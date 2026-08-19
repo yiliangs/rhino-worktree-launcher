@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.Versioning;
+using System.Text.Json;
 using RhinoWorktreeLauncher;
 
 namespace RhinoWorktreeLauncher.Tests;
@@ -371,6 +372,75 @@ public sealed class LaunchBackendTests
         Assert.DoesNotContain(rhino.Arguments, argument =>
             argument.EndsWith(".rhp", StringComparison.OrdinalIgnoreCase));
     }
+
+    // One launch has to be readable after the fact from its log alone: who asked for it,
+    // which release ran it, which artifact was registered, what the seed said, and where
+    // the executor's own record is.
+    [Fact]
+    public async Task A_launch_log_records_the_host_the_release_the_artifact_and_the_executor_log()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
+        FakeRhino rhino = new FakeRhino();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            HostKind = "mcp",
+            ReleaseId = "9.9.9-test",
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
+        });
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        CommandResult<LaunchResult> result = await backend.LaunchAsync(
+            repository,
+            LaunchMode.BuildAndLaunch,
+            TimeSpan.FromSeconds(60),
+            progress: null,
+            CancellationToken.None);
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+
+        JsonElement[] records = (await File.ReadAllLinesAsync(result.Value!.DiagnosticsLogPath))
+            .Select(line => JsonDocument.Parse(line).RootElement)
+            .ToArray();
+        JsonElement launch = Assert.Single(records, record => Kind(record) == "launch");
+        Assert.Equal("mcp", launch.GetProperty("hostKind").GetString());
+        Assert.Equal("9.9.9-test", launch.GetProperty("releaseId").GetString());
+        Assert.Equal("BuildAndLaunch", launch.GetProperty("requestedLaunchMode").GetString());
+
+        JsonElement request = Assert.Single(records, record => Kind(record) == "executor_request");
+        Assert.Equal(result.Value.PluginPath, request.GetProperty("pluginPath").GetString());
+        Assert.Equal("fake-rhino.exe", request.GetProperty("rhinoExecutable").GetString());
+        Assert.Equal(1, request.GetProperty("protocolVersion").GetInt32());
+
+        // Every stage transition carries its own timestamp, and the executor's log is named
+        // from the first event it reported onward.
+        string[] stages = records
+            .Where(record => Kind(record) == "progress")
+            .Select(record => record.GetProperty("stage").GetString()!)
+            .Distinct()
+            .ToArray();
+        Assert.Equal(
+            new[] { "resolve", "prepare", "build", "registration", "rhino", "verify", "complete" },
+            stages);
+        Assert.All(records, record => Assert.True(record.TryGetProperty("timestamp", out _)));
+        JsonElement seeded = Assert.Single(
+            records,
+            record => record.TryGetProperty("code", out JsonElement code) &&
+                code.GetString() == "plugin_registration_seeded");
+        Assert.Contains("Sample.rhp", seeded.GetProperty("message").GetString()!, StringComparison.Ordinal);
+        Assert.EndsWith(
+            ".executor.jsonl",
+            seeded.GetProperty("executorLog").GetString()!,
+            StringComparison.Ordinal);
+    }
+
+    private static string? Kind(JsonElement record) => record.GetProperty("type").GetString();
 
     private static Process StartExitedProcess()
     {

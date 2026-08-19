@@ -28,7 +28,7 @@ RWL-owned state remains under `%LOCALAPPDATA%\RhinoWorktreeLauncher`:
 - `projects.json`: project grants and canonical solution selections
 - `remotes\<project-id>.git`: remote mirror used for ahead/behind calculation
 - `locks`: the per (Rhino version, plug-in ID) registration lock and journal
-- `logs`: terminal launch diagnostics
+- `logs`: terminal launch diagnostics, and the launch executor's own record of each launch
 
 Refresh uses read-only Git commands against the project. It does not fetch into the repository or update repository refs.
 
@@ -40,12 +40,21 @@ A launch performs these steps:
 2. Revalidate the saved solution and configuration in that worktree.
 3. Build the selected solution when the mode is Build & Launch, or skip the build in Direct Launch.
 4. Ask MSBuild for the plug-in project's mapped `TargetPath` and require that exact `.rhp` to exist.
-5. Journal whatever is registered for that plug-in ID in both registry hives, then displace it: the current-user key is cleared and reseeded with Rhino's documented install seed, `Name` and `FileName` naming the selected `.rhp`, plus the `LoadMode` the displaced registration recorded so a plug-in that loads at startup keeps doing so. Where a machine registration already names the selected `.rhp`, the key is cleared and left empty, because Rhino loads the file from that registration already.
-6. Start Rhino. That registration is the only loading mechanism, and the `.rhp` is not passed on Rhino's command line.
-7. Wait for the launched Rhino process to map the selected `.rhp` into its address space.
-8. Fail closed unless that exact file is in use, then restore both hives from the journal and delete it.
+5. Start a launch executor through the interactive Windows shell and hand it the rest. Everything below happens in that process, never in the application, CLI, or MCP server that asked for the launch.
+6. Journal whatever is registered for that plug-in ID in both registry hives, then displace it: the current-user key is cleared and reseeded with Rhino's documented install seed, `Name` and `FileName` naming the selected `.rhp`, plus the `LoadMode` the displaced registration recorded so a plug-in that loads at startup keeps doing so. Where a machine registration already names the selected `.rhp`, the key is cleared and left empty, because Rhino loads the file from that registration already.
+7. Confirm through a separate process that the registration just written is really there, and stop before starting Rhino if it is not.
+8. Start Rhino. That registration is the only loading mechanism, and the `.rhp` is not passed on Rhino's command line.
+9. Wait for the launched Rhino process to map the selected `.rhp` into its address space.
+10. Fail closed unless that exact file is in use, then restore both hives from the journal.
+11. Stay behind, detached, until that Rhino exits, and put the pre-launch registrations back once more if Rhino rewrote them. The journal is deleted only then.
 
-The journal is written before anything is touched and removed only after a clean restore, so a launch killed mid-flight cannot leave the install seed behind. The next launch of the same plug-in restores the journal first: a displaced registration comes back, and a seed the killed launch left is deleted before it can make an ordinary Rhino session install the worktree artifact permanently.
+Step 5 exists because a process can be started with its current-user registry writes intercepted, so that it reads its own writes back and sees them while the registry Rhino reads never receives them. That was observed for RWL's MCP server on 2026-08-18. A process the Windows shell starts is outside that interception. Step 7 is what makes the condition visible instead of silent: the writing process cannot detect it by reading its own key, so an independent process is asked, and a launch whose registration nobody else can see ends in seconds with `registry_seed_not_visible` rather than at the verification timeout. `rwl doctor` runs the same check on demand.
+
+Step 11 exists because Rhino writes the artifact it loaded back into its own registration, and it does so while the launch that started it has already restored and returned. Without it, a worktree path can be left registered for ordinary Rhino sessions.
+
+The journal is written before anything is touched and removed only after the launched Rhino is gone, so a launch killed mid-flight cannot leave the install seed behind. The next launch of the same plug-in restores the journal first: a displaced registration comes back, and a seed the killed launch left is deleted before it can make an ordinary Rhino session install the worktree artifact permanently.
+
+Every failure ends in a named diagnostic code identifying the step that failed, and a launch that queues behind another session's lock reports which launch holds it rather than expiring as an unexplained timeout. Each launch writes a JSONL log under `logs`, and the executor writes its own beside it, named in the first.
 
 If a machine-wide registration claims the same plug-in ID and names a different file, for example an all-users install or a registration left by debugging another checkout, Rhino resolves the duplicate ID to that machine-wide file. Where your account holds write access to the machine `Plug-ins` key, granted once with an elevated account, the launch displaces that registration too and restores it when the launch ends, so ordinary Rhino sessions keep the installed copy. Without that access the launch refuses before Rhino starts and names the exact key, since RWL never elevates; grant the access or remove the key if it is stale. A machine registration already naming the selected `.rhp` is not a conflict. An existing current-user registration never blocks a launch: it is captured whole, displaced, and restored afterward.
 
