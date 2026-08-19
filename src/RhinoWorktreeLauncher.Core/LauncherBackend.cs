@@ -268,18 +268,6 @@ public sealed class LauncherBackend
         return CommandResult<RhinoInstanceAttribution>.Success(attribution, Unattributable(attribution));
     }
 
-    // A Rhino this account may not read is in the list, and it is also a warning: the caller
-    // learns that one of the running instances is running an unknown build.
-    private static IReadOnlyList<Diagnostic> Unattributable(RhinoInstanceAttribution attribution) =>
-        attribution.Instances
-            .Where(instance => !instance.IsAttributed)
-            .Select(instance => new Diagnostic(
-                "rhino_instance_unattributable",
-                $"Rhino process {instance.ProcessId} is running and which plug-in it holds could " +
-                $"not be read: {instance.UnattributableReason}",
-                DiagnosticSeverity.Warning))
-            .ToArray();
-
     public Task<CommandResult<LaunchResult>> LaunchAsync(
         string path,
         LaunchMode launchMode,
@@ -517,4 +505,15 @@ public sealed class LauncherBackend
         }
     }
 
+    // A Rhino this account may not read stays in the list and is also a warning: the caller
+    // learns that one of the running instances is running an unknown build.
+    private static IReadOnlyList<Diagnostic> Unattributable(RhinoInstanceAttribution attribution) =>
+        attribution.Instances
+            .Where(instance => !instance.IsAttributed)
+            .Select(instance => new Diagnostic(
+                "rhino_instance_unattributable",
+                $"Rhino process {instance.ProcessId} is running and which plug-in it holds could " +
+                $"not be read: {instance.UnattributableReason}",
+                DiagnosticSeverity.Warning))
+            .ToArray();
 }
