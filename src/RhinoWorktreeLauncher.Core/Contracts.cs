@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace RhinoWorktreeLauncher;
@@ -228,6 +229,42 @@ public sealed record LaunchResult(
     string DiagnosticsLogPath,
     DateTimeOffset StartedAt,
     DateTimeOffset CompletedAt);
+
+// One live Rhino process and the plug-in artifacts it holds mapped in its address space.
+// A process this account may not read is carried with the reason rather than dropped: a
+// list that accounts for every live Rhino must say so when it cannot attribute one.
+public sealed record RhinoInstance(
+    int ProcessId,
+    DateTimeOffset? StartedAt,
+    string? ExecutablePath,
+    IReadOnlyList<string> PlugInPaths,
+    string? UnattributableReason)
+{
+    public bool IsAttributed => UnattributableReason is null;
+
+    public string Describe()
+    {
+        string started = StartedAt is null
+            ? "at an unreadable time"
+            : StartedAt.Value.ToString("u", CultureInfo.InvariantCulture);
+        if (!IsAttributed)
+            return $"pid {ProcessId} started {started}, not attributable: {UnattributableReason}";
+        return $"pid {ProcessId} started {started}, " + (PlugInPaths.Count == 0
+            ? "holding no plug-in artifact"
+            : $"holding {string.Join(", ", PlugInPaths)}");
+    }
+}
+
+// One point-in-time answer to which Rhino runs which build. It is a reading of the machine,
+// not a subscription to it: nothing here observes a Rhino over time.
+public sealed record RhinoInstanceAttribution(
+    DateTimeOffset ObservedAt,
+    IReadOnlyList<RhinoInstance> Instances)
+{
+    public string Describe() =>
+        $"{Instances.Count} live Rhino process(es)." +
+        string.Concat(Instances.Select(instance => $" {instance.Describe()}."));
+}
 
 public sealed record DoctorCheck(
     string Name,
