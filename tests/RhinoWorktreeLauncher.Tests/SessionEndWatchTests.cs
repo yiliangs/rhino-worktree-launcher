@@ -1,5 +1,9 @@
+using System.IO.Pipes;
+using System.Runtime.Versioning;
+
 namespace RhinoWorktreeLauncher.Tests;
 
+[SupportedOSPlatform("windows")]
 public sealed class SessionEndWatchTests
 {
     private static readonly TimeSpan Grace = TimeSpan.FromMilliseconds(250);
@@ -69,6 +73,45 @@ public sealed class SessionEndWatchTests
         await Task.Delay(TimeSpan.FromMilliseconds(500));
 
         Assert.False(watch.Watching.IsCompleted);
+    }
+
+    // The signal the transport cannot be asked for: standard input is watched by peeking at
+    // the pipe, so the watch sees the writers disappear without taking a byte from whoever
+    // owns the stream.
+    [Fact]
+    public async Task A_pipe_whose_writers_are_gone_ends_the_session()
+    {
+        string name = $"rwl-session-test-{Guid.NewGuid():N}";
+        // Buffered, so a write completes without waiting for a reader. A zero-size pipe
+        // buffer would make the write itself wait, which says nothing about the watch.
+        using NamedPipeServerStream writer = new NamedPipeServerStream(
+            name,
+            PipeDirection.Out,
+            1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous,
+            4096,
+            4096);
+        using NamedPipeClientStream reader = new NamedPipeClientStream(".", name, PipeDirection.In);
+        Task connected = writer.WaitForConnectionAsync();
+        await reader.ConnectAsync(30_000);
+        await connected;
+        Task<SessionEnd> ended = SessionEndSignals.WatchPipeAsync(
+            reader.SafePipeHandle.DangerousGetHandle(),
+            reason => Assert.Fail(reason));
+
+        await writer.WriteAsync(new byte[] { 1, 2, 3 });
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        Assert.False(ended.IsCompleted);
+        // Peeking never consumes, so a second of watching leaves the message intact for
+        // whoever owns the stream. Draining it before closing the writer also keeps the
+        // close from waiting on a reader that will never come.
+        Assert.Equal(3, await reader.ReadAsync(new byte[3]));
+
+        writer.Dispose();
+
+        SessionEnd end = await ended.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal("session_standard_input_closed", end.Code);
     }
 
     // With nothing to watch there is nothing to decide. SessionEndSignals has already

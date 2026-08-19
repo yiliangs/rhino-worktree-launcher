@@ -69,11 +69,17 @@ internal static class SessionEndSignals
                 "so only its parent process is watched for the end of the session.");
             return null;
         }
-        return Task.Run(() => PollStandardInputAsync(handle, report));
+        return Task.Run(() => WatchPipeAsync(handle, report));
     }
 
+    /// <summary>
+    /// Watches one pipe handle for the disappearance of every writer, without consuming a byte
+    /// of what it carries. Data still buffered in the pipe keeps the peek succeeding, so the
+    /// signal arrives once the owner of the stream has drained what the client left, which is
+    /// what a transport reading it does continuously.
+    /// </summary>
     [SupportedOSPlatform("windows")]
-    private static async Task<SessionEnd> PollStandardInputAsync(IntPtr handle, Action<string> report)
+    internal static async Task<SessionEnd> WatchPipeAsync(IntPtr handle, Action<string> report)
     {
         bool reportedUnknownError = false;
         while (true)

@@ -256,6 +256,13 @@ internal static class Program
         catch (InvalidOperationException)
         {
         }
+        catch (Exception exception)
+        {
+            await Console.Error.WriteLineAsync(
+                $"[stdio_child_unendable] Process {process.Id} could not be ended: " +
+                $"{exception.Message} It is now an orphan that no client can reach. " +
+                "Run 'rwl doctor' to list it, and end it from Task Manager.");
+        }
     }
 
     private static async Task PumpInputAsync(Process process)
