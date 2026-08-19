@@ -2,6 +2,10 @@
 
 Rhino Worktree Launcher is a native Windows tool for registering Rhino plug-in projects, inspecting their Git worktrees, and launching the exact selected `.rhp` with loaded-binary verification. A shared .NET 8 backend serves the WPF desktop application, `rwl` CLI, and local stdio MCP server.
 
+![The Rhino Worktree Launcher main window. A project drop-down reading "Acme Panelizer" sits above the repository path, and a rail below it lists six Git worktrees, each with its launch mode, its uncommitted line counts, and how long ago it was touched. Settings, Open folder, and Build and Launch run along the bottom.](docs/images/main-window.png)
+
+*The desktop surface. Every project and branch name shown is invented.*
+
 ## Requirements
 
 - Windows x64 and Rhino 8. A registered project records Rhino 8, and the launch resolves `Rhino.exe` from that version's default installation directory. Rhino 7 and Rhino 9 are not supported yet.
