@@ -15,6 +15,9 @@ public sealed class LauncherBackendOptions
     public string ReleaseId { get; init; } =
         typeof(LauncherBackendOptions).Assembly.GetName().Version?.ToString() ?? "unknown";
     public string CatalogPath { get; init; } = Path.Combine(DefaultDataRoot, "projects.json");
+    // What every bootstrap resolves right now. A process that started before the last update
+    // is still serving the release it resolved then, which is why doctor compares them.
+    public string CurrentReleasePath { get; init; } = Path.Combine(DefaultDataRoot, "current.json");
     public string LogsDirectory { get; init; } = Path.Combine(DefaultDataRoot, "logs");
     public string LocksDirectory { get; init; } = Path.Combine(DefaultDataRoot, "locks");
     public string RemotesDirectory { get; init; } = Path.Combine(DefaultDataRoot, "remotes");
@@ -38,6 +41,9 @@ public sealed class LauncherBackendOptions
     // Doctor's independent reader. It is spawned through the interactive shell, because the
     // condition it checks for is this process's own writes being intercepted.
     internal RegistryProbeRunner RegistryProbeRunner { get; init; } = BootstrapRegistryProbe.RunAsync;
+    // Doctor's view of the machine's process table, injectable so what doctor concludes from a
+    // process list is decided by tests rather than by whatever happens to be running.
+    internal Func<IReadOnlyList<RunningProcess>> ProcessSnapshotReader { get; init; } = ProcessSnapshot.Read;
     internal Func<string, ProjectBuildOptions> ProjectBuildOptionsDiscovery { get; init; } =
         BuildProfileDiscovery.DiscoverOptions;
 

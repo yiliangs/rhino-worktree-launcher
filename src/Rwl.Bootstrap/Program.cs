@@ -104,7 +104,7 @@ internal static class Program
             Task output = process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput());
             Task error = process.StandardError.BaseStream.CopyToAsync(Console.OpenStandardError());
             if (bridgeInput)
-                _ = PumpInputAsync(process);
+                _ = EndWithInputAsync(process);
             await process.WaitForExitAsync();
             await Task.WhenAll(output, error);
             return process.ExitCode;
@@ -219,19 +219,80 @@ internal static class Program
         return args[index + 1];
     }
 
+    // How long a child is given to notice that its input has ended. It matches the grace the
+    // server gives its own host, so one number decides how long any RWL process may take to
+    // end after its session does.
+    private static readonly TimeSpan ChildExitGrace = TimeSpan.FromSeconds(10);
+
+    // This bootstrap is the whole session for the server it forwards to: the client's streams
+    // reach that server only through here. When this end of the bridge closes, the session is
+    // over, and a child that stays running is an orphan nobody can reach and nobody notices.
+    // Watching input is enough on this side, because the client holds the writing end of it:
+    // a client that dies closes this stream with it. The server watches its parent as well,
+    // for the case this process is the one that dies.
+    private static async Task EndWithInputAsync(Process process)
+    {
+        await PumpInputAsync(process);
+        if (process.HasExited)
+            return;
+
+        using CancellationTokenSource grace = new CancellationTokenSource(ChildExitGrace);
+        try
+        {
+            await process.WaitForExitAsync(grace.Token);
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        await Console.Error.WriteLineAsync(
+            $"[stdio_child_did_not_end] Process {process.Id} did not exit within " +
+            $"{ChildExitGrace.TotalSeconds:0.###} seconds of its session ending, so it is being " +
+            "ended here. It would otherwise keep running with no client able to reach it.");
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        // The child exited on its own between the wait and the kill, which is the outcome
+        // this path wanted.
+        catch (InvalidOperationException)
+        {
+        }
+        catch (Exception exception)
+        {
+            await Console.Error.WriteLineAsync(
+                $"[stdio_child_unendable] Process {process.Id} could not be ended: " +
+                $"{exception.Message} It is now an orphan that no client can reach. " +
+                "Run 'rwl doctor' to list it, and end it from Task Manager.");
+        }
+    }
+
     private static async Task PumpInputAsync(Process process)
     {
         try
         {
             await Console.OpenStandardInput().CopyToAsync(process.StandardInput.BaseStream);
         }
-        catch (IOException) when (process.HasExited)
+        // Either end of the bridge breaking ends the bridge. Which end broke is decided by
+        // the caller, from whether the child is still running.
+        catch (IOException)
         {
-            // The child may close stdin after a terminal response.
+        }
+        catch (ObjectDisposedException)
+        {
         }
         finally
         {
-            process.StandardInput.Close();
+            try
+            {
+                process.StandardInput.Close();
+            }
+            // Closing flushes, and a child that has already exited leaves nothing to flush
+            // into. The child is gone either way, which is what closing was for.
+            catch (IOException)
+            {
+            }
         }
     }
 
