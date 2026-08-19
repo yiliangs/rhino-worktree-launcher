@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using RhinoWorktreeLauncher;
 
 namespace RhinoWorktreeLauncher.Tests;
@@ -254,4 +254,20 @@ public sealed class ProjectCatalogTests
             public sealed class SamplePlugin : PlugIn { }
             """);
     }
+    [Fact]
+    public void Artifact_profile_normalizes_null_critical_dependencies_to_an_empty_list()
+    {
+        BuildArtifactProfile stored = JsonSerializer.Deserialize<BuildArtifactProfile>(
+            """
+            { "pluginId": "c50b7fc9-ffee-4ac8-83e0-6290a321eae2", "rhinoRuntime": "netfx", "criticalDependencies": null }
+            """,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+
+        Assert.NotNull(stored.CriticalDependencies);
+        Assert.Empty(stored.CriticalDependencies);
+        Assert.DoesNotContain(
+            "null",
+            JsonSerializer.Serialize(stored, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+    }
+
 }

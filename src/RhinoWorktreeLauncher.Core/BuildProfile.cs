@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace RhinoWorktreeLauncher;
 
@@ -17,7 +17,13 @@ public sealed record BuildConfiguration(string Configuration, string Platform)
 public sealed record BuildArtifactProfile(
     Guid PluginId,
     string RhinoRuntime,
-    IReadOnlyList<string> CriticalDependencies);
+    IReadOnlyList<string>? CriticalDependencies)
+{
+    // A stored profile keeps null for "no critical dependencies", but every consumer and
+    // the MCP output schema treat the list as always present, so null normalizes here.
+    public IReadOnlyList<string> CriticalDependencies { get; init; } =
+        CriticalDependencies ?? Array.Empty<string>();
+}
 
 public sealed record BuildProfile(
     string SolutionPath,
