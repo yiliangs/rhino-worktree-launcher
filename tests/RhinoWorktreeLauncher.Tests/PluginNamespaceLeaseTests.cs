@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32;
+using Rwl.Protocol;
 
 namespace RhinoWorktreeLauncher.Tests;
 
@@ -26,8 +27,9 @@ public sealed class PluginNamespaceLeaseTests
             Assert.Equal("Sample", seed.GetValue("Name"));
             Assert.Equal(Path.GetFullPath(selected), seed.GetValue("FileName"));
             // Nothing was displaced, so there is no recorded load mode to carry and the
-            // seed stays exactly Name and FileName.
-            Assert.Equal(2, seed.GetValueNames().Length);
+            // seed stays Name and FileName beside the visibility nonce.
+            Assert.Equal(result.Seed!.Nonce, seed.GetValue(RegistryVisibilityCanary.NonceValue));
+            Assert.Equal(3, seed.GetValueNames().Length);
             Assert.Empty(seed.GetSubKeyNames());
         }
         Assert.True(File.Exists(sandbox.JournalPath));
@@ -66,7 +68,7 @@ public sealed class PluginNamespaceLeaseTests
             // load mode is deliberately carried forward.
             Assert.Equal("Sample", seed.GetValue("Name"));
             Assert.Empty(seed.GetSubKeyNames());
-            Assert.Equal(3, seed.GetValueNames().Length);
+            Assert.Equal(4, seed.GetValueNames().Length);
         }
 
         result.Lease!.Dispose();
@@ -184,7 +186,7 @@ public sealed class PluginNamespaceLeaseTests
         using (RegistryKey seed = sandbox.OpenUserRegistration()!)
         {
             Assert.Null(seed.GetValue("LoadMode"));
-            Assert.Equal(2, seed.GetValueNames().Length);
+            Assert.Equal(3, seed.GetValueNames().Length);
         }
 
         result.Lease!.Dispose();
@@ -405,6 +407,32 @@ public sealed class PluginNamespaceLeaseTests
         second.Lease!.Dispose();
     }
 
+    // The nonce is what tells this launch's seed from an identical one left in the real
+    // hive by an earlier launch. It is removed once an independent reader has confirmed the
+    // seed, so Rhino reads exactly the documented install shape.
+    [Fact]
+    public async Task The_visibility_nonce_is_removed_once_the_seed_is_confirmed()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        PluginNamespaceLeaseResult result = await sandbox.AcquireAsync(
+            sandbox.PathFor("selected/Sample.rhp"));
+
+        PluginSeed seed = Assert.IsType<PluginSeed>(result.Seed);
+        Assert.Equal(RegistryHives.CurrentUser, seed.Hive);
+        Assert.Equal($@"{sandbox.UserPluginsKeyPath}\{sandbox.PluginId:D}", seed.KeyPath);
+        Assert.NotEmpty(seed.Nonce);
+
+        result.Lease!.ClearVisibilityNonce();
+
+        using RegistryKey confirmed = sandbox.OpenUserRegistration()!;
+        Assert.Null(confirmed.GetValue(RegistryVisibilityCanary.NonceValue));
+        Assert.Equal(2, confirmed.GetValueNames().Length);
+        result.Lease.Dispose();
+    }
+
     // A launch that queues behind another must be able to say who it is waiting for, so the
     // holder records itself beside the lock and removes that record when it releases.
     [Fact]
@@ -446,7 +474,8 @@ public sealed class PluginNamespaceLeaseTests
                 sandbox.PluginId,
                 "Sample",
                 sandbox.PathFor("second/Sample.rhp"),
-                RegistrySandbox.Holder("queued-launch")),
+                RegistrySandbox.Holder("queued-launch"),
+                Guid.NewGuid().ToString("N")),
             new ImmediateProgress<FileLockWait>(waits.Add),
             abandon.Token);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
@@ -493,7 +522,8 @@ public sealed class PluginNamespaceLeaseTests
                 sandbox.PluginId,
                 "Sample",
                 selected,
-                RegistrySandbox.Holder("post-exit")),
+                RegistrySandbox.Holder("post-exit"),
+                Guid.NewGuid().ToString("N")),
             CancellationToken.None);
 
         Assert.True(drift.MachineDrifted);
@@ -530,7 +560,8 @@ public sealed class PluginNamespaceLeaseTests
                 sandbox.PluginId,
                 "Sample",
                 selected,
-                RegistrySandbox.Holder("post-exit")),
+                RegistrySandbox.Holder("post-exit"),
+                Guid.NewGuid().ToString("N")),
             CancellationToken.None);
 
         Assert.True(drift.MachineDrifted);
@@ -563,7 +594,8 @@ public sealed class PluginNamespaceLeaseTests
                 sandbox.PluginId,
                 "Sample",
                 selected,
-                RegistrySandbox.Holder("post-exit")),
+                RegistrySandbox.Holder("post-exit"),
+                Guid.NewGuid().ToString("N")),
             CancellationToken.None);
 
         Assert.True(drift.JournalFound);
@@ -590,7 +622,8 @@ public sealed class PluginNamespaceLeaseTests
                 sandbox.PluginId,
                 "Sample",
                 sandbox.PathFor("selected/Sample.rhp"),
-                RegistrySandbox.Holder("post-exit")),
+                RegistrySandbox.Holder("post-exit"),
+                Guid.NewGuid().ToString("N")),
             CancellationToken.None);
 
         Assert.False(drift.JournalFound);

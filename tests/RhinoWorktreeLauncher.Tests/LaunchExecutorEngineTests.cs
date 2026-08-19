@@ -159,6 +159,83 @@ public sealed class LaunchExecutorEngineTests
         held.Lease!.Dispose();
     }
 
+    // The proven failure this whole architecture exists for: the writer reads its own seed
+    // back and sees it, while the hive Rhino reads never received it. The launch stops
+    // before Rhino starts instead of running to the verification timeout.
+    [Fact]
+    public async Task A_seed_no_independent_reader_can_see_stops_the_launch_before_rhino_starts()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        using StandInRhino rhino = new StandInRhino(sandbox);
+        LaunchExecutorRequest request = Request(sandbox);
+
+        LaunchExecutorEvent result = await RunAsync(sandbox, rhino, request, probe: TestRegistryProbe.Blind);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(LaunchExecutorCodes.RegistrySeedNotVisible, result.Code);
+        Assert.Contains("intercepted", result.Message, StringComparison.Ordinal);
+        Assert.Null(rhino.ProcessId);
+        Assert.Null(sandbox.OpenUserRegistration(request.PluginGuid()));
+        Assert.False(File.Exists(sandbox.JournalPathFor(request.PluginGuid())));
+    }
+
+    [Fact]
+    public async Task A_probe_that_cannot_answer_stops_the_launch_before_rhino_starts()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        using StandInRhino rhino = new StandInRhino(sandbox);
+        LaunchExecutorRequest request = Request(sandbox);
+
+        LaunchExecutorEvent result = await RunAsync(
+            sandbox,
+            rhino,
+            request,
+            probe: TestRegistryProbe.Failing("no probe answered"));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(LaunchExecutorCodes.RegistrySeedNotVisible, result.Code);
+        Assert.Contains("no probe answered", result.Message, StringComparison.Ordinal);
+        Assert.Null(rhino.ProcessId);
+    }
+
+    // A verified launch confirms the seed before Rhino starts and removes the nonce it
+    // checked, so Rhino reads exactly the documented install seed.
+    [Fact]
+    public async Task A_confirmed_seed_is_recorded_and_leaves_no_nonce_behind()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        using StandInRhino rhino = new StandInRhino(sandbox);
+        LaunchExecutorRequest request = Request(sandbox);
+        string? nonceWhenRhinoStarted = "unread";
+
+        LaunchExecutorEvent result = await RunAsync(
+            sandbox,
+            rhino,
+            request,
+            observe: value =>
+            {
+                if (value.Code != LaunchExecutorCodes.RhinoStarted)
+                    return;
+                using RegistryKey? seed = sandbox.OpenUserRegistration(request.PluginGuid());
+                nonceWhenRhinoStarted = seed?.GetValue(RegistryVisibilityCanary.NonceValue) as string;
+            });
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Null(nonceWhenRhinoStarted);
+        Assert.Contains(
+            LaunchExecutorCodes.RegistrySeedVerified,
+            ReadWhileOpen(result.ExecutorLogPath!));
+    }
+
     [Fact]
     public async Task An_unreadable_plugin_id_ends_the_launch_as_an_invalid_request()
     {
@@ -190,6 +267,7 @@ public sealed class LaunchExecutorEngineTests
         LaunchExecutorEngine engine = new LaunchExecutorEngine(new LaunchExecutorOptions
         {
             PluginNamespace = sandbox,
+            RegistryProbeRunner = TestRegistryProbe.Truthful,
             RhinoProcessStarter = rhino.Start,
             FileUsePollDelay = TimeSpan.FromMilliseconds(50)
         });
@@ -227,12 +305,14 @@ public sealed class LaunchExecutorEngineTests
         StandInRhino rhino,
         LaunchExecutorRequest request,
         IPluginNamespace? pluginNamespace = null,
+        RegistryProbeRunner? probe = null,
         CancellationToken clientDisconnected = default,
         Action<LaunchExecutorEvent>? observe = null)
     {
         LaunchExecutorEngine engine = new LaunchExecutorEngine(new LaunchExecutorOptions
         {
             PluginNamespace = pluginNamespace ?? sandbox,
+            RegistryProbeRunner = probe ?? TestRegistryProbe.Truthful,
             RhinoProcessStarter = rhino.Start,
             FileUsePollDelay = TimeSpan.FromMilliseconds(50)
         });

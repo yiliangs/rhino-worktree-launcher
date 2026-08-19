@@ -11,5 +11,6 @@
 
   <ItemGroup>
     <Compile Include="..\Rwl.Protocol\LaunchExecutorProtocol.cs" Link="Protocol\LaunchExecutorProtocol.cs" />
+    <Compile Include="..\Rwl.Protocol\RegistryProbeProtocol.cs" Link="Protocol\RegistryProbeProtocol.cs" />
   </ItemGroup>
 </Project>

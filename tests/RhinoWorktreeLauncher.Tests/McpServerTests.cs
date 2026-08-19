@@ -36,7 +36,7 @@ public sealed class McpServerTests
             LogsDirectory = temporary.PathFor("launcher/logs"),
             GitExecutable = temporary.PathFor("missing-git.exe")
         });
-        RwlTools tools = new RwlTools(backend);
+        RwlTools tools = new RwlTools(backend, TestReadiness.Ready);
 
         CallToolResult result = await tools.DoctorAsync(CancellationToken.None);
 
@@ -59,7 +59,7 @@ public sealed class McpServerTests
         await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),
             CancellationToken.None);
-        RwlTools tools = new RwlTools(backend);
+        RwlTools tools = new RwlTools(backend, TestReadiness.Ready);
 
         CallToolResult result = await tools.ResolveContextAsync(
             temporary.PathFor("repository"),
@@ -96,7 +96,7 @@ public sealed class McpServerTests
                 LaunchMode: LaunchMode.DirectLaunch),
             CancellationToken.None);
         Assert.True(registration.Succeeded, registration.Diagnostics.FirstOrDefault()?.Message);
-        RwlTools tools = new RwlTools(backend);
+        RwlTools tools = new RwlTools(backend, TestReadiness.Ready);
 
         CallToolResult result = await tools.BuildAndLaunchAsync(
             repository,
@@ -144,7 +144,7 @@ public sealed class McpServerTests
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
             CancellationToken.None);
         Assert.True(registration.Succeeded, registration.Diagnostics.FirstOrDefault()?.Message);
-        RwlTools tools = new RwlTools(backend);
+        RwlTools tools = new RwlTools(backend, TestReadiness.Ready);
 
         CallToolResult result = await tools.LaunchExistingAsync(
             repository,
@@ -160,11 +160,13 @@ public sealed class McpServerTests
     public async Task List_requires_an_explicit_project_or_directory_context()
     {
         using TemporaryDirectory temporary = new TemporaryDirectory();
-        RwlTools tools = new RwlTools(new LauncherBackend(new LauncherBackendOptions
-        {
-            CatalogPath = temporary.PathFor("launcher/projects.json"),
-            LogsDirectory = temporary.PathFor("launcher/logs")
-        }));
+        RwlTools tools = new RwlTools(
+            new LauncherBackend(new LauncherBackendOptions
+            {
+                CatalogPath = temporary.PathFor("launcher/projects.json"),
+                LogsDirectory = temporary.PathFor("launcher/logs")
+            }),
+            TestReadiness.Ready);
 
         CallToolResult result = await tools.ListWorktreesAsync(
             projectId: null,
@@ -178,6 +180,47 @@ public sealed class McpServerTests
                 .GetProperty("diagnostics")[0]
                 .GetProperty("code")
                 .GetString());
+    }
+
+    // A server that cannot reach the interactive Windows shell cannot write a registration
+    // Rhino will read. It says so in milliseconds instead of running the launch to a
+    // timeout that explains nothing.
+    [Fact]
+    public async Task A_degraded_host_fails_a_launch_immediately_with_the_reason()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            LaunchExecutorInvoker = (_, _, _) =>
+                throw new InvalidOperationException("No launch may be attempted by a degraded host.")
+        });
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+        RwlTools tools = new RwlTools(
+            backend,
+            TestReadiness.Degraded(
+                "interactive_spawn_unavailable",
+                "RWL cannot reach the interactive Windows shell from this process."));
+
+        CallToolResult result = await tools.BuildAndLaunchAsync(
+            repository,
+            timeoutSeconds: 20,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        JsonElement diagnostic = result.StructuredContent!.Value.GetProperty("diagnostics")[0];
+        Assert.Equal("interactive_spawn_unavailable", diagnostic.GetProperty("code").GetString());
+        Assert.Contains(
+            "interactive Windows shell",
+            diagnostic.GetProperty("message").GetString()!,
+            StringComparison.Ordinal);
     }
 
     [Fact]

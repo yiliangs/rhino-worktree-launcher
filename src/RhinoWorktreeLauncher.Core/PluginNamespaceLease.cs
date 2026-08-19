@@ -2,6 +2,7 @@ using Microsoft.Win32;
 using System.Runtime.Versioning;
 using System.Security;
 using System.Text.Json;
+using Rwl.Protocol;
 
 namespace RhinoWorktreeLauncher;
 
@@ -78,6 +79,7 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
             request.PluginName,
             request.PluginPath,
             request.Holder,
+            request.VisibilityNonce,
             waiting,
             cancellationToken);
     }
@@ -143,6 +145,7 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
         string pluginName,
         string pluginPath,
         FileLockHolder holder,
+        string visibilityNonce,
         IProgress<FileLockWait>? waiting,
         CancellationToken cancellationToken)
     {
@@ -221,7 +224,13 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
                 // another file would otherwise win the ID.
                 if (!machineNamesSelected)
                 {
-                    seed = new PluginSeed(pluginName, selectedPath, carriedLoadMode);
+                    seed = new PluginSeed(
+                        pluginName,
+                        selectedPath,
+                        carriedLoadMode,
+                        HiveToken(userHive),
+                        $@"{userPluginsKeyPath}\{registration}",
+                        visibilityNonce);
                     using RegistryKey seedKey = userPluginsKey.CreateSubKey(registration, writable: true) ??
                         throw new UnauthorizedAccessException(
                             $@"The launcher cannot create '{userHive.Name}\{userPluginsKeyPath}\{registration}'.");
@@ -229,6 +238,11 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
                     seedKey.SetValue("FileName", seed.FileName, RegistryValueKind.String);
                     if (seed.LoadMode is int loadMode)
                         seedKey.SetValue(LoadModeValue, loadMode, RegistryValueKind.DWord);
+                    // Written with the seed and removed once an independent reader has
+                    // confirmed both, so Rhino never sees it. It is what tells this
+                    // launch's seed apart from an identical one an earlier launch left
+                    // behind, which a file name alone cannot do (ADR 0015).
+                    seedKey.SetValue(RegistryVisibilityCanary.NonceValue, visibilityNonce, RegistryValueKind.String);
                 }
             }
             catch
@@ -357,6 +371,16 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
     // this launch started is still running and still able to write its registration back,
     // and the post-exit correction owns deleting the journal once it cannot (ADR 0015).
     public void RestoreRetainingJournal() => Release(deleteJournal: false);
+
+    public void ClearVisibilityNonce()
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("Rhino plug-in namespace leases require Windows.");
+        using RegistryKey? seed = OpenWritable(
+            _userHive,
+            $@"{_userPluginsKeyPath}\{_journal.Registration}");
+        seed?.DeleteValue(RegistryVisibilityCanary.NonceValue, throwOnMissingValue: false);
+    }
 
     public void Dispose() => Release(deleteJournal: true);
 
@@ -581,6 +605,12 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
         }
     }
 
+    [SupportedOSPlatform("windows")]
+    private static string HiveToken(RegistryKey hive) =>
+        hive.Name.StartsWith("HKEY_LOCAL_MACHINE", StringComparison.Ordinal)
+            ? RegistryHives.LocalMachine
+            : RegistryHives.CurrentUser;
+
     private static string PluginsKeyPath(int rhinoVersion) =>
         $@"Software\McNeel\Rhinoceros\{rhinoVersion}.0\Plug-ins";
 
@@ -597,6 +627,10 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
 internal interface IPluginNamespaceLease : IDisposable
 {
     void RestoreRetainingJournal();
+
+    // Removes the visibility nonce once an independent reader has confirmed the seed, so
+    // Rhino reads exactly the documented install seed and nothing else.
+    void ClearVisibilityNonce();
 }
 
 internal sealed record PluginNamespaceLeaseRequest(
@@ -605,7 +639,8 @@ internal sealed record PluginNamespaceLeaseRequest(
     Guid PluginId,
     string PluginName,
     string PluginPath,
-    FileLockHolder Holder);
+    FileLockHolder Holder,
+    string VisibilityNonce);
 
 // A machine registration the launch cannot displace, described by the only two facts the
 // refusal needs: the file it names and the key holding it.
@@ -614,7 +649,13 @@ internal sealed record PluginRegistrationConflict(string RegisteredPath, string 
 // Exactly what the lease wrote into the current-user hive, so the launch log records the
 // instruction Rhino was given rather than a claim that one was written. Null where a
 // machine registration already names the selected artifact and no seed is needed.
-internal sealed record PluginSeed(string Name, string FileName, int? LoadMode);
+internal sealed record PluginSeed(
+    string Name,
+    string FileName,
+    int? LoadMode,
+    string Hive,
+    string KeyPath,
+    string Nonce);
 
 // Exactly one of Lease and Refusal is set. The displaced paths are informational: they
 // carry what the lease pushed aside so the launch log can name it.

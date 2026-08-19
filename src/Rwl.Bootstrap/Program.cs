@@ -1,6 +1,8 @@
+using Microsoft.Win32;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using Rwl.Protocol;
@@ -14,6 +16,12 @@ internal static class Program
         string mode = args.FirstOrDefault()?.ToLowerInvariant() ?? "desktop";
         try
         {
+            // Answered here rather than by the current release, so the reader shares no
+            // code and no process with whoever wrote the key it is asked about, and so it
+            // still answers on a half-updated installation.
+            if (mode == "registry-probe" && OperatingSystem.IsWindows())
+                return await RunRegistryProbeAsync(args);
+
             if (mode is not "desktop" and not "mcp" and not "launch-executor" &&
                 !Console.IsOutputRedirected)
             {
@@ -144,6 +152,63 @@ internal static class Program
         catch (Exception)
         {
         }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static async Task<int> RunRegistryProbeAsync(string[] args)
+    {
+        string pipeName = RequiredOption(args, "--pipe");
+        using NamedPipeClientStream pipe = new NamedPipeClientStream(
+            ".",
+            pipeName,
+            PipeDirection.InOut,
+            PipeOptions.Asynchronous);
+        using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await pipe.ConnectAsync(timeout.Token);
+        using StreamReader reader = new StreamReader(pipe, Encoding.UTF8, false, leaveOpen: true);
+        using StreamWriter writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true)
+        {
+            AutoFlush = true
+        };
+
+        RegistryProbeResult result;
+        try
+        {
+            string requestLine = await reader.ReadLineAsync(timeout.Token) ??
+                throw new InvalidDataException("The caller closed the pipe without sending a probe request.");
+            RegistryProbeRequest request = RegistryProbeProtocol.DeserializeRequest(requestLine) ??
+                throw new InvalidDataException("The registry probe request was empty.");
+            result = Read(request);
+        }
+        // The caller decides what an unreadable key means; this process only reports it,
+        // and reports it in the same shape as a successful read.
+        catch (Exception exception)
+        {
+            result = new RegistryProbeResult { Error = exception.Message };
+        }
+
+        await writer.WriteLineAsync(RegistryProbeProtocol.SerializeResult(result)).WaitAsync(timeout.Token);
+        return result.Error is null ? 0 : 1;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static RegistryProbeResult Read(RegistryProbeRequest request)
+    {
+        RegistryKey hive = request.Hive switch
+        {
+            RegistryHives.CurrentUser => Registry.CurrentUser,
+            RegistryHives.LocalMachine => Registry.LocalMachine,
+            _ => throw new ArgumentException($"'{request.Hive}' is not a registry hive this probe reads.")
+        };
+        using RegistryKey? key = hive.OpenSubKey(request.KeyPath, writable: false);
+        Dictionary<string, string?> values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (string name in request.Values)
+            values[name] = key?.GetValue(name)?.ToString();
+        return new RegistryProbeResult
+        {
+            Exists = key is not null,
+            Values = values
+        };
     }
 
     private static string RequiredOption(string[] args, string option)

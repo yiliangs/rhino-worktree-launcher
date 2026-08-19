@@ -83,6 +83,7 @@ internal sealed class RegistrySandbox : IPluginNamespace, IDisposable
             request.PluginName,
             request.PluginPath,
             request.Holder,
+            request.VisibilityNonce,
             waiting,
             cancellationToken);
         // Tracked so a failed assertion releases the lock file instead of masking itself
@@ -118,7 +119,8 @@ internal sealed class RegistrySandbox : IPluginNamespace, IDisposable
                 pluginId,
                 "Sample",
                 pluginPath,
-                Holder("test-launch")),
+                Holder("test-launch"),
+                Guid.NewGuid().ToString("N")),
             waiting: null,
             cancellationToken);
 
@@ -129,7 +131,8 @@ internal sealed class RegistrySandbox : IPluginNamespace, IDisposable
             PluginId,
             "Sample",
             PathFor("selected/Sample.rhp"),
-            Holder("test-recovery")),
+            Holder("test-recovery"),
+            Guid.NewGuid().ToString("N")),
         waiting: null,
         CancellationToken.None);
 

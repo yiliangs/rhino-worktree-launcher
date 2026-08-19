@@ -35,6 +35,9 @@ public sealed class LauncherBackendOptions
         get;
         init;
     } = LaunchExecutorClient.InvokeAsync;
+    // Doctor's independent reader. It is spawned through the interactive shell, because the
+    // condition it checks for is this process's own writes being intercepted.
+    internal RegistryProbeRunner RegistryProbeRunner { get; init; } = BootstrapRegistryProbe.RunAsync;
     internal Func<string, ProjectBuildOptions> ProjectBuildOptionsDiscovery { get; init; } =
         BuildProfileDiscovery.DiscoverOptions;
 

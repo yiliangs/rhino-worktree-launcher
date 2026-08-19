@@ -42,7 +42,8 @@ internal sealed class LaunchExecutorEngine
                 request.LaunchId,
                 Environment.ProcessId,
                 request.HostKind,
-                DateTimeOffset.UtcNow));
+                DateTimeOffset.UtcNow),
+            Guid.NewGuid().ToString("N"));
 
         using CancellationTokenSource abort = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
@@ -70,6 +71,7 @@ internal sealed class LaunchExecutorEngine
             }
             lease = acquired.Lease;
             ReportDisplacement(channel, acquired);
+            await VerifyRegistrationIsVisibleAsync(acquired.Seed, lease, channel, token);
 
             rhino = StartRhino(request, channel);
             channel.Progress(
@@ -156,7 +158,8 @@ internal sealed class LaunchExecutorEngine
                 request.LaunchId,
                 Environment.ProcessId,
                 request.HostKind,
-                DateTimeOffset.UtcNow));
+                DateTimeOffset.UtcNow),
+            VisibilityNonce: string.Empty);
 
         await WaitForExitAsync(rhinoProcessId, cancellationToken);
         RegistrationDrift drift = await _options.PluginNamespace.CorrectAfterExitAsync(
@@ -236,6 +239,45 @@ internal sealed class LaunchExecutorEngine
                 $"The install seed names '{seed.FileName}' as '{seed.Name}'" +
                 (seed.LoadMode is int mode ? $" with load mode {mode}." : " with no recorded load mode."));
         }
+    }
+
+    // Nothing may depend on a registration this process cannot prove is real. The check
+    // runs after the seed is written and before Rhino starts, so a launch under an
+    // intercepted registry ends in seconds with a named cause instead of running to the
+    // verification timeout (ADR 0015).
+    private async Task VerifyRegistrationIsVisibleAsync(
+        PluginSeed? seed,
+        IPluginNamespaceLease? lease,
+        ExecutorChannel channel,
+        CancellationToken cancellationToken)
+    {
+        // With no seed, Rhino loads from a machine registration that already names the
+        // artifact and the launch wrote only a clearing of the current-user key. That
+        // clearing has to be real too, so the check falls back to RWL's own key.
+        RegistryVisibility visibility = seed is null
+            ? await RegistryVisibilityCanary.VerifyAsync(
+                _options.RegistryProbeRunner,
+                spawnInteractively: false,
+                cancellationToken)
+            : await RegistryVisibilityCanary.VerifySeedAsync(
+                seed,
+                _options.RegistryProbeRunner,
+                spawnInteractively: false,
+                cancellationToken);
+        if (!visibility.Visible)
+        {
+            throw new LaunchDiagnosticException(
+                LaunchExecutorCodes.RegistrySeedNotVisible,
+                visibility.Describe() +
+                " Rhino would load nothing from it, so this launch stops before starting Rhino " +
+                "and the displaced registrations are restored.");
+        }
+
+        lease?.ClearVisibilityNonce();
+        channel.Progress(
+            LaunchStage.Registration,
+            LaunchExecutorCodes.RegistrySeedVerified,
+            $"An independent process confirms '{visibility.KeyPath}' holds what this launch wrote.");
     }
 
     private Process StartRhino(LaunchExecutorRequest request, ExecutorChannel channel)
@@ -368,6 +410,7 @@ internal sealed class LaunchExecutorEngine
 internal sealed class LaunchExecutorOptions
 {
     public IPluginNamespace PluginNamespace { get; init; } = RegistryPluginNamespace.Instance;
+    public RegistryProbeRunner RegistryProbeRunner { get; init; } = BootstrapRegistryProbe.RunAsync;
     public Func<int, string, bool> FileInUseInspector { get; init; } = FileUse.IsFileMappedByProcess;
     public Func<ProcessStartInfo, Process> RhinoProcessStarter { get; init; } = StartDirectly;
     public TimeSpan FileUsePollDelay { get; init; } = TimeSpan.FromMilliseconds(500);

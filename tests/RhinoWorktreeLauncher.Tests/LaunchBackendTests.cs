@@ -395,6 +395,10 @@ public sealed class LaunchBackendTests
 
         public bool RestoredRetainingJournal { get; private set; }
 
+        public bool ClearedVisibilityNonce { get; private set; }
+
+        public void ClearVisibilityNonce() => ClearedVisibilityNonce = true;
+
         public void RestoreRetainingJournal() => RestoredRetainingJournal = true;
 
         public void Dispose() => Disposed = true;

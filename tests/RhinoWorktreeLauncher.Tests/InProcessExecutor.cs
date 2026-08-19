@@ -28,6 +28,7 @@ internal static class InProcessExecutor
             return await new LaunchExecutorEngine(new LaunchExecutorOptions
             {
                 PluginNamespace = pluginNamespace,
+                RegistryProbeRunner = TestRegistryProbe.Truthful,
                 RhinoProcessStarter = rhinoProcessStarter,
                 FileInUseInspector = fileInUseInspector,
                 FileUsePollDelay = TimeSpan.FromMilliseconds(50)
