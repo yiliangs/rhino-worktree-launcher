@@ -32,6 +32,14 @@ _Avoid_: launch receipt, plug-in readiness
 The external inspection that attributes an open file to the process holding it, which is how RWL observes the launched Rhino process using the canonical plug-in artifact. It requires no code inside Rhino and no integration in the launched plug-in, because a plug-in can never verify its own loading.
 _Avoid_: RWL verifier, in-Rhino verification, receipt writer
 
+**Rhino instance attribution**:
+The point-in-time reading of which live Rhino processes exist and which plug-in artifacts each holds mapped. It is file-use attribution asked without an expected path, so it is plug-in agnostic and observes any Rhino, not only one RWL launched. Concurrent launches legitimately leave several verified Rhino processes running, each a different build, so this is what binds an interaction to the right one when the caller does not already hold a launch result's process id. A Rhino this account cannot open for a virtual-memory read is reported as unattributable with the reason, never omitted.
+_Avoid_: Rhino session monitor, instance tracker, process watch
+
+**Launch identity stamp**:
+The `RWL_LAUNCH_ID` and `RWL_ARTIFACT` environment variables the launch executor sets on the Rhino it starts, so code running inside Rhino identifies its own launch by reading its own environment. RWL never reads them back from another process; the process id belonging to a launch is already in that launch's result and log.
+_Avoid_: launch handshake, in-Rhino receipt, callback token
+
 **Project access grant**:
 The user's consent for RWL to inspect one Git repository and every worktree sharing its Git common directory. Build & Launch also authorizes the selected solution to write its ordinary outputs in the selected worktree.
 _Avoid_: folder permission, worktree permission

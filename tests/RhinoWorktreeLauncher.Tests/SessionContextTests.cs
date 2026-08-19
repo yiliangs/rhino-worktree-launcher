@@ -80,6 +80,28 @@ public sealed class SessionContextTests
         Assert.Contains("is not an exception", context, StringComparison.Ordinal);
     }
 
+    // The mistake this sentence prevents, seen live on 2026-08-19: an agent found "the"
+    // Rhino process, hit another session's, and reported a correct launch as unverified.
+    [Fact]
+    public async Task Registered_repository_binds_post_launch_work_to_the_launched_process()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        LauncherBackend backend = CreateBackend(temporary);
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),
+            CancellationToken.None);
+        StringWriter output = new StringWriter();
+
+        await SessionContextWriter.WriteAsync(
+            backend,
+            new StringReader(JsonSerializer.Serialize(new { cwd = temporary.PathFor("repository") })),
+            output);
+
+        string context = ReadAdditionalContext(output);
+        Assert.Contains("rhinoProcessId", context, StringComparison.Ordinal);
+        Assert.Contains("rhino_worktree_attribution", context, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Registered_repository_names_the_sandbox_codes_and_their_fallback()
     {
