@@ -32,6 +32,10 @@ _Avoid_: folder permission, worktree permission
 An independently revocable project permission allowing RWL to read remote Git and pull-request metadata into app-owned storage. It is offered enabled by default alongside project access.
 _Avoid_: fetch permission, Git write permission
 
+**Stdio session**:
+The pair of standard streams a client owns and an RWL stdio server is reachable through, together with the lifetime they define. The session ends when the client closes those streams or the process bridging them dies; a server that outlives its own session is an orphan, reachable by nobody and serving the release it was spawned from.
+_Avoid_: server instance, daemon, background server
+
 **Config**:
 The project-specific desktop surface for canonical plug-in project and solution configuration, the desktop launch-mode default, and project grants.
 _Avoid_: global settings, MCP setup

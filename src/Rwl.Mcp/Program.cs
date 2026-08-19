@@ -9,7 +9,7 @@ namespace Rwl.Mcp;
 
 internal static class Program
 {
-    public static Task Main(string[] args)
+    public static async Task Main(string[] args)
     {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
         builder.Logging.ClearProviders();
@@ -40,6 +40,29 @@ internal static class Program
             .WithStdioServerTransport()
             .WithTools<RwlTools>(serializerOptions: McpJson.Options);
 
-        return builder.Build().RunAsync();
+        IHost host = builder.Build();
+        // This server exists only for the session that started it. When that session ends it
+        // becomes unreachable, and an unreachable server left running holds the release it
+        // was spawned from and answers to nobody, which is what five concurrent servers and
+        // one orphan from a superseded release looked like on 2026-08-18.
+        _ = SessionEndWatch.Start(
+            (end, cancellationToken) =>
+            {
+                Report($"[{end.Code}] {end.Message}");
+                return host.StopAsync(cancellationToken);
+            },
+            (end, reason) =>
+            {
+                Report($"[session_end_abandoned] {reason} Ending this server anyway, because it " +
+                    $"can no longer serve the session it was started for: {end.Message}");
+                Environment.Exit(0);
+            },
+            Report);
+
+        await host.RunAsync();
     }
+
+    // Standard error is where this server's log already goes, and it stays writable while the
+    // host is stopping, which the host's own logging does not.
+    private static void Report(string message) => Console.Error.WriteLine(message);
 }
