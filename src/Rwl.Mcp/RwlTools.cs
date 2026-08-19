@@ -20,8 +20,13 @@ internal sealed class RwlTools
         "registration, access grants, readiness checks, or verification failures.";
 
     private readonly LauncherBackend _backend;
+    private readonly LaunchHostReadiness _readiness;
 
-    public RwlTools(LauncherBackend backend) => _backend = backend;
+    public RwlTools(LauncherBackend backend, LaunchHostReadiness readiness)
+    {
+        _backend = backend;
+        _readiness = readiness;
+    }
 
     [McpServerTool(
         Name = "rhino_worktree_resolve_context",
@@ -132,6 +137,13 @@ internal sealed class RwlTools
                 "invalid_timeout",
                 "timeoutSeconds must be a finite number between 1 and 1800.")));
         }
+
+        // A server that cannot reach the interactive Windows shell cannot write a
+        // registration Rhino will read, so it refuses here in milliseconds rather than
+        // running the whole launch to a timeout that explains nothing.
+        LaunchHostState readiness = await _readiness.StateAsync();
+        if (!readiness.Ready)
+            return ToToolResult(CommandResult<LaunchResult>.Failure(new Diagnostic(readiness.Code, readiness.Message)));
 
         int progressStep = 0;
         Progress<LaunchProgress>? launchProgress = progress is null

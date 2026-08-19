@@ -254,6 +254,7 @@ public sealed class LauncherBackend
         List<DoctorCheck> checks = new List<DoctorCheck>();
         await CheckProcessAsync("git", Options.GitExecutable, new[] { "--version" });
         await CheckProcessAsync("dotnet", Options.DotNetExecutable, new[] { "--version" });
+        checks.Add(await CheckRegistryVisibilityAsync(cancellationToken));
 
         CommandResult<IReadOnlyList<ProjectSnapshot>> projectsResult = await GetProjectsAsync(cancellationToken);
         checks.Add(new DoctorCheck(
@@ -294,6 +295,35 @@ public sealed class LauncherBackend
                 check.Severity))
             .ToArray();
         return CommandResult<DoctorReport>.Success(report, diagnostics);
+
+        async Task<DoctorCheck> CheckRegistryVisibilityAsync(CancellationToken token)
+        {
+            try
+            {
+                RegistryVisibility visibility = await RegistryVisibilityCanary.VerifyAsync(
+                    Options.RegistryProbeRunner,
+                    spawnInteractively: true,
+                    token);
+                return new DoctorCheck(
+                    "registry-visibility",
+                    visibility.Visible,
+                    visibility.Visible
+                        ? "A current-user registry write made here is visible to an independent process."
+                        : visibility.Describe(),
+                    visibility.Visible ? DiagnosticSeverity.Info : DiagnosticSeverity.Error);
+            }
+            // Without the interactive shell there is no independent reader to ask, so this
+            // reports that it could not check rather than that the check failed. Launches
+            // refuse under the same condition, by name, before they touch a registration.
+            catch (LaunchDiagnosticException exception)
+            {
+                return new DoctorCheck(
+                    "registry-visibility",
+                    false,
+                    $"[{exception.Code}] {exception.Message}",
+                    DiagnosticSeverity.Warning);
+            }
+        }
 
         async Task CheckProcessAsync(string name, string executable, string[] arguments)
         {

@@ -1,6 +1,8 @@
+using Microsoft.Win32;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using Rwl.Protocol;
@@ -11,13 +13,16 @@ internal static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        string mode = args.FirstOrDefault()?.ToLowerInvariant() ?? "desktop";
         try
         {
-            string mode = args.FirstOrDefault()?.ToLowerInvariant() ?? "desktop";
-            if (mode == "rhino-broker")
-                return await RunRhinoBrokerAsync(args);
+            // Answered here rather than by the current release, so the reader shares no
+            // code and no process with whoever wrote the key it is asked about, and so it
+            // still answers on a half-updated installation.
+            if (mode == "registry-probe" && OperatingSystem.IsWindows())
+                return await RunRegistryProbeAsync(args);
 
-            if (mode is not "desktop" and not "mcp" &&
+            if (mode is not "desktop" and not "mcp" and not "launch-executor" &&
                 !Console.IsOutputRedirected)
             {
                 _ = AttachConsole(AttachParentProcess);
@@ -50,6 +55,17 @@ internal static class Program
                     forwarded = args.Skip(1).ToArray();
                     wait = true;
                     bridgeInput = true;
+                    break;
+                // The launch executor is the one mode that exists to be started by the
+                // interactive Windows shell rather than by a launcher host. This bootstrap
+                // is what the shell resolves; it hands the whole command to the current
+                // release's CLI and ends, so the executor outlives it and no shell process
+                // waits on a Rhino session.
+                case "launch-executor":
+                    executable = current.Cli;
+                    forwarded = args;
+                    wait = false;
+                    bridgeInput = false;
                     break;
                 default:
                     executable = current.Cli;
@@ -95,6 +111,11 @@ internal static class Program
         }
         catch (Exception exception)
         {
+            // A launcher host is waiting on the executor's pipe, and a bootstrap that
+            // cannot reach the current release would otherwise leave it waiting for a
+            // process that will never connect.
+            if (mode == "launch-executor")
+                await ReportExecutorStartFailureAsync(args, exception);
             await Console.Error.WriteLineAsync(exception.Message);
             return 1;
         }
@@ -102,7 +123,39 @@ internal static class Program
 
     private const uint AttachParentProcess = 0xffffffff;
 
-    private static async Task<int> RunRhinoBrokerAsync(string[] args)
+    private static async Task ReportExecutorStartFailureAsync(string[] args, Exception failure)
+    {
+        try
+        {
+            string pipeName = RequiredOption(args, "--pipe");
+            using NamedPipeClientStream pipe = new NamedPipeClientStream(
+                ".",
+                pipeName,
+                PipeDirection.InOut,
+                PipeOptions.Asynchronous);
+            using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await pipe.ConnectAsync(timeout.Token);
+            using StreamWriter writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true)
+            {
+                AutoFlush = true
+            };
+            await writer.WriteLineAsync(LaunchExecutorProtocol.SerializeEvent(new LaunchExecutorEvent
+            {
+                Kind = LaunchExecutorEventKind.Result,
+                Code = LaunchExecutorCodes.ExecutorBootstrapFailed,
+                Message = $"The RWL bootstrap could not start a launch executor: {failure.Message}",
+                Severity = "error"
+            })).WaitAsync(timeout.Token);
+        }
+        // The host names this same failure as executor_start_timeout when it cannot be
+        // reached, so a pipe that is already gone still ends in a named condition.
+        catch (Exception)
+        {
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static async Task<int> RunRegistryProbeAsync(string[] args)
     {
         string pipeName = RequiredOption(args, "--pipe");
         using NamedPipeClientStream pipe = new NamedPipeClientStream(
@@ -110,55 +163,52 @@ internal static class Program
             pipeName,
             PipeDirection.InOut,
             PipeOptions.Asynchronous);
-        using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         await pipe.ConnectAsync(timeout.Token);
-
         using StreamReader reader = new StreamReader(pipe, Encoding.UTF8, false, leaveOpen: true);
         using StreamWriter writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true)
         {
             AutoFlush = true
         };
+
+        RegistryProbeResult result;
         try
         {
-            string? requestLine = await reader.ReadLineAsync(timeout.Token);
-            RhinoLaunchRequest request = requestLine is null
-                ? throw new InvalidDataException("The launcher closed without providing a Rhino launch request.")
-                : RhinoBrokerProtocol.DeserializeRequest(requestLine) ??
-                    throw new InvalidDataException("The Rhino launch request was empty.");
-            ProcessStartInfo startInfo = new ProcessStartInfo
-            {
-                FileName = request.Executable,
-                WorkingDirectory = request.WorkingDirectory,
-                UseShellExecute = false
-            };
-            foreach (string argument in request.Arguments)
-                startInfo.ArgumentList.Add(argument);
-            foreach (KeyValuePair<string, string?> variable in request.Environment)
-            {
-                if (variable.Value is null)
-                    startInfo.Environment.Remove(variable.Key);
-                else
-                    startInfo.Environment[variable.Key] = variable.Value;
-            }
-
-            Process process = Process.Start(startInfo) ??
-                throw new InvalidOperationException($"Could not start '{request.Executable}'.");
-            int processId = process.Id;
-            process.Dispose();
-            await writer.WriteLineAsync(RhinoBrokerProtocol.SerializeResponse(new RhinoLaunchResponse
-            {
-                ProcessId = processId
-            })).WaitAsync(timeout.Token);
-            return 0;
+            string requestLine = await reader.ReadLineAsync(timeout.Token) ??
+                throw new InvalidDataException("The caller closed the pipe without sending a probe request.");
+            RegistryProbeRequest request = RegistryProbeProtocol.DeserializeRequest(requestLine) ??
+                throw new InvalidDataException("The registry probe request was empty.");
+            result = Read(request);
         }
+        // The caller decides what an unreadable key means; this process only reports it,
+        // and reports it in the same shape as a successful read.
         catch (Exception exception)
         {
-            await writer.WriteLineAsync(RhinoBrokerProtocol.SerializeResponse(new RhinoLaunchResponse
-            {
-                Error = exception.Message
-            }));
-            return 1;
+            result = new RegistryProbeResult { Error = exception.Message };
         }
+
+        await writer.WriteLineAsync(RegistryProbeProtocol.SerializeResult(result)).WaitAsync(timeout.Token);
+        return result.Error is null ? 0 : 1;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static RegistryProbeResult Read(RegistryProbeRequest request)
+    {
+        RegistryKey hive = request.Hive switch
+        {
+            RegistryHives.CurrentUser => Registry.CurrentUser,
+            RegistryHives.LocalMachine => Registry.LocalMachine,
+            _ => throw new ArgumentException($"'{request.Hive}' is not a registry hive this probe reads.")
+        };
+        using RegistryKey? key = hive.OpenSubKey(request.KeyPath, writable: false);
+        Dictionary<string, string?> values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (string name in request.Values)
+            values[name] = key?.GetValue(name)?.ToString();
+        return new RegistryProbeResult
+        {
+            Exists = key is not null,
+            Values = values
+        };
     }
 
     private static string RequiredOption(string[] args, string option)

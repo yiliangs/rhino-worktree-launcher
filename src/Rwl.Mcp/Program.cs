@@ -16,7 +16,15 @@ internal static class Program
         builder.Logging.AddConsole(options =>
             options.LogToStandardErrorThreshold = LogLevel.Trace);
 
-        builder.Services.AddSingleton<LauncherBackend>();
+        builder.Services.AddSingleton(_ => new LauncherBackend(new LauncherBackendOptions
+        {
+            HostKind = "mcp"
+        }));
+        // Started here, not on the first launch: the client that spawns this server can
+        // sandbox it, and a server that cannot reach the interactive shell has to say so
+        // before a launch waits on it. The probe runs in the background, so it delays no
+        // part of the stdio handshake.
+        builder.Services.AddSingleton(new LaunchHostReadiness());
         builder.Services
             .AddMcpServer(options =>
             {

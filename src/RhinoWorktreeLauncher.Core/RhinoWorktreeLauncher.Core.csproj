@@ -10,6 +10,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\Rwl.Protocol\RhinoBrokerProtocol.cs" Link="Protocol\RhinoBrokerProtocol.cs" />
+    <Compile Include="..\Rwl.Protocol\LaunchExecutorProtocol.cs" Link="Protocol\LaunchExecutorProtocol.cs" />
+    <Compile Include="..\Rwl.Protocol\RegistryProbeProtocol.cs" Link="Protocol\RegistryProbeProtocol.cs" />
   </ItemGroup>
 </Project>

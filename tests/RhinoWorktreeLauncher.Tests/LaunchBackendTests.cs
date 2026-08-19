@@ -1,8 +1,13 @@
 using System.Diagnostics;
+using System.Runtime.Versioning;
+using System.Text.Json;
 using RhinoWorktreeLauncher;
 
 namespace RhinoWorktreeLauncher.Tests;
 
+// Every launch path is Windows-only: the registration sandbox these tests run against is
+// registry-backed.
+[SupportedOSPlatform("windows")]
 public sealed class LaunchBackendTests
 {
     [Fact]
@@ -10,6 +15,7 @@ public sealed class LaunchBackendTests
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
         FakeRhino rhino = new FakeRhino();
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
@@ -17,8 +23,7 @@ public sealed class LaunchBackendTests
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = rhino.Start,
-            FileInUseInspector = rhino.IsFileInUse
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -46,14 +51,14 @@ public sealed class LaunchBackendTests
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
         FakeRhino rhino = new FakeRhino();
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = rhino.Start,
-            FileInUseInspector = rhino.IsFileInUse
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -91,6 +96,7 @@ public sealed class LaunchBackendTests
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
         temporary.Run(
             "dotnet",
             repository,
@@ -106,8 +112,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = rhino.Start,
-            FileInUseInspector = rhino.IsFileInUse
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(
@@ -135,6 +140,7 @@ public sealed class LaunchBackendTests
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
         temporary.Run(
             "dotnet",
             repository,
@@ -159,8 +165,7 @@ public sealed class LaunchBackendTests
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = rhino.Start,
-            FileInUseInspector = rhino.IsFileInUse
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(
@@ -197,13 +202,9 @@ public sealed class LaunchBackendTests
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = rhino.Start,
-            FileInUseInspector = (_, _) => false,
-            PluginNamespaceLeaseAcquirer = (_, _) => Task.FromResult(new PluginNamespaceLeaseResult(
-                Lease: null,
-                new PluginRegistrationConflict(competing, competingKey),
-                DisplacedMachineRegistration: null,
-                DisplacedUserRegistration: null))
+            LaunchExecutorInvoker = InProcessExecutor.For(
+                new StubPluginNamespace(new PluginRegistrationConflict(competing, competingKey)),
+                rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -232,16 +233,19 @@ public sealed class LaunchBackendTests
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            // The process is already gone before the coordinator ever polls it, so the
-            // exited path is exercised without depending on a timing window.
-            RhinoProcessStarter = _ => StartExitedProcess(),
-            FileInUseInspector = (_, _) => false
+            // The process is already gone before the executor ever polls it, so the exited
+            // path is exercised without depending on a timing window.
+            LaunchExecutorInvoker = InProcessExecutor.For(
+                registry,
+                _ => StartExitedProcess(),
+                (_, _) => false)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -275,13 +279,9 @@ public sealed class LaunchBackendTests
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = rhino.Start,
-            FileInUseInspector = rhino.IsFileInUse,
-            PluginNamespaceLeaseAcquirer = (_, _) => Task.FromResult(new PluginNamespaceLeaseResult(
-                lease,
-                Refusal: null,
-                @"C:\primary\Sample.rhp",
-                DisplacedUserRegistration: null))
+            LaunchExecutorInvoker = InProcessExecutor.For(
+                new StubPluginNamespace(lease, DisplacedMachineRegistration: @"C:\primary\Sample.rhp"),
+                rhino)
         });
         await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -295,7 +295,10 @@ public sealed class LaunchBackendTests
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
-        Assert.True(lease.Disposed);
+        // A verified launch keeps the journal for the post-exit correction rather than
+        // ending the lease outright.
+        Assert.True(lease.RestoredRetainingJournal);
+        Assert.False(lease.Disposed);
         string log = await File.ReadAllTextAsync(result.Value!.DiagnosticsLogPath);
         Assert.Contains("plugin_registration_suspended", log);
     }
@@ -314,13 +317,9 @@ public sealed class LaunchBackendTests
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = rhino.Start,
-            FileInUseInspector = rhino.IsFileInUse,
-            PluginNamespaceLeaseAcquirer = (_, _) => Task.FromResult(new PluginNamespaceLeaseResult(
-                lease,
-                Refusal: null,
-                DisplacedMachineRegistration: null,
-                existing))
+            LaunchExecutorInvoker = InProcessExecutor.For(
+                new StubPluginNamespace(lease, DisplacedUserRegistration: existing),
+                rhino)
         });
         await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -334,7 +333,10 @@ public sealed class LaunchBackendTests
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
-        Assert.True(lease.Disposed);
+        // A verified launch keeps the journal for the post-exit correction rather than
+        // ending the lease outright.
+        Assert.True(lease.RestoredRetainingJournal);
+        Assert.False(lease.Disposed);
         string log = await File.ReadAllTextAsync(result.Value!.DiagnosticsLogPath);
         Assert.Contains("plugin_registration_displaced", log);
         Assert.Contains(existing.Replace(@"\", @"\\"), log);
@@ -345,6 +347,7 @@ public sealed class LaunchBackendTests
     {
         using TemporaryDirectory temporary = RepositoryFixture.Create();
         string repository = temporary.PathFor("repository");
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
         FakeRhino rhino = new FakeRhino();
         LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
         {
@@ -352,8 +355,7 @@ public sealed class LaunchBackendTests
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
             RhinoExecutableResolver = _ => "fake-rhino.exe",
-            RhinoProcessStarter = rhino.Start,
-            FileInUseInspector = rhino.IsFileInUse
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
@@ -370,6 +372,75 @@ public sealed class LaunchBackendTests
         Assert.DoesNotContain(rhino.Arguments, argument =>
             argument.EndsWith(".rhp", StringComparison.OrdinalIgnoreCase));
     }
+
+    // One launch has to be readable after the fact from its log alone: who asked for it,
+    // which release ran it, which artifact was registered, what the seed said, and where
+    // the executor's own record is.
+    [Fact]
+    public async Task A_launch_log_records_the_host_the_release_the_artifact_and_the_executor_log()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
+        FakeRhino rhino = new FakeRhino();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            HostKind = "mcp",
+            ReleaseId = "9.9.9-test",
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
+        });
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        CommandResult<LaunchResult> result = await backend.LaunchAsync(
+            repository,
+            LaunchMode.BuildAndLaunch,
+            TimeSpan.FromSeconds(60),
+            progress: null,
+            CancellationToken.None);
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+
+        JsonElement[] records = (await File.ReadAllLinesAsync(result.Value!.DiagnosticsLogPath))
+            .Select(line => JsonDocument.Parse(line).RootElement)
+            .ToArray();
+        JsonElement launch = Assert.Single(records, record => Kind(record) == "launch");
+        Assert.Equal("mcp", launch.GetProperty("hostKind").GetString());
+        Assert.Equal("9.9.9-test", launch.GetProperty("releaseId").GetString());
+        Assert.Equal("BuildAndLaunch", launch.GetProperty("requestedLaunchMode").GetString());
+
+        JsonElement request = Assert.Single(records, record => Kind(record) == "executor_request");
+        Assert.Equal(result.Value.PluginPath, request.GetProperty("pluginPath").GetString());
+        Assert.Equal("fake-rhino.exe", request.GetProperty("rhinoExecutable").GetString());
+        Assert.Equal(1, request.GetProperty("protocolVersion").GetInt32());
+
+        // Every stage transition carries its own timestamp, and the executor's log is named
+        // from the first event it reported onward.
+        string[] stages = records
+            .Where(record => Kind(record) == "progress")
+            .Select(record => record.GetProperty("stage").GetString()!)
+            .Distinct()
+            .ToArray();
+        Assert.Equal(
+            new[] { "resolve", "prepare", "build", "registration", "rhino", "verify", "complete" },
+            stages);
+        Assert.All(records, record => Assert.True(record.TryGetProperty("timestamp", out _)));
+        JsonElement seeded = Assert.Single(
+            records,
+            record => record.TryGetProperty("code", out JsonElement code) &&
+                code.GetString() == "plugin_registration_seeded");
+        Assert.Contains("Sample.rhp", seeded.GetProperty("message").GetString()!, StringComparison.Ordinal);
+        Assert.EndsWith(
+            ".executor.jsonl",
+            seeded.GetProperty("executorLog").GetString()!,
+            StringComparison.Ordinal);
+    }
+
+    private static string? Kind(JsonElement record) => record.GetProperty("type").GetString();
 
     private static Process StartExitedProcess()
     {
@@ -388,9 +459,17 @@ public sealed class LaunchBackendTests
         return process;
     }
 
-    internal sealed class FakeLease : IDisposable
+    internal sealed class FakeLease : IPluginNamespaceLease
     {
         public bool Disposed { get; private set; }
+
+        public bool RestoredRetainingJournal { get; private set; }
+
+        public bool ClearedVisibilityNonce { get; private set; }
+
+        public void ClearVisibilityNonce() => ClearedVisibilityNonce = true;
+
+        public void RestoreRetainingJournal() => RestoredRetainingJournal = true;
 
         public void Dispose() => Disposed = true;
     }

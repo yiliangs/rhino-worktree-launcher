@@ -18,7 +18,12 @@ internal static class Program
         try
         {
             CliCommand? command = CliGrammar.Parse(args);
-            LauncherBackend backend = new LauncherBackend();
+            // The executor owns registry mutation and needs no catalog, so it runs before
+            // a backend exists.
+            if (command is LaunchExecutorCommand executor)
+                return await LaunchExecutorHost.RunAsync(executor.PipeName, CancellationToken.None);
+
+            LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions { HostKind = "cli" });
             return command switch
             {
                 ProjectRegisterCommand register => await RegisterProjectAsync(backend, register),

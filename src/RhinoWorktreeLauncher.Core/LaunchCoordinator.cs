@@ -1,15 +1,15 @@
-using System.Diagnostics;
 using System.Text.Json;
+using Rwl.Protocol;
 
 namespace RhinoWorktreeLauncher;
 
+// Resolves the worktree, builds the canonical solution, and then hands the whole
+// registration-mutating half of the launch to an executor process the interactive Windows
+// shell starts (ADR 0015). This process reads and builds; it never writes a registration,
+// starts Rhino, or verifies a load, because it can be running inside a sandbox whose
+// current-user registry writes never reach the hive Rhino reads.
 internal sealed class LaunchCoordinator
 {
-    private static readonly TimeSpan FileUsePollDelay = TimeSpan.FromMilliseconds(500);
-    private static readonly JsonSerializerOptions LogJson = new JsonSerializerOptions(JsonDefaults.Write)
-    {
-        WriteIndented = false
-    };
     private readonly LauncherBackendOptions _options;
     private readonly ContextResolver _contextResolver;
     private readonly BuildCoordinator _buildCoordinator;
@@ -34,261 +34,250 @@ internal sealed class LaunchCoordinator
         if (timeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(timeout));
 
-        string launchId = Guid.NewGuid().ToString("N");
         DateTimeOffset startedAt = DateTimeOffset.UtcNow;
         Directory.CreateDirectory(_options.LogsDirectory);
-        string logPath = Path.Combine(_options.LogsDirectory, $"{startedAt:yyyyMMdd-HHmmss}-{launchId}.jsonl");
+        LaunchLog log = new LaunchLog(
+            Guid.NewGuid().ToString("N"),
+            _options.LogsDirectory,
+            startedAt,
+            progress);
         string worktreePath = Path.GetFullPath(path);
-        Process? launchedRhino = null;
-        bool launchVerified = false;
+        int? rhinoProcessId = null;
         using CancellationTokenSource timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
         CancellationToken token = timeoutSource.Token;
 
         try
         {
-            await ReportAsync(LaunchStage.Resolve, "Resolving the registered project and selected worktree.");
+            log.Record(new
+            {
+                type = "launch",
+                launchId = log.LaunchId,
+                hostKind = _options.HostKind,
+                releaseId = _options.ReleaseId,
+                requestedLaunchMode = launchMode.ToString(),
+                timeoutSeconds = timeout.TotalSeconds,
+                requestedPath = worktreePath,
+                timestamp = startedAt
+            });
+
+            log.Report(LaunchStage.Resolve, "Resolving the registered project and selected worktree.");
             CommandResult<ResolvedContext> contextResult = await _contextResolver.ResolveAsync(path, token);
             if (!contextResult.Succeeded)
-                return await FailAsync(contextResult.Diagnostics[0]);
+                return Fail(contextResult.Diagnostics[0]);
             ResolvedContext context = contextResult.Value!;
             worktreePath = context.WorktreePath;
 
-            await ReportAsync(LaunchStage.Prepare, "Resolving the selected solution configuration and canonical artifact.");
+            log.Report(LaunchStage.Prepare, "Resolving the selected solution configuration and canonical artifact.");
             CommandResult<PreparedLaunchArtifacts> build = await _buildCoordinator.PrepareAsync(
                 path,
                 launchMode,
-                new ForwardBuildProgress(progress, launchId),
+                new ForwardBuildProgress(log),
                 token);
             if (!build.Succeeded)
-                return await FailAsync(build.Diagnostics[0]);
+                return Fail(build.Diagnostics[0]);
             PreparedLaunchArtifacts artifacts = build.Value!;
 
-            // A journal left by a killed launch is restored before anything reads a
-            // registration, so no launch decides against a hive an earlier one abandoned.
-            await PluginNamespaceLease.RecoverAsync(
-                _options.LocksDirectory,
-                context.RhinoVersion,
-                artifacts.PluginId,
-                token);
-
-            await ReportAsync(LaunchStage.Registration, "Applying a temporary current-user plug-in registration.");
-            PluginNamespaceLeaseResult lease = await _options.PluginNamespaceLeaseAcquirer(
-                new PluginNamespaceLeaseRequest(
-                    _options.LocksDirectory,
-                    context.RhinoVersion,
-                    artifacts.PluginId,
-                    Path.GetFileNameWithoutExtension(artifacts.PluginPath),
-                    artifacts.PluginPath),
-                token);
-            // A machine-wide registration wins over the current-user seed for the same
-            // plug-in ID. The lease displaces it where the user granted write access to
-            // the machine Plug-ins key (ADR 0013); without that access, starting Rhino
-            // would only reach the verification timeout, so the launch refuses here,
-            // before Rhino starts.
-            if (lease.Refusal is not null)
-                return await FailAsync(new Diagnostic(
-                    "plugin_registration_conflict",
-                    Describe(lease.Refusal)));
-
-            using (lease.Lease)
+            TimeSpan remaining = timeout - (DateTimeOffset.UtcNow - startedAt);
+            if (remaining <= TimeSpan.Zero)
             {
-                if (lease.DisplacedMachineRegistration is not null)
-                    await LogDiagnosticAsync(new Diagnostic(
-                        "plugin_registration_suspended",
-                        $"The machine-wide registration naming '{lease.DisplacedMachineRegistration}' " +
-                            "is suspended for this launch and restored when it ends.",
-                        DiagnosticSeverity.Info));
-                if (lease.DisplacedUserRegistration is not null)
-                    await LogDiagnosticAsync(new Diagnostic(
-                        "plugin_registration_displaced",
-                        $"The current-user registration naming '{lease.DisplacedUserRegistration}' " +
-                            "is displaced for this launch and restored when it ends.",
-                        DiagnosticSeverity.Info));
-
-                await ReportAsync(LaunchStage.Rhino, "Starting Rhino; the temporary registration loads the selected plug-in.");
-                launchedRhino = _options.RhinoProcessStarter(CreateRhinoStartInfo(context, artifacts));
-
-                await ReportAsync(LaunchStage.Verify, "Waiting for the Rhino process to hold the selected plug-in in use.");
-                await WaitForPluginInUseAsync(artifacts, launchedRhino, token);
-                // Verified Rhino is the user's session from here: a fault while restoring
-                // registrations must not terminate it, and the journal covers the restore.
-                launchVerified = true;
+                return Fail(new Diagnostic(
+                    LaunchExecutorCodes.LaunchTimeout,
+                    $"Preparing the canonical artifact used the whole {timeout.TotalSeconds:0.###} " +
+                    "second budget, leaving none for Rhino."));
             }
 
-            LaunchResult result = new LaunchResult(
-                launchId,
+            LaunchExecutorRequest request = new LaunchExecutorRequest
+            {
+                LaunchId = log.LaunchId,
+                HostKind = _options.HostKind,
+                ReleaseId = _options.ReleaseId,
+                RhinoVersion = context.RhinoVersion,
+                PluginId = artifacts.PluginId.ToString("D"),
+                PluginName = Path.GetFileNameWithoutExtension(artifacts.PluginPath),
+                PluginPath = Path.GetFullPath(artifacts.PluginPath),
+                RhinoExecutable = _options.RhinoExecutableResolver(context.RhinoVersion),
+                RhinoRuntime = artifacts.RhinoRuntime,
+                WorkingDirectory = artifacts.WorktreePath,
+                LocksDirectory = _options.LocksDirectory,
+                LogsDirectory = _options.LogsDirectory,
+                TimeoutSeconds = remaining.TotalSeconds
+            };
+            log.Record(new
+            {
+                type = "executor_request",
+                launchId = log.LaunchId,
+                protocolVersion = request.ProtocolVersion,
+                request.RhinoVersion,
+                request.PluginId,
+                request.PluginName,
+                request.PluginPath,
+                request.RhinoExecutable,
+                request.RhinoRuntime,
+                request.WorkingDirectory,
+                request.TimeoutSeconds,
+                timestamp = DateTimeOffset.UtcNow
+            });
+
+            log.Report(
+                LaunchStage.Registration,
+                "Starting a launch executor through the interactive Windows shell.");
+            LaunchExecutorEvent result = await _options.LaunchExecutorInvoker(
+                request,
+                new ImmediateProgress<LaunchExecutorEvent>(log.Relay),
+                token);
+            log.Relay(result);
+            if (!result.Succeeded)
+                return Fail(new Diagnostic(result.Code, result.Message));
+
+            rhinoProcessId = result.RhinoProcessId;
+            LaunchResult launched = new LaunchResult(
+                log.LaunchId,
                 LaunchStatus.Succeeded,
                 context.WorktreePath,
                 Path.GetFullPath(artifacts.PluginPath),
                 artifacts.CriticalDependencies.ToArray(),
-                launchedRhino.Id,
-                logPath,
+                rhinoProcessId,
+                log.Path,
                 startedAt,
                 DateTimeOffset.UtcNow);
-            await ReportAsync(LaunchStage.Complete, "Rhino is using the selected solution configuration's canonical binaries.");
-            return CommandResult<LaunchResult>.Success(result);
+            log.Report(LaunchStage.Complete, "Rhino is using the selected solution configuration's canonical binaries.");
+            return CommandResult<LaunchResult>.Success(launched);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return await FailAsync(new Diagnostic(
-                "launch_timeout",
+            return Fail(new Diagnostic(
+                LaunchExecutorCodes.LaunchTimeout,
                 $"Launch did not complete within {timeout.TotalSeconds:0.###} seconds."));
         }
         catch (OperationCanceledException)
         {
-            return await FailAsync(new Diagnostic("launch_cancelled", "Launch was cancelled."));
+            return Fail(new Diagnostic(LaunchExecutorCodes.LaunchCancelled, "Launch was cancelled."));
         }
-        // Rhino exiting before verification is one condition whether the process was
-        // already gone when RWL looked it up or exited while RWL waited on it.
-        catch (RhinoExitedBeforeVerificationException exception)
+        // The executor and its client name their own failure conditions, so the code that
+        // reaches the caller identifies the step that failed rather than the launch as a
+        // whole.
+        catch (LaunchDiagnosticException exception)
         {
-            return await FailAsync(new Diagnostic("rhino_exited_before_verification", exception.Message));
+            return Fail(new Diagnostic(exception.Code, exception.Message));
         }
         catch (Exception exception)
         {
-            return await FailAsync(new Diagnostic("launch_failed", exception.Message));
-        }
-        finally
-        {
-            if (!launchVerified && launchedRhino is not null)
-            {
-                try
-                {
-                    if (!launchedRhino.HasExited)
-                    {
-                        launchedRhino.Kill(entireProcessTree: true);
-                        await launchedRhino.WaitForExitAsync(CancellationToken.None);
-                    }
-                }
-                catch
-                {
-                    // The process may exit between the check and termination request.
-                }
-            }
-            launchedRhino?.Dispose();
+            return Fail(new Diagnostic(LaunchExecutorCodes.LaunchFailed, exception.Message));
         }
 
-        async Task ReportAsync(LaunchStage stage, string message)
-        {
-            LaunchProgress update = new LaunchProgress(launchId, stage, message, DateTimeOffset.UtcNow);
-            progress?.Report(update);
-            await AppendLogAsync(logPath, new
-            {
-                type = "progress",
-                update.LaunchId,
-                Stage = update.StageToken,
-                update.Message,
-                update.Timestamp
-            }, CancellationToken.None);
-        }
-
-        async Task LogDiagnosticAsync(Diagnostic diagnostic) => await AppendLogAsync(logPath, new
-        {
-            type = "diagnostic",
-            diagnostic.Code,
-            diagnostic.Message,
-            severity = diagnostic.Severity.ToString(),
-            timestamp = DateTimeOffset.UtcNow
-        }, CancellationToken.None);
-
-        async Task<CommandResult<LaunchResult>> FailAsync(Diagnostic diagnostic)
+        CommandResult<LaunchResult> Fail(Diagnostic diagnostic)
         {
             DateTimeOffset completedAt = DateTimeOffset.UtcNow;
-            await AppendLogAsync(logPath, new
-            {
-                type = "diagnostic",
-                diagnostic.Code,
-                diagnostic.Message,
-                severity = diagnostic.Severity.ToString(),
-                timestamp = completedAt
-            }, CancellationToken.None);
+            log.RecordDiagnostic(diagnostic, completedAt);
             return CommandResult<LaunchResult>.Failure(
                 new LaunchResult(
-                    launchId,
+                    log.LaunchId,
                     LaunchStatus.Failed,
                     worktreePath,
                     null,
                     Array.Empty<VerifiedDependency>(),
-                    null,
-                    logPath,
+                    rhinoProcessId,
+                    log.Path,
                     startedAt,
                     completedAt),
                 diagnostic);
         }
     }
 
-    private static string Describe(PluginRegistrationConflict conflict) =>
-        $"A machine-wide registration for this plug-in ID names '{conflict.RegisteredPath}', " +
-        "and Rhino loads that file instead of the selected worktree artifact. " +
-        "RWL never elevates: grant this account write access to the machine Plug-ins key " +
-        "with an elevated account so launches can suspend and restore that registration, " +
-        $"or remove '{conflict.RegistryKeyPath}' if it is stale.";
-
-    private ProcessStartInfo CreateRhinoStartInfo(ResolvedContext context, PreparedLaunchArtifacts artifacts)
+    // One launch's diagnostics: the JSONL file on disk and the adapter's progress surface,
+    // written from one place so the two records of a launch cannot disagree about which
+    // stage it reached or which executor log holds the rest.
+    private sealed class LaunchLog
     {
-        ProcessStartInfo startInfo = new ProcessStartInfo
-        {
-            FileName = _options.RhinoExecutableResolver(context.RhinoVersion),
-            WorkingDirectory = artifacts.WorktreePath,
-            UseShellExecute = false
-        };
-        startInfo.ArgumentList.Add("/nosplash");
-        startInfo.ArgumentList.Add("/notemplate");
-        startInfo.ArgumentList.Add($"/{artifacts.RhinoRuntime}");
-        // The registration lease is the only loading mechanism. Also passing the .rhp on
-        // the command line asks Rhino to install an ID the lease has already registered,
-        // which Rhino rejects as an ID already in use.
-        return startInfo;
-    }
+        private readonly IProgress<LaunchProgress>? _progress;
+        private string? _executorLogPath;
 
-    // Verification principle: an assembly Rhino has loaded is a file mapped into the
-    // Rhino process's address space, which attributes the file to that exact PID.
-    // Only the plug-in itself is gated: lazily-loaded dependencies (e.g. solvers) are
-    // legitimately unmapped at startup, and their presence beside the plug-in is
-    // already checked during prepare.
-    private async Task WaitForPluginInUseAsync(
-        PreparedLaunchArtifacts artifacts,
-        Process rhino,
-        CancellationToken cancellationToken)
-    {
-        while (true)
+        public LaunchLog(
+            string launchId,
+            string logsDirectory,
+            DateTimeOffset startedAt,
+            IProgress<LaunchProgress>? progress)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (_options.FileInUseInspector(rhino.Id, artifacts.PluginPath))
-                return;
-            if (rhino.HasExited)
-                throw new RhinoExitedBeforeVerificationException(
-                    rhino.Id,
-                    "Rhino exited before it held the selected plug-in in use.");
-            await Task.Delay(FileUsePollDelay, cancellationToken);
+            LaunchId = launchId;
+            Path = System.IO.Path.Combine(logsDirectory, $"{startedAt:yyyyMMdd-HHmmss}-{launchId}.jsonl");
+            _progress = progress;
         }
-    }
 
-    private static async Task AppendLogAsync(
-        string path,
-        object value,
-        CancellationToken cancellationToken)
-    {
-        string line = JsonSerializer.Serialize(value, LogJson) + Environment.NewLine;
-        await File.AppendAllTextAsync(path, line, cancellationToken);
+        public string LaunchId { get; }
+
+        public string Path { get; }
+
+        public void Record(object value) => File.AppendAllText(
+            Path,
+            JsonSerializer.Serialize(value, JsonDefaults.Line) + Environment.NewLine);
+
+        public void Report(
+            LaunchStage stage,
+            string message,
+            string code = "",
+            DiagnosticSeverity severity = DiagnosticSeverity.Info) => Write(
+                new LaunchProgress(LaunchId, stage, message, DateTimeOffset.UtcNow),
+                code,
+                severity);
+
+        // An executor event is relayed rather than reinterpreted: its stage, code, and
+        // timestamp are the executor's, so the launch log records what that process
+        // observed and when.
+        public void Relay(LaunchExecutorEvent value)
+        {
+            if (!Enum.TryParse(value.Stage, ignoreCase: true, out LaunchStage stage))
+            {
+                throw new LaunchDiagnosticException(
+                    LaunchExecutorCodes.ExecutorProtocolViolation,
+                    $"The launch executor reported stage '{value.Stage}', which is not a launch stage.");
+            }
+            if (!string.IsNullOrEmpty(value.ExecutorLogPath))
+                _executorLogPath = value.ExecutorLogPath;
+            Write(
+                new LaunchProgress(LaunchId, stage, value.Message, value.Timestamp),
+                value.Code,
+                string.Equals(value.Severity, "error", StringComparison.OrdinalIgnoreCase)
+                    ? DiagnosticSeverity.Error
+                    : DiagnosticSeverity.Info);
+        }
+
+        public void RecordDiagnostic(Diagnostic diagnostic, DateTimeOffset timestamp) => Record(new
+        {
+            type = "diagnostic",
+            launchId = LaunchId,
+            diagnostic.Code,
+            diagnostic.Message,
+            severity = diagnostic.Severity.ToString(),
+            executorLog = _executorLogPath,
+            timestamp
+        });
+
+        private void Write(LaunchProgress update, string code, DiagnosticSeverity severity)
+        {
+            _progress?.Report(update);
+            Record(new
+            {
+                type = "progress",
+                update.LaunchId,
+                Stage = update.StageToken,
+                Code = code,
+                update.Message,
+                Severity = severity.ToString(),
+                ExecutorLog = _executorLogPath,
+                update.Timestamp
+            });
+        }
     }
 
     private sealed class ForwardBuildProgress : IProgress<BuildProgress>
     {
-        private readonly IProgress<LaunchProgress>? _progress;
-        private readonly string _launchId;
+        private readonly LaunchLog _log;
 
-        public ForwardBuildProgress(IProgress<LaunchProgress>? progress, string launchId)
-        {
-            _progress = progress;
-            _launchId = launchId;
-        }
+        public ForwardBuildProgress(LaunchLog log) => _log = log;
 
-        public void Report(BuildProgress value) => _progress?.Report(new LaunchProgress(
-            _launchId,
+        public void Report(BuildProgress value) => _log.Report(
             value.Stage == BuildStage.Build ? LaunchStage.Build : LaunchStage.Artifact,
-            value.Message,
-            value.Timestamp));
+            value.Message);
     }
 }
