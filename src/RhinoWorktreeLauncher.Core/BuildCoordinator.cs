@@ -45,19 +45,7 @@ internal sealed class BuildCoordinator
                     BuildStage.Build,
                     $"Building '{profile.SolutionPath}' ({profile.SelectedConfiguration.DisplayName}).",
                     DateTimeOffset.UtcNow));
-                await ProcessRunner.RunLinesAsync(
-                    _options.DotNetExecutable,
-                    context.WorktreePath,
-                    new[]
-                    {
-                        "build",
-                        resolved.SolutionPath,
-                        "-c",
-                        profile.SelectedConfiguration.Configuration,
-                        $"-p:Platform={profile.SelectedConfiguration.Platform}"
-                    },
-                    line => ReportLineAsync(progress, BuildStage.Build, line),
-                    cancellationToken);
+                await BuildAsync(context.WorktreePath, resolved, profile, progress, cancellationToken);
             }
             else
             {
@@ -101,6 +89,14 @@ internal sealed class BuildCoordinator
                 "build_cancelled",
                 "Artifact preparation was cancelled."));
         }
+        // A failure class the launcher recognises names itself. Everything else keeps the
+        // stage-level code and whatever the failing tool said.
+        catch (LaunchDiagnosticException exception)
+        {
+            return CommandResult<PreparedLaunchArtifacts>.Failure(new Diagnostic(
+                exception.Code,
+                exception.Message));
+        }
         catch (Exception exception)
         {
             return CommandResult<PreparedLaunchArtifacts>.Failure(new Diagnostic(
@@ -108,6 +104,102 @@ internal sealed class BuildCoordinator
                 exception.Message));
         }
     }
+
+    /// <summary>
+    /// Runs the solution build, watching its output for the one failure class the launcher
+    /// recognises: another program holding a build output file open, which is what a Rhino
+    /// still running with this plug-in loaded does. That build fails with pages of MSBuild
+    /// copy retries, so the transcript stays in the launch log and the caller is handed the
+    /// condition, the file, and who is holding it.
+    /// </summary>
+    private async Task BuildAsync(
+        string worktreePath,
+        ResolvedBuildProfile resolved,
+        BuildProfile profile,
+        IProgress<BuildProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        LockedBuildOutputWatch watch = new LockedBuildOutputWatch();
+        try
+        {
+            await ProcessRunner.RunLinesAsync(
+                _options.DotNetExecutable,
+                worktreePath,
+                new[]
+                {
+                    "build",
+                    resolved.SolutionPath,
+                    "-c",
+                    profile.SelectedConfiguration.Configuration,
+                    $"-p:Platform={profile.SelectedConfiguration.Platform}"
+                },
+                line =>
+                {
+                    watch.Observe(line);
+                    return ReportLineAsync(progress, BuildStage.Build, line);
+                },
+                cancellationToken);
+        }
+        catch (InvalidOperationException exception)
+        {
+            // The runner carries the failing tool's standard error, which the streamed
+            // standard output above never passes through.
+            watch.ObserveAll(exception.Message);
+            if (watch.Locked is not { } locked)
+                throw;
+            throw new LaunchDiagnosticException(
+                "build_output_locked",
+                DescribeLockedOutput(locked, worktreePath),
+                exception);
+        }
+    }
+
+    private string DescribeLockedOutput(LockedBuildOutput locked, string worktreePath)
+    {
+        string file = locked.Path is null
+            ? "The build did not name the file it could not replace; the launch log holds the build output."
+            : locked.Path;
+        return string.Join(Environment.NewLine, new[]
+        {
+            "A running program is holding this build's output file open, so the build could not replace it.",
+            file,
+            DescribeHolders(worktreePath),
+            "Close the program holding it and launch again."
+        });
+    }
+
+    /// <summary>
+    /// Which live Rhino holds a plug-in artifact from this worktree, asked with the same
+    /// read-only address-space query that attributes a Rhino after a launch (ADR 0002). RWL
+    /// reads no other process, so a holder that is not Rhino is reported as one it cannot
+    /// name rather than guessed at.
+    /// </summary>
+    private string DescribeHolders(string worktreePath)
+    {
+        const string unnamed =
+            "RWL found no live Rhino holding a plug-in artifact from this worktree, so it cannot name what holds the file.";
+        try
+        {
+            RhinoInstanceAttribution attribution = RhinoInstanceReader.Describe(
+                _options.ProcessSnapshotReader(),
+                _options.MappedPlugInReader);
+            int[] holders = attribution.Instances
+                .Where(instance => instance.PlugInPaths.Any(path => PathIdentity.IsUnder(path, worktreePath)))
+                .Select(instance => instance.ProcessId)
+                .ToArray();
+            return holders.Length == 0
+                ? unnamed
+                : $"Rhino {string.Join(" and ", holders.Select(id => $"pid {id}"))} " +
+                  $"{(holders.Length == 1 ? "holds" : "hold")} this worktree's plug-in.";
+        }
+        // Naming the holder is an aid, not the finding. A machine that will not answer the
+        // question still gets told which file is held.
+        catch (Exception)
+        {
+            return unnamed;
+        }
+    }
+
 
     private async Task<string> ResolveTargetPathAsync(
         string worktreePath,

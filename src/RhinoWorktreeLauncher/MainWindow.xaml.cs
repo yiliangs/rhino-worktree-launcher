@@ -816,7 +816,7 @@ public partial class MainWindow : Window
                 TimeSpan.FromMinutes(3),
                 progress,
                 CancellationToken.None);
-            failure = result.Succeeded ? null : result.Diagnostics[0].Message;
+            failure = result.Succeeded ? null : DescribeFailure(result);
         }
         catch (Exception ex)
         {
@@ -838,6 +838,17 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
+    }
+
+    // The dialog carries the diagnostic and the path of the log that already holds the
+    // whole transcript, so a failure never has to be re-delivered as one.
+    private static string DescribeFailure(CommandResult<LaunchResult> result)
+    {
+        string message = result.Diagnostics[0].Message;
+        return result.Value is null
+            ? message
+            : message + Environment.NewLine + Environment.NewLine +
+              $"Full launch log: {result.Value.DiagnosticsLogPath}";
     }
 
     private void BeginLaunchProgress()
