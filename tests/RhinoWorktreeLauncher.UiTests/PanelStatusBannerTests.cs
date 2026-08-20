@@ -56,11 +56,17 @@ public sealed class PanelStatusBannerTests
     }
 
     [Theory]
-    [InlineData("", false)]
-    [InlineData("   ", false)]
-    [InlineData("Selected plug-in verified in Rhino", true)]
-    [InlineData("Local data shown; remote enrichment unavailable", true)]
-    public void A_report_with_nothing_to_say_leaves_no_banner_over_the_list(string hint, bool shown)
+    [InlineData("", false, false)]
+    [InlineData("   ", false, false)]
+    [InlineData("Selected plug-in verified in Rhino", false, true)]
+    [InlineData("Local data shown; remote enrichment unavailable", false, true)]
+    // A launch owns the banner from the moment it starts, because the sweep is the
+    // progress indicator and it cannot wait for the first message to arrive.
+    [InlineData("", true, true)]
+    public void A_report_with_nothing_to_say_leaves_no_banner_over_the_list(
+        string hint,
+        bool launching,
+        bool shown)
     {
         MethodInfo visibility = typeof(MainWindow).GetMethod(
             "HintVisibility",
@@ -69,7 +75,7 @@ public sealed class PanelStatusBannerTests
 
         Assert.Equal(
             shown ? Visibility.Visible : Visibility.Collapsed,
-            visibility.Invoke(null, new object?[] { hint }));
+            visibility.Invoke(null, new object?[] { hint, launching }));
     }
 
     private static XElement Named(XDocument document, string name) => document

@@ -5,36 +5,56 @@ using System.Xml.Linq;
 
 namespace RhinoWorktreeLauncher.UiTests;
 
+/// <summary>
+/// Launch progress reads in the status banner, which is where the surface says what is
+/// happening. The button stays a button.
+/// </summary>
 public sealed class LaunchProgressSurfaceTests
 {
     private static readonly XNamespace Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
-    public void Launch_button_carries_an_idle_layer_and_a_collapsed_progress_layer()
+    public void The_launch_button_carries_only_its_label()
     {
         XDocument document = LoadMainWindow();
         XElement button = Named(document, "LaunchButton");
-        XElement run = Named(document, "LaunchRun");
 
-        // The idle caption moved into a named layer so the progress layer can replace it.
         Assert.Null(button.Attribute("Content"));
-        Assert.NotNull(FindNamed(document, "LaunchIdleText"));
-        Assert.NotNull(FindNamed(document, "LaunchStageText"));
-        Assert.Equal("Collapsed", run.Attribute("Visibility")?.Value);
+        Assert.NotNull(FindNamed(document, "LaunchButtonText"));
+        // The idle and progress layers existed to swap one for the other inside the
+        // button. Progress moved out, so there is nothing left to swap.
+        Assert.Null(FindNamed(document, "LaunchRun"));
+        Assert.Null(FindNamed(document, "LaunchIdleText"));
+        Assert.DoesNotContain(
+            button.Descendants(),
+            element => string.Equals(element.Attribute(Xaml + "Name")?.Value, "LaunchProgressFill", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void Launch_progress_starts_empty_and_sweeps_at_half_the_button_text_colour()
+    public void Launch_progress_sweeps_across_the_status_banner()
     {
         XDocument document = LoadMainWindow();
         XElement fill = Named(document, "LaunchProgressFill");
 
+        Assert.Contains(
+            fill.Ancestors(),
+            element => string.Equals(element.Attribute(Xaml + "Name")?.Value, "PanelHintBanner", StringComparison.Ordinal));
         Assert.Equal("0", fill.Attribute("Width")?.Value);
         Assert.Equal("Left", fill.Attribute("HorizontalAlignment")?.Value);
-        // The button's own text colour, no accent hue on the primary surface.
-        Assert.Equal("{DynamicResource PrimaryTextBrush}", fill.Attribute("Background")?.Value);
-        Assert.Equal("0.5", fill.Attribute("Opacity")?.Value);
+        // The tint the Refresh control already sweeps in, not a second progress colour.
+        Assert.Equal("{DynamicResource ProgressBrush}", fill.Attribute("Background")?.Value);
+    }
+
+    [Fact]
+    public void The_sweep_is_rounded_to_the_banner_it_sweeps_inside()
+    {
+        XDocument document = LoadMainWindow();
+
+        // A radius on the fill itself, so no clip geometry has to be kept in step with
+        // a banner whose width is not fixed.
+        Assert.Equal("7", Named(document, "LaunchProgressFill").Attribute("CornerRadius")?.Value);
+        Assert.Empty(document.Descendants(Presentation + "RectangleGeometry"));
     }
 
     [Fact]
@@ -42,28 +62,41 @@ public sealed class LaunchProgressSurfaceTests
     {
         XDocument document = LoadMainWindow();
 
-        // At half strength the blend sits near mid grey, where an inverted caption
-        // would fall to 3.3:1. A single caption in the button's text colour clears
-        // AA on the swept and unswept halves alike, so there is no second layer.
         Assert.Null(FindNamed(document, "LaunchStageFilledText"));
-        Assert.Null(Named(document, "LaunchStageText").Attribute("Foreground"));
+        // The banner inherits no text colour, and the sweep is a translucent tint over
+        // it, so one explicitly coloured caption clears AA on both halves.
+        Assert.NotNull(Named(document, "LaunchStageText").Attribute("Foreground"));
     }
 
     [Fact]
-    public void The_progress_layer_is_rounded_to_the_button_corner()
+    public void The_stage_caption_is_absent_until_a_launch_runs()
     {
         XDocument document = LoadMainWindow();
-        XElement geometry = Named(document, "LaunchRun")
-            .Descendants(Presentation + "RectangleGeometry")
-            .Single();
 
-        Assert.Equal("0,0,162,46", geometry.Attribute("Rect")?.Value);
-        Assert.Equal("7", geometry.Attribute("RadiusX")?.Value);
-        Assert.Equal("7", geometry.Attribute("RadiusY")?.Value);
+        Assert.Equal("Collapsed", Named(document, "LaunchStageText").Attribute("Visibility")?.Value);
+    }
+
+    [Theory]
+    [InlineData(false, true, true)]
+    [InlineData(false, false, false)]
+    // The stage caption used to live in the button, which had to stay lit to stay
+    // legible. It reports in the banner now, so the button can say it is unavailable.
+    [InlineData(true, true, false)]
+    public void The_button_is_unavailable_while_a_launch_runs(
+        bool launching,
+        bool configured,
+        bool enabled)
+    {
+        MethodInfo canLaunch = typeof(MainWindow).GetMethod(
+            "CanLaunch",
+            BindingFlags.NonPublic | BindingFlags.Static) ??
+            throw new InvalidOperationException("MainWindow method 'CanLaunch' was not found.");
+
+        Assert.Equal(enabled, canLaunch.Invoke(null, new object?[] { launching, configured }));
     }
 
     [Fact]
-    public void Every_launch_stage_has_a_caption_the_button_can_show()
+    public void Every_launch_stage_has_a_caption_the_banner_can_show()
     {
         IDictionary steps = PrivateStatic<IDictionary>("LaunchSteps");
 
