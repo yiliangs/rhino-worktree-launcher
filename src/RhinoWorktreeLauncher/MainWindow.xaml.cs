@@ -716,6 +716,14 @@ public partial class MainWindow : Window
     // than a fixed button, so the sweep measures it instead of trusting a constant.
     private double LaunchTrackWidth => Math.Max(0, PanelHintBanner.ActualWidth - 2);
 
+    private void PanelHintBannerClip_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        PanelHintBannerClip.Clip = BannerClip(e.NewSize.Width, e.NewSize.Height);
+
+    // The fill is a rectangle at both ends, so the banner does the rounding. Its radius
+    // is the 8 the banner is drawn with, less the 1px border the clip sits inside.
+    private static RectangleGeometry BannerClip(double width, double height) =>
+        new RectangleGeometry(new Rect(0, 0, width, height), 7, 7);
+
     private void UpdateSelectionState()
     {
         WorktreeSnapshot? selected = WorktreeList.SelectedItem as WorktreeSnapshot;

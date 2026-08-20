@@ -932,16 +932,15 @@
                                 Effect="{DynamicResource RowActiveShadowEffect}"
                                 IsHitTestVisible="False"
                                 Visibility="Collapsed">
-                            <Grid>
-                                <!-- Launch progress sweeps the banner it reports in. The radius
-                                     sits on the fill itself, at the banner's inner corner, because
-                                     the banner's width follows the panel and no fixed clip
-                                     geometry could stay in step with it. -->
+                            <!-- Launch progress sweeps the banner it reports in. The fill is a
+                                 rectangle, so its leading edge reads as the reading, and the
+                                 banner clips it to its own inner corner at a size that follows
+                                 the panel rather than a fixed geometry. -->
+                            <Grid x:Name="PanelHintBannerClip" SizeChanged="PanelHintBannerClip_SizeChanged">
                                 <Border x:Name="LaunchProgressFill"
                                         Width="0"
                                         HorizontalAlignment="Left"
-                                        Background="{DynamicResource ProgressBrush}"
-                                        CornerRadius="7" />
+                                        Background="{DynamicResource ProgressBrush}" />
                                 <Grid Margin="14,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />

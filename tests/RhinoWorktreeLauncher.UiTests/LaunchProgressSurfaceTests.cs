@@ -1,4 +1,6 @@
 using System.Collections;
+using System.Windows;
+using System.Windows.Media;
 using System.IO;
 using System.Reflection;
 using System.Xml.Linq;
@@ -47,14 +49,41 @@ public sealed class LaunchProgressSurfaceTests
     }
 
     [Fact]
-    public void The_sweep_is_rounded_to_the_banner_it_sweeps_inside()
+    public void The_sweep_is_a_rectangle()
     {
         XDocument document = LoadMainWindow();
 
-        // A radius on the fill itself, so no clip geometry has to be kept in step with
-        // a banner whose width is not fixed.
-        Assert.Equal("7", Named(document, "LaunchProgressFill").Attribute("CornerRadius")?.Value);
-        Assert.Empty(document.Descendants(Presentation + "RectangleGeometry"));
+        // Its leading edge is the reading: a straight line at how far the launch has
+        // got, not a pill end that rounds away from the number it represents.
+        Assert.Null(Named(document, "LaunchProgressFill").Attribute("CornerRadius"));
+    }
+
+    [Fact]
+    public void The_banner_clips_the_rectangle_to_its_own_corners()
+    {
+        XDocument document = LoadMainWindow();
+
+        // The fill squares off at both ends, so the banner has to do the rounding, and
+        // it does it at a size that follows the panel rather than a fixed geometry.
+        Assert.NotNull(Named(document, "PanelHintBannerClip").Attribute("SizeChanged"));
+    }
+
+    [Theory]
+    [InlineData(400, 38)]
+    [InlineData(0, 0)]
+    public void The_clip_matches_the_banner_inner_corner(double width, double height)
+    {
+        MethodInfo clip = typeof(MainWindow).GetMethod(
+            "BannerClip",
+            BindingFlags.NonPublic | BindingFlags.Static) ??
+            throw new InvalidOperationException("MainWindow method 'BannerClip' was not found.");
+
+        RectangleGeometry geometry = (RectangleGeometry)clip.Invoke(null, new object?[] { width, height })!;
+
+        Assert.Equal(new Rect(0, 0, width, height), geometry.Rect);
+        // The banner is an 8 radius drawn behind a 1px border.
+        Assert.Equal(7, geometry.RadiusX);
+        Assert.Equal(7, geometry.RadiusY);
     }
 
     [Fact]
