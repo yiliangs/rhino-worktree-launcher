@@ -126,5 +126,21 @@ internal sealed class LaunchDiagnosticException : Exception
     public LaunchDiagnosticException(string code, string message, Exception innerException)
         : base(message, innerException) => Code = code;
 
+    public LaunchDiagnosticException(
+        string code,
+        string message,
+        string? detail,
+        Exception innerException)
+        : base(message, innerException)
+    {
+        Code = code;
+        Detail = detail;
+    }
+
     public string Code { get; }
+
+    /// <summary>
+    /// The failing tool's own output, when the failure has more to show than it can say.
+    /// </summary>
+    public string? Detail { get; }
 }

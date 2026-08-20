@@ -184,6 +184,56 @@ public sealed class CliProcessTests
             result.StandardError);
     }
 
+    // JSON is where the detail travels, because the whole result is serialised. A caller
+    // parsing this gets the compiler's own text without scraping a progress stream.
+    [Fact]
+    public async Task A_failing_build_carries_the_compiler_text_as_json_diagnostic_detail()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string repository = RepositoryFixture.Initialize(temporary, "repository");
+        CliResult registration = await RunAsync(temporary, new[] { "project", "register", repository });
+        Assert.Equal(0, registration.ExitCode);
+        temporary.WriteFile("repository/Sample/Broken.cs", "public sealed class Broken { this is not C# }");
+
+        CliResult result = await RunAsync(temporary, new[] { "launch", "--path", repository, "--json" });
+
+        Assert.Equal(1, result.ExitCode);
+        using JsonDocument document = JsonDocument.Parse(result.StandardOutput);
+        JsonElement diagnostic = document.RootElement.GetProperty("diagnostics")[0];
+        Assert.Equal("build_failed", diagnostic.GetProperty("code").GetString());
+        Assert.Contains("error CS", diagnostic.GetProperty("detail").GetString()!, StringComparison.Ordinal);
+    }
+
+    // Text mode already streams every build line as progress, so the terminal has the
+    // transcript before the failure arrives. Writing the detail again would print it twice.
+    [Fact]
+    public async Task Text_mode_reports_the_short_failure_without_repeating_what_it_streamed()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string repository = RepositoryFixture.Initialize(temporary, "repository");
+        CliResult registration = await RunAsync(temporary, new[] { "project", "register", repository });
+        Assert.Equal(0, registration.ExitCode);
+        temporary.WriteFile("repository/Sample/Broken.cs", "public sealed class Broken { this is not C# }");
+
+        CliResult result = await RunAsync(temporary, new[] { "launch", "--path", repository });
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("[build_failed] The build failed with", result.StandardError, StringComparison.Ordinal);
+        Assert.Equal(1, Occurrences(result.StandardError, "Build FAILED"));
+    }
+
+    private static int Occurrences(string text, string value)
+    {
+        int count = 0;
+        int index = text.IndexOf(value, StringComparison.Ordinal);
+        while (index >= 0)
+        {
+            count++;
+            index = text.IndexOf(value, index + value.Length, StringComparison.Ordinal);
+        }
+        return count;
+    }
+
     private static async Task<CliResult> RunAsync(
         TemporaryDirectory temporary,
         IEnumerable<string> arguments,

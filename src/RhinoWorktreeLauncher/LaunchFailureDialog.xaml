@@ -1,0 +1,208 @@
+<Window x:Class="RhinoWorktreeLauncher.LaunchFailureDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Rhino launch failed"
+        Width="620"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource WindowBrush}"
+        Foreground="{DynamicResource TextBodyBrush}"
+        FontFamily="{StaticResource UiFont}"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="ClearType"
+        TextOptions.TextHintingMode="Fixed">
+    <Window.Resources>
+        <!-- The surface palette, stated here as the other dialogs state it. Issue #24 owns
+             collapsing the four copies; doing it here would change how a finished window
+             looks, because the values are not the same in all of them. -->
+        <SolidColorBrush x:Key="WindowBrush" Color="#16181B" />
+        <SolidColorBrush x:Key="PanelBrush" Color="#1A1C20" />
+        <SolidColorBrush x:Key="ControlBrush" Color="#1B1D21" />
+        <SolidColorBrush x:Key="ControlHoverBrush" Color="#22252A" />
+        <SolidColorBrush x:Key="PanelBorderBrush" Color="#2A2E34" />
+        <SolidColorBrush x:Key="DividerBrush" Color="#25292E" />
+        <SolidColorBrush x:Key="TextStrongBrush" Color="#F0F2F5" />
+        <SolidColorBrush x:Key="TextBodyBrush" Color="#E6E8EB" />
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#9298A1" />
+        <SolidColorBrush x:Key="TextMutedBrush" Color="#707780" />
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#F0F2F5" />
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#16181B" />
+        <SolidColorBrush x:Key="FailureBrush" Color="#C07D76" />
+        <SolidColorBrush x:Key="DetailBrush" Color="#131518" />
+        <SolidColorBrush x:Key="ScrollThumbBrush" Color="#343840" />
+
+        <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="Height" Value="42" />
+            <Setter Property="Padding" Value="18,0" />
+            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.92" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.76" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The disclosure. It reads as a control rather than a button, because pressing it
+             reveals what is already here rather than doing something. -->
+        <Style x:Key="DisclosureToggle" TargetType="ToggleButton">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Chrome"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{DynamicResource ControlBrush}"
+                                BorderBrush="{DynamicResource PanelBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Path x:Name="Caret"
+                                      Width="7"
+                                      Height="5"
+                                      Margin="0,1,8,0"
+                                      VerticalAlignment="Center"
+                                      Data="M 0,0 L 7,0 L 3.5,5 Z"
+                                      Stretch="Fill"
+                                      Fill="{DynamicResource TextMutedBrush}"
+                                      RenderTransformOrigin="0.5,0.5">
+                                    <Path.RenderTransform>
+                                        <RotateTransform Angle="-90" />
+                                    </Path.RenderTransform>
+                                </Path>
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Caret" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <RotateTransform Angle="0" />
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter Property="Foreground" Value="{DynamicResource TextStrongBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="28,24,28,22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="16" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="18" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="LAUNCH FAILED"
+                       Foreground="{DynamicResource FailureBrush}"
+                       FontFamily="{StaticResource MonoFont}"
+                       FontSize="10"
+                       FontWeight="Medium" />
+            <TextBlock x:Name="CodeText"
+                       Margin="0,7,0,0"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       FontFamily="{StaticResource MonoFont}"
+                       FontSize="11" />
+        </StackPanel>
+
+        <Border Grid.Row="2"
+                Padding="18,16"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource PanelBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="10">
+            <TextBlock x:Name="FailureMessageText"
+                       TextWrapping="Wrap"
+                       LineHeight="20"
+                       Foreground="{DynamicResource TextBodyBrush}"
+                       FontSize="13" />
+        </Border>
+
+        <StackPanel Grid.Row="4">
+            <ToggleButton x:Name="DetailsToggle"
+                          Content="Details"
+                          Style="{StaticResource DisclosureToggle}"
+                          Checked="Details_Toggled"
+                          Unchecked="Details_Toggled" />
+            <Border x:Name="DetailPanel"
+                    Margin="0,10,0,0"
+                    Padding="2"
+                    Visibility="Collapsed"
+                    Background="{DynamicResource DetailBrush}"
+                    BorderBrush="{DynamicResource PanelBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <ScrollViewer MaxHeight="300"
+                              Padding="12,10"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto">
+                    <TextBlock x:Name="DetailText"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="10.5"
+                               LineHeight="16"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </ScrollViewer>
+            </Border>
+        </StackPanel>
+
+        <Grid Grid.Row="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="LogPathText"
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       FontFamily="{StaticResource MonoFont}"
+                       FontSize="10" />
+            <Button Grid.Column="2"
+                    Width="96"
+                    Content="Close"
+                    IsDefault="True"
+                    IsCancel="True"
+                    Style="{StaticResource ActionButton}"
+                    Click="Close_Click" />
+        </Grid>
+    </Grid>
+</Window>

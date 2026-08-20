@@ -797,7 +797,8 @@ public partial class MainWindow : Window
             return;
 
         BeginLaunchProgress();
-        string? failure = null;
+        Diagnostic? failure = null;
+        string? logPath = null;
         try
         {
             DispatcherProgress<LaunchProgress> progress = new DispatcherProgress<LaunchProgress>(
@@ -816,11 +817,14 @@ public partial class MainWindow : Window
                 TimeSpan.FromMinutes(3),
                 progress,
                 CancellationToken.None);
-            failure = result.Succeeded ? null : DescribeFailure(result);
+            logPath = result.Value?.DiagnosticsLogPath;
+            failure = result.Succeeded ? null : result.Diagnostics[0];
         }
+        // A launch that threw never produced a diagnostic, so the surface makes one rather
+        // than showing a bare exception message with no code beside it.
         catch (Exception ex)
         {
-            failure = ex.Message;
+            failure = new Diagnostic("launch_host_failed", ex.Message);
         }
         finally
         {
@@ -831,24 +835,12 @@ public partial class MainWindow : Window
         UpdateState();
         if (failure is not null)
         {
-            MessageBox.Show(
-                this,
-                failure,
-                "Rhino launch failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            LaunchFailureDialog dialog = new LaunchFailureDialog(failure, logPath)
+            {
+                Owner = this
+            };
+            _ = dialog.ShowDialog();
         }
-    }
-
-    // The dialog carries the diagnostic and the path of the log that already holds the
-    // whole transcript, so a failure never has to be re-delivered as one.
-    private static string DescribeFailure(CommandResult<LaunchResult> result)
-    {
-        string message = result.Diagnostics[0].Message;
-        return result.Value is null
-            ? message
-            : message + Environment.NewLine + Environment.NewLine +
-              $"Full launch log: {result.Value.DiagnosticsLogPath}";
     }
 
     private void BeginLaunchProgress()
