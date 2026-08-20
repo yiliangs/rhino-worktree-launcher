@@ -128,20 +128,37 @@ public sealed class LauncherBackend
         }
     }
 
-    public async Task<CommandResult<IReadOnlyList<ProjectSnapshot>>> GetProjectsAsync(
+    public async Task<CommandResult<ProjectCatalogView>> GetProjectsAsync(
         CancellationToken cancellationToken)
     {
         try
         {
-            IReadOnlyList<ProjectSnapshot> projects = await _catalog.LoadAsync(cancellationToken);
-            return CommandResult<IReadOnlyList<ProjectSnapshot>>.Success(
-                projects,
-                projects.SelectMany(project => project.Diagnostics).ToArray());
+            ProjectCatalogView view = await _catalog.LoadViewAsync(cancellationToken);
+            return CommandResult<ProjectCatalogView>.Success(
+                view,
+                view.Projects.SelectMany(project => project.Diagnostics).ToArray());
         }
         catch (Exception exception)
         {
-            return CommandResult<IReadOnlyList<ProjectSnapshot>>.Failure(new Diagnostic(
+            return CommandResult<ProjectCatalogView>.Failure(new Diagnostic(
                 "catalog_read_failed",
+                exception.Message));
+        }
+    }
+
+    public async Task<CommandResult<bool>> RecordProjectSelectionAsync(
+        string projectId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _catalog.RecordSelectionAsync(projectId, cancellationToken);
+            return CommandResult<bool>.Success(true);
+        }
+        catch (Exception exception)
+        {
+            return CommandResult<bool>.Failure(new Diagnostic(
+                "project_selection_not_recorded",
                 exception.Message));
         }
     }
@@ -301,15 +318,17 @@ public sealed class LauncherBackend
         checks.AddRange(CheckProcesses(snapshot, snapshotFailure));
         checks.Add(CheckRhinoInstances(snapshot, snapshotFailure));
 
-        CommandResult<IReadOnlyList<ProjectSnapshot>> projectsResult = await GetProjectsAsync(cancellationToken);
+        CommandResult<ProjectCatalogView> catalogResult = await GetProjectsAsync(cancellationToken);
+        IReadOnlyList<ProjectSnapshot> projects = catalogResult.Value?.Projects ??
+            Array.Empty<ProjectSnapshot>();
         checks.Add(new DoctorCheck(
             "catalog",
-            projectsResult.Succeeded,
-            projectsResult.Succeeded
-                ? $"{projectsResult.Value!.Count} project(s) registered."
-                : projectsResult.Diagnostics[0].Message,
-            projectsResult.Succeeded ? DiagnosticSeverity.Info : DiagnosticSeverity.Error));
-        foreach (ProjectSnapshot project in projectsResult.Value ?? Array.Empty<ProjectSnapshot>())
+            catalogResult.Succeeded,
+            catalogResult.Succeeded
+                ? $"{projects.Count} project(s) registered."
+                : catalogResult.Diagnostics[0].Message,
+            catalogResult.Succeeded ? DiagnosticSeverity.Info : DiagnosticSeverity.Error));
+        foreach (ProjectSnapshot project in projects)
         {
             checks.Add(new DoctorCheck(
                 $"project:{project.ProjectId}",
@@ -331,7 +350,7 @@ public sealed class LauncherBackend
         DoctorReport report = new DoctorReport(
             checks.All(check => check.Passed || check.Severity != DiagnosticSeverity.Error),
             checks,
-            projectsResult.Value ?? Array.Empty<ProjectSnapshot>());
+            projects);
         IReadOnlyList<Diagnostic> diagnostics = checks
             .Where(check => !check.Passed)
             .Select(check => new Diagnostic(

@@ -216,6 +216,68 @@ public sealed class ProjectCatalogTests
             repository));
     }
 
+    [Fact]
+    public async Task The_catalog_opens_on_the_last_selected_project_rather_than_the_first_by_name()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string alpha = RepositoryFixture.Initialize(temporary, "alpha");
+        string zulu = RepositoryFixture.Initialize(temporary, "zulu");
+        string catalogPath = temporary.PathFor("launcher/projects.json");
+        ProjectCatalog catalog = new ProjectCatalog(catalogPath);
+        await RegisterAsync(catalog, alpha);
+        ProjectRegistration registered = await RegisterAsync(catalog, zulu);
+
+        string unread = await File.ReadAllTextAsync(catalogPath);
+        ProjectCatalogView beforeSelection = await new ProjectCatalog(catalogPath)
+            .LoadViewAsync(CancellationToken.None);
+        string afterReading = await File.ReadAllTextAsync(catalogPath);
+        await catalog.RecordSelectionAsync(registered.ProjectId, CancellationToken.None);
+        ProjectCatalogView reopened = await new ProjectCatalog(catalogPath)
+            .LoadViewAsync(CancellationToken.None);
+
+        // "zulu" sorts last, so it can only be the opening project by memory.
+        Assert.Equal("alpha", beforeSelection.SelectedProject?.ProjectId);
+        Assert.Equal(unread, afterReading);
+        Assert.Equal("zulu", reopened.SelectedProject?.ProjectId);
+        Assert.Equal(new[] { "alpha", "zulu" }, reopened.Projects.Select(project => project.ProjectId).ToArray());
+    }
+
+    [Fact]
+    public async Task Removing_the_remembered_project_opens_on_the_first_by_name_and_forgets_it()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string alpha = RepositoryFixture.Initialize(temporary, "alpha");
+        string zulu = RepositoryFixture.Initialize(temporary, "zulu");
+        string catalogPath = temporary.PathFor("launcher/projects.json");
+        ProjectCatalog catalog = new ProjectCatalog(catalogPath);
+        await RegisterAsync(catalog, alpha);
+        ProjectRegistration registered = await RegisterAsync(catalog, zulu);
+        await catalog.RecordSelectionAsync(registered.ProjectId, CancellationToken.None);
+
+        await catalog.RemoveAsync(registered.ProjectId, CancellationToken.None);
+        ProjectCatalogView reopened = await new ProjectCatalog(catalogPath)
+            .LoadViewAsync(CancellationToken.None);
+
+        Assert.Equal("alpha", reopened.SelectedProject?.ProjectId);
+        using JsonDocument stored = JsonDocument.Parse(await File.ReadAllTextAsync(catalogPath));
+        Assert.False(
+            stored.RootElement.TryGetProperty("selectedProjectId", out JsonElement selected) &&
+                selected.ValueKind != JsonValueKind.Null,
+            "A removed project must not stay recorded as the selection.");
+    }
+
+    [Fact]
+    public async Task An_unregistered_project_cannot_be_recorded_as_the_selection()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        ProjectCatalog catalog = new ProjectCatalog(temporary.PathFor("launcher/projects.json"));
+        await RegisterAsync(catalog, temporary.PathFor("repository"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => catalog.RecordSelectionAsync(
+            "not-registered",
+            CancellationToken.None));
+    }
+
     private static Task<ProjectRegistration> RegisterAsync(ProjectCatalog catalog, string repository) =>
         catalog.RegisterAsync(
             repository,

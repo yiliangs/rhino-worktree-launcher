@@ -12,6 +12,10 @@ _Avoid_: app-owned build profile, project build recipe
 The `.rhp` at the Rhino plug-in project's MSBuild `TargetPath` for the mapped project configuration inside the selected worktree. It is the only project artifact RWL registers and asks Rhino to load.
 _Avoid_: RWL artifact, copied plug-in
 
+**Opening project**:
+The registered project the desktop selects when it starts: the one the catalog recorded as last selected, or the first by display name when nothing is recorded or the recorded project is no longer registered. `ProjectCatalogView.SelectedProject` carries it, and it is the catalog's answer rather than a report of what the drop-down currently shows.
+_Avoid_: default project, recent project, active project
+
 **Launch mode**:
 The choice for one launch request between Build & Launch and Direct Launch. Desktop Config stores a project-specific default for mechanical launches; MCP agents choose explicitly per request. Build & Launch builds the canonical solution before resolving its artifact, while Direct Launch loads the existing artifact without building or claiming it is fresh.
 _Avoid_: project-wide launch mode, freshness mode, build receipt

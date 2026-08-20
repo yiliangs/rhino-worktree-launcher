@@ -155,6 +155,10 @@ public partial class MainWindow : Window
             ["ChipHighlightBrush"] = "#B3FFFFFF"
         };
 
+    private static readonly ProjectCatalogView EmptyCatalog = new ProjectCatalogView(
+        Array.Empty<ProjectSnapshot>(),
+        null);
+
     private readonly ObservableCollection<ProjectSnapshot> _projects =
         new ObservableCollection<ProjectSnapshot>();
     private readonly ObservableCollection<WorktreeSnapshot> _worktrees =
@@ -487,20 +491,22 @@ public partial class MainWindow : Window
 
     private async Task ReloadProjectsAsync(string? selectedProjectId)
     {
-        CommandResult<IReadOnlyList<ProjectSnapshot>> result = await _backend.GetProjectsAsync(
+        CommandResult<ProjectCatalogView> result = await _backend.GetProjectsAsync(
             CancellationToken.None);
-        IReadOnlyList<ProjectSnapshot> projects = result.Value ?? Array.Empty<ProjectSnapshot>();
+        ProjectCatalogView catalog = result.Value ?? EmptyCatalog;
         _isUpdatingProjects = true;
         try
         {
             _projects.Clear();
-            foreach (ProjectSnapshot project in projects)
+            foreach (ProjectSnapshot project in catalog.Projects)
                 _projects.Add(project);
 
+            // When this reload names no project, the catalog names the one to open,
+            // and the fallback to the first by name is its answer rather than this window's.
             _currentProject = _projects.FirstOrDefault(project => string.Equals(
                 project.ProjectId,
                 selectedProjectId,
-                StringComparison.OrdinalIgnoreCase)) ?? _projects.FirstOrDefault();
+                StringComparison.OrdinalIgnoreCase)) ?? catalog.SelectedProject;
             ProjectSelector.SelectedItem = _currentProject;
         }
         finally
@@ -523,6 +529,9 @@ public partial class MainWindow : Window
     private async Task SelectProjectAsync(ProjectSnapshot project)
     {
         _currentProject = project;
+        // Remembering the project is a convenience, and the banner belongs to the
+        // refresh that follows, so a catalog that would not record it is not reported.
+        await _backend.RecordProjectSelectionAsync(project.ProjectId, CancellationToken.None);
         _repositoryPath = project.Registration.PrimaryCheckout;
         _worktrees.Clear();
         _hint = "Loading worktrees...";
