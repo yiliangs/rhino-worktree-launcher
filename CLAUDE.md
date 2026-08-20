@@ -50,4 +50,4 @@ dotnet test tests/RhinoWorktreeLauncher.UiTests/RhinoWorktreeLauncher.UiTests.cs
 
 `UiTests` is the seam for the WPF surface: it asserts against the XAML documents and the built desktop output, so any change to the native surface is verified there rather than by eye alone.
 
-The WPF design remains the completed fixed 720 x 1000 native surface. Preserve its theme, typography, scroll rail, shared corner-radius tokens, and current interaction details while changing backend behavior. `Config` is project-specific; global `Settings` owns MCP setup.
+The WPF design remains the completed fixed 720 x 1000 native surface. Preserve its theme, typography, scrollbar gutter, shared corner-radius tokens, and current interaction details while changing backend behavior. `Config` is project-specific; global `Settings` owns MCP setup.

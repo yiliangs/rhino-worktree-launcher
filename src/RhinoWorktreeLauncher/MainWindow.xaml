@@ -381,15 +381,6 @@
                                                     ContentTemplate="{TemplateBinding ContentTemplate}"
                                                     Margin="{TemplateBinding Padding}"
                                                     SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
-                            <Border x:Name="InactiveScrollIndicator"
-                                    Grid.Column="1"
-                                    Width="2"
-                                    HorizontalAlignment="Right"
-                                    Background="{DynamicResource ScrollThumbBrush}"
-                                    CornerRadius="{StaticResource SmallCornerRadius}"
-                                    IsHitTestVisible="False"
-                                    Opacity="0.32"
-                                    Visibility="Collapsed" />
                             <ScrollBar x:Name="PART_VerticalScrollBar"
                                        Grid.Column="1"
                                        Width="4"
@@ -402,11 +393,6 @@
                                        Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"
                                        Value="{TemplateBinding VerticalOffset}" />
                         </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="ComputedVerticalScrollBarVisibility" Value="Collapsed">
-                                <Setter TargetName="InactiveScrollIndicator" Property="Visibility" Value="Visible" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -607,8 +593,6 @@
                             <ColumnDefinition Width="9" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="18" />
                             <ColumnDefinition Width="200" />
                         </Grid.ColumnDefinitions>
                         <local:TrackingTextBlock Grid.Column="0"
@@ -627,15 +611,7 @@
                                    FontSize="11"
                                    LineHeight="13.2"
                                    LineStackingStrategy="BlockLineHeight" />
-                        <TextBlock x:Name="PanelHintText"
-                                   Grid.Column="4"
-                                   HorizontalAlignment="Right"
-                                   VerticalAlignment="Center"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="11.5"
-                                   LineHeight="13.8"
-                                   LineStackingStrategy="BlockLineHeight" />
-                        <Grid Grid.Column="6" Width="200">
+                        <Grid Grid.Column="4" Width="200">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="99" />
                                 <ColumnDefinition Width="2" />
@@ -947,6 +923,26 @@
                                    Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="12"
                                    Visibility="Collapsed" />
+
+                        <Border x:Name="PanelHintBanner"
+                                Margin="12"
+                                Padding="14,10"
+                                VerticalAlignment="Bottom"
+                                Background="{DynamicResource DropdownMenuBrush}"
+                                BorderBrush="{DynamicResource DropdownMenuBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource MediumCornerRadius}"
+                                Effect="{DynamicResource RowActiveShadowEffect}"
+                                IsHitTestVisible="False"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="PanelHintText"
+                                       TextTrimming="CharacterEllipsis"
+                                       TextWrapping="NoWrap"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="11.5"
+                                       LineHeight="13.8"
+                                       LineStackingStrategy="BlockLineHeight" />
+                        </Border>
                     </Grid>
                 </Grid>
             </Border>

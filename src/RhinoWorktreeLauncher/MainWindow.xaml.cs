@@ -691,13 +691,24 @@ public partial class MainWindow : Window
         WorktreeCountText.Text = _worktrees.Count.ToString(CultureInfo.InvariantCulture);
         ProjectSelector.IsEnabled = _projects.Count > 0;
         ProjectConfigButton.IsEnabled = _currentProject is not null;
-        PanelHintText.Text = _hint;
+        ShowHint();
         EmptyStateText.Visibility = _worktrees.Count == 0
             ? Visibility.Visible
             : Visibility.Collapsed;
         UpdateRepositoryPathText();
         UpdateSelectionState();
     }
+
+    private void ShowHint()
+    {
+        PanelHintText.Text = _hint;
+        PanelHintBanner.Visibility = HintVisibility(_hint);
+    }
+
+    // The banner floats over the rows, so a report with nothing to say has to leave
+    // the list alone rather than sit there empty.
+    private static Visibility HintVisibility(string hint) =>
+        string.IsNullOrWhiteSpace(hint) ? Visibility.Collapsed : Visibility.Visible;
 
     private void UpdateSelectionState()
     {
@@ -780,7 +791,7 @@ public partial class MainWindow : Window
                     // The build stage reports one update per MSBuild line, so the detail
                     // text is set directly rather than through a full state refresh.
                     _hint = update.Message;
-                    PanelHintText.Text = _hint;
+                    ShowHint();
                 });
             CommandResult<LaunchResult> result = await _backend.LaunchAsync(
                 worktree.Path,
