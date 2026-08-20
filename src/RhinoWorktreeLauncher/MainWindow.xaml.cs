@@ -20,7 +20,6 @@ public partial class MainWindow : Window
     private const double DesignWindowWidth = 720;
     private const double DesignWindowHeight = 1000;
     private const int DwmExtendedFrameBounds = 9;
-    private const double LaunchTrackWidth = 162;
 
     // Where the launch bar stands when each stage begins working, plus how long that
     // stage is expected to take. The fill eases toward the next boundary over that
@@ -691,7 +690,7 @@ public partial class MainWindow : Window
         WorktreeCountText.Text = _worktrees.Count.ToString(CultureInfo.InvariantCulture);
         ProjectSelector.IsEnabled = _projects.Count > 0;
         ProjectConfigButton.IsEnabled = _currentProject is not null;
-        PanelHintText.Text = _hint;
+        ShowHint();
         EmptyStateText.Visibility = _worktrees.Count == 0
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -699,17 +698,46 @@ public partial class MainWindow : Window
         UpdateSelectionState();
     }
 
+    private void ShowHint()
+    {
+        PanelHintText.Text = _hint;
+        PanelHintBanner.Visibility = HintVisibility(_hint, _isLaunching);
+    }
+
+    // The banner floats over the rows, so a report with nothing to say has to leave
+    // the list alone rather than sit there empty. A launch is the exception: the sweep
+    // is the progress indicator, and it cannot wait for the first message to arrive.
+    private static Visibility HintVisibility(string hint, bool isLaunching) =>
+        isLaunching || !string.IsNullOrWhiteSpace(hint)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    // The banner is the launch progress track, and its width follows the panel rather
+    // than a fixed button, so the sweep measures it instead of trusting a constant.
+    private double LaunchTrackWidth => Math.Max(0, PanelHintBanner.ActualWidth - 2);
+
+    private void PanelHintBannerClip_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        PanelHintBannerClip.Clip = BannerClip(e.NewSize.Width, e.NewSize.Height);
+
+    // The fill is a rectangle at both ends, so the banner does the rounding. Its radius
+    // is the 8 the banner is drawn with, less the 1px border the clip sits inside.
+    private static RectangleGeometry BannerClip(double width, double height) =>
+        new RectangleGeometry(new Rect(0, 0, width, height), 7, 7);
+
     private void UpdateSelectionState()
     {
         WorktreeSnapshot? selected = WorktreeList.SelectedItem as WorktreeSnapshot;
         OpenFolderButton.IsEnabled = selected is not null;
-        // A launch in progress keeps the button enabled so the running stage stays at full
-        // strength; BeginLaunchProgress is what blocks a second click.
-        LaunchButton.IsEnabled = _isLaunching || selected?.HasBuildConfiguration == true;
-        LaunchIdleText.Text = selected is null || selected.LaunchMode == LaunchMode.DirectLaunch
+        LaunchButton.IsEnabled = CanLaunch(_isLaunching, selected?.HasBuildConfiguration == true);
+        LaunchButtonText.Text = selected is null || selected.LaunchMode == LaunchMode.DirectLaunch
             ? "Launch Rhino"
             : "Build & Launch";
     }
+
+    // Progress reports in the banner, so the button can simply say it is unavailable
+    // rather than stay lit and refuse the click.
+    private static bool CanLaunch(bool isLaunching, bool hasBuildConfiguration) =>
+        !isLaunching && hasBuildConfiguration;
 
     private void UpdateSync(bool active, double local, double? git)
     {
@@ -780,7 +808,7 @@ public partial class MainWindow : Window
                     // The build stage reports one update per MSBuild line, so the detail
                     // text is set directly rather than through a full state refresh.
                     _hint = update.Message;
-                    PanelHintText.Text = _hint;
+                    ShowHint();
                 });
             CommandResult<LaunchResult> result = await _backend.LaunchAsync(
                 worktree.Path,
@@ -816,11 +844,13 @@ public partial class MainWindow : Window
     {
         _isLaunching = true;
         _launchStage = null;
-        LaunchButton.IsHitTestVisible = false;
-        LaunchButton.Cursor = Cursors.Arrow;
-        LaunchIdleText.Visibility = Visibility.Collapsed;
-        LaunchRun.Visibility = Visibility.Visible;
         LaunchStageText.Text = "STARTING";
+        LaunchStageText.Visibility = Visibility.Visible;
+        UpdateSelectionState();
+        ShowHint();
+        // The banner is collapsed between launches, so it has no measured width for the
+        // sweep to cross until this layout pass has run.
+        PanelHintBanner.UpdateLayout();
         LaunchProgressFill.BeginAnimation(WidthProperty, null);
         LaunchProgressFill.Width = 0;
     }
@@ -848,10 +878,10 @@ public partial class MainWindow : Window
         _launchStage = null;
         LaunchProgressFill.BeginAnimation(WidthProperty, null);
         LaunchProgressFill.Width = 0;
-        LaunchRun.Visibility = Visibility.Collapsed;
-        LaunchIdleText.Visibility = Visibility.Visible;
-        LaunchButton.IsHitTestVisible = true;
-        LaunchButton.Cursor = Cursors.Hand;
+        LaunchStageText.Text = string.Empty;
+        LaunchStageText.Visibility = Visibility.Collapsed;
+        UpdateSelectionState();
+        ShowHint();
     }
 
     private void RepositoryPathText_SizeChanged(
