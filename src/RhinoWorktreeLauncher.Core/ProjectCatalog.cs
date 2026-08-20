@@ -12,14 +12,41 @@ public sealed class ProjectCatalog
 
     public ProjectCatalog(string catalogPath) => _catalogPath = Path.GetFullPath(catalogPath);
 
-    public async Task<IReadOnlyList<ProjectSnapshot>> LoadAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ProjectSnapshot>> LoadAsync(CancellationToken cancellationToken) =>
+        (await LoadViewAsync(cancellationToken)).Projects;
+
+    public async Task<ProjectCatalogView> LoadViewAsync(CancellationToken cancellationToken)
     {
         await EnsureMigratedAsync(cancellationToken);
         CatalogFile file = await ReadCurrentFileAsync(cancellationToken);
-        return file.Projects
+        IReadOnlyList<ProjectSnapshot> projects = file.Projects
             .Select((record, index) => LoadSnapshot(record, index))
             .OrderBy(project => project.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        return new ProjectCatalogView(projects, SelectOpeningProject(projects, file.SelectedProjectId));
+    }
+
+    // Recording a selection is the one write the desktop makes on the user's behalf,
+    // so a project it merely reopened, and already remembers, must not rewrite the file.
+    public async Task RecordSelectionAsync(string projectId, CancellationToken cancellationToken)
+    {
+        await EnsureMigratedAsync(cancellationToken);
+        CatalogFile current = await ReadCurrentFileAsync(cancellationToken);
+        if (string.Equals(current.SelectedProjectId, projectId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        await ModifyAsync(file =>
+        {
+            if (!file.Projects.Any(record => string.Equals(
+                record.ProjectId,
+                projectId,
+                StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException($"Project '{projectId}' is not registered.");
+            }
+
+            file.SelectedProjectId = projectId;
+        }, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ProjectRegistration>> LoadRegistrationsAsync(
@@ -106,10 +133,14 @@ public sealed class ProjectCatalog
     }
 
     public Task RemoveAsync(string projectId, CancellationToken cancellationToken) => ModifyAsync(
-        file => file.Projects.RemoveAll((record, index) => string.Equals(
-            record.ProjectId ?? $"legacy-{index}",
-            projectId,
-            StringComparison.OrdinalIgnoreCase)),
+        file =>
+        {
+            file.Projects.RemoveAll((record, index) => string.Equals(
+                record.ProjectId ?? $"legacy-{index}",
+                projectId,
+                StringComparison.OrdinalIgnoreCase));
+            ForgetSelectionUnlessRegistered(file);
+        },
         cancellationToken);
 
     public async Task<ProjectRegistration> UpdateConfigAsync(
@@ -145,6 +176,26 @@ public sealed class ProjectCatalog
             file.Projects[index] = CatalogRegistrationRecord.From(updated);
         }, cancellationToken);
         return updated;
+    }
+
+    // A remembered project that is no longer registered leaves the desktop where a
+    // first run starts it: on the first project by name.
+    private static ProjectSnapshot? SelectOpeningProject(
+        IReadOnlyList<ProjectSnapshot> projects,
+        string? selectedProjectId) => projects.FirstOrDefault(project => string.Equals(
+            project.ProjectId,
+            selectedProjectId,
+            StringComparison.OrdinalIgnoreCase)) ?? projects.FirstOrDefault();
+
+    private static void ForgetSelectionUnlessRegistered(CatalogFile file)
+    {
+        if (file.SelectedProjectId is not null && !file.Projects.Any(record => string.Equals(
+            record.ProjectId,
+            file.SelectedProjectId,
+            StringComparison.OrdinalIgnoreCase)))
+        {
+            file.SelectedProjectId = null;
+        }
     }
 
     private ProjectSnapshot LoadSnapshot(CatalogRegistrationRecord record, int index)
@@ -453,6 +504,12 @@ public sealed class ProjectCatalog
     private sealed class CatalogFile
     {
         public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+
+        // Additive and optional in both directions, so it needs no schema bump: a file
+        // written before it simply has none, and a reader that predates it ignores it.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? SelectedProjectId { get; set; }
+
         public List<CatalogRegistrationRecord> Projects { get; set; } = new List<CatalogRegistrationRecord>();
     }
 

@@ -87,6 +87,12 @@ public sealed record ProjectSnapshot(
     public string DisplayName => Registration.DisplayName;
 }
 
+// The desktop opens on one project. SelectedProject names it, so the rule for
+// which project that is lives with the catalog rather than in window code.
+public sealed record ProjectCatalogView(
+    IReadOnlyList<ProjectSnapshot> Projects,
+    ProjectSnapshot? SelectedProject);
+
 public sealed record ResolvedContext(
     string ProjectId,
     string DisplayName,
