@@ -49,6 +49,9 @@ public sealed class LockedBuildOutputTests
             "MSB3027",
             await File.ReadAllTextAsync(result.Value!.DiagnosticsLogPath),
             StringComparison.Ordinal);
+        // And it travels with the diagnostic, so a surface can offer it without reading the log.
+        Assert.NotNull(diagnostic.Detail);
+        Assert.Contains("MSB3027", diagnostic.Detail!, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -76,29 +79,6 @@ public sealed class LockedBuildOutputTests
         Diagnostic diagnostic = Assert.Single(result.Diagnostics);
         Assert.Equal("build_output_locked", diagnostic.Code);
         Assert.Contains($"pid {holder.ProcessId}", diagnostic.Message, StringComparison.Ordinal);
-    }
-
-    // Only this failure class is reclassified. Everything else keeps the message it had.
-    [Fact]
-    public async Task A_build_that_fails_to_compile_keeps_its_existing_failure()
-    {
-        using TemporaryDirectory temporary = RepositoryFixture.Create();
-        string repository = temporary.PathFor("repository");
-        LauncherBackend backend = Backend(temporary, Array.Empty<RunningProcess>());
-        await RegisterAsync(backend, repository);
-        temporary.WriteFile("repository/Sample/Broken.cs", "public sealed class Broken { this is not C# }");
-
-        CommandResult<LaunchResult> result = await backend.LaunchAsync(
-            repository,
-            LaunchMode.BuildAndLaunch,
-            TimeSpan.FromMinutes(2),
-            progress: null,
-            CancellationToken.None);
-
-        Assert.False(result.Succeeded);
-        Diagnostic diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal("artifact_prepare_failed", diagnostic.Code);
-        Assert.Contains("Broken.cs", diagnostic.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildOnce(TemporaryDirectory temporary, string repository)

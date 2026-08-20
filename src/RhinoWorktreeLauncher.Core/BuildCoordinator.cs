@@ -95,7 +95,9 @@ internal sealed class BuildCoordinator
         {
             return CommandResult<PreparedLaunchArtifacts>.Failure(new Diagnostic(
                 exception.Code,
-                exception.Message));
+                exception.Message,
+                DiagnosticSeverity.Error,
+                exception.Detail));
         }
         catch (Exception exception)
         {
@@ -106,11 +108,13 @@ internal sealed class BuildCoordinator
     }
 
     /// <summary>
-    /// Runs the solution build, watching its output for the one failure class the launcher
-    /// recognises: another program holding a build output file open, which is what a Rhino
-    /// still running with this plug-in loaded does. That build fails with pages of MSBuild
-    /// copy retries, so the transcript stays in the launch log and the caller is handed the
-    /// condition, the file, and who is holding it.
+    /// Runs the solution build, watching its output so a failure can be described rather
+    /// than quoted. A build blocked by another program holding its output file open is its
+    /// own named class, because a Rhino still running with this plug-in loaded is the
+    /// ordinary cause and MSBuild's copy retries say nothing a person can act on. Every
+    /// other failure is named `build_failed` and says how many errors there were and what
+    /// the first one was. Both carry the build's own output as detail, so a surface offers
+    /// it behind a disclosure instead of inlining it.
     /// </summary>
     private async Task BuildAsync(
         string worktreePath,
@@ -119,7 +123,7 @@ internal sealed class BuildCoordinator
         IProgress<BuildProgress>? progress,
         CancellationToken cancellationToken)
     {
-        LockedBuildOutputWatch watch = new LockedBuildOutputWatch();
+        BuildOutputWatch watch = new BuildOutputWatch();
         try
         {
             await ProcessRunner.RunLinesAsync(
@@ -145,11 +149,12 @@ internal sealed class BuildCoordinator
             // The runner carries the failing tool's standard error, which the streamed
             // standard output above never passes through.
             watch.ObserveAll(exception.Message);
-            if (watch.Locked is not { } locked)
-                throw;
             throw new LaunchDiagnosticException(
-                "build_output_locked",
-                DescribeLockedOutput(locked, worktreePath),
+                watch.Locked is null ? "build_failed" : "build_output_locked",
+                watch.Locked is { } locked
+                    ? DescribeLockedOutput(locked, worktreePath)
+                    : watch.DescribeFailure(),
+                watch.Transcript,
                 exception);
         }
     }

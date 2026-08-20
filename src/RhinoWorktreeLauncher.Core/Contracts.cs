@@ -10,10 +10,18 @@ public enum DiagnosticSeverity
     Error
 }
 
+/// <summary>
+/// One thing that went wrong. <see cref="Message"/> is what is always displayable: short,
+/// complete on its own, and safe in a one-line status surface. <see cref="Detail"/> carries
+/// the failing tool's own output when there is more to see, so a surface can offer it behind
+/// a disclosure instead of choosing between quoting it whole and losing it. Detail is
+/// bounded; the launch log holds the unabridged record.
+/// </summary>
 public sealed record Diagnostic(
     string Code,
     string Message,
-    DiagnosticSeverity Severity = DiagnosticSeverity.Error);
+    DiagnosticSeverity Severity = DiagnosticSeverity.Error,
+    string? Detail = null);
 
 public sealed record CommandResult<T>(
     bool Succeeded,
