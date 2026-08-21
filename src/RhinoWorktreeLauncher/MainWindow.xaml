@@ -540,7 +540,11 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0"
+                    <!-- The lead-in bar that marks a path line. The Add project and Project
+                         config dialogs carry the same one, and their tests read this
+                         element for its measurements so the three cannot drift apart. -->
+                    <Border x:Name="RepositoryPathRail"
+                            Grid.Column="0"
                             Width="1"
                             Height="12"
                             Margin="0,0,9,0"
