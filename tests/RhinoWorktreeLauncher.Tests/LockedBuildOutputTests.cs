@@ -27,6 +27,7 @@ public sealed class LockedBuildOutputTests
             LaunchMode.BuildAndLaunch,
             TimeSpan.FromMinutes(2),
             progress: null,
+            environment: null,
             CancellationToken.None));
 
         Assert.False(result.Succeeded);
@@ -73,6 +74,7 @@ public sealed class LockedBuildOutputTests
             LaunchMode.BuildAndLaunch,
             TimeSpan.FromMinutes(2),
             progress: null,
+            environment: null,
             CancellationToken.None));
 
         Assert.False(result.Succeeded);

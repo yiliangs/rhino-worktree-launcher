@@ -1,3 +1,4 @@
+using Rwl.Protocol;
 using System.Diagnostics;
 using System.Runtime.Versioning;
 using System.Text.Json;
@@ -35,6 +36,7 @@ public sealed class LaunchBackendTests
             LaunchMode.BuildAndLaunch,
             TimeSpan.FromSeconds(20),
             progress: null,
+            environment: null,
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
@@ -44,6 +46,74 @@ public sealed class LaunchBackendTests
         Assert.True(File.Exists(result.Value.PluginPath));
         Assert.Equal(rhino.ProcessId, result.Value.RhinoProcessId);
         Assert.False(Directory.Exists(temporary.PathFor("launcher/workspaces")));
+    }
+
+    // The environment is how an in-Rhino automation harness that arms on one environment
+    // read is entered through an ordinary launch, so it has to survive the whole chain:
+    // backend, coordinator, executor request, Rhino start.
+    [Fact]
+    public async Task A_launch_carries_the_callers_environment_into_the_rhino_it_starts()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
+        FakeRhino rhino = new FakeRhino();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
+        });
+        CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+        Assert.True(registration.Succeeded, registration.Diagnostics.FirstOrDefault()?.Message);
+
+        CommandResult<LaunchResult> result = await backend.LaunchAsync(
+            repository,
+            LaunchMode.BuildAndLaunch,
+            TimeSpan.FromSeconds(20),
+            progress: null,
+            new Dictionary<string, string> { ["NATALIE_SUITE_REPRO"] = "1" },
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.Equal("1", rhino.Environment!["NATALIE_SUITE_REPRO"]);
+    }
+
+    [Fact]
+    public async Task A_reserved_environment_name_refuses_the_launch_by_name_before_any_work()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
+        FakeRhino rhino = new FakeRhino();
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
+        });
+        CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+        Assert.True(registration.Succeeded, registration.Diagnostics.FirstOrDefault()?.Message);
+
+        CommandResult<LaunchResult> result = await backend.LaunchAsync(
+            repository,
+            LaunchMode.BuildAndLaunch,
+            TimeSpan.FromSeconds(20),
+            progress: null,
+            new Dictionary<string, string> { ["RWL_LAUNCH_ID"] = "spoof" },
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("invalid_environment", result.Diagnostics[0].Code);
+        Assert.Null(rhino.ProcessId);
     }
 
     [Fact]
@@ -71,6 +141,7 @@ public sealed class LaunchBackendTests
             LaunchMode.BuildAndLaunch,
             TimeSpan.FromSeconds(60),
             new ImmediateProgress<LaunchProgress>(updates.Add),
+            environment: null,
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
@@ -128,6 +199,7 @@ public sealed class LaunchBackendTests
             LaunchMode.DirectLaunch,
             TimeSpan.FromSeconds(60),
             new ImmediateProgress<LaunchProgress>(updates.Add),
+            environment: null,
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
@@ -180,6 +252,7 @@ public sealed class LaunchBackendTests
             LaunchMode.DirectLaunch,
             TimeSpan.FromSeconds(20),
             progress: null,
+            environment: null,
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
@@ -216,6 +289,7 @@ public sealed class LaunchBackendTests
             LaunchMode.BuildAndLaunch,
             TimeSpan.FromSeconds(25),
             progress: null,
+            environment: null,
             CancellationToken.None);
 
         Assert.False(result.Succeeded);
@@ -257,6 +331,7 @@ public sealed class LaunchBackendTests
             LaunchMode.BuildAndLaunch,
             TimeSpan.FromSeconds(25),
             progress: null,
+            environment: null,
             CancellationToken.None);
 
         Assert.False(result.Succeeded);
@@ -292,6 +367,7 @@ public sealed class LaunchBackendTests
             LaunchMode.BuildAndLaunch,
             TimeSpan.FromSeconds(20),
             progress: null,
+            environment: null,
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
@@ -330,6 +406,7 @@ public sealed class LaunchBackendTests
             LaunchMode.BuildAndLaunch,
             TimeSpan.FromSeconds(20),
             progress: null,
+            environment: null,
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
@@ -366,6 +443,7 @@ public sealed class LaunchBackendTests
             LaunchMode.BuildAndLaunch,
             TimeSpan.FromSeconds(20),
             progress: null,
+            environment: null,
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
@@ -402,6 +480,7 @@ public sealed class LaunchBackendTests
             LaunchMode.BuildAndLaunch,
             TimeSpan.FromSeconds(60),
             progress: null,
+            environment: null,
             CancellationToken.None);
         Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
 
@@ -416,7 +495,7 @@ public sealed class LaunchBackendTests
         JsonElement request = Assert.Single(records, record => Kind(record) == "executor_request");
         Assert.Equal(result.Value.PluginPath, request.GetProperty("pluginPath").GetString());
         Assert.Equal("fake-rhino.exe", request.GetProperty("rhinoExecutable").GetString());
-        Assert.Equal(1, request.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal(LaunchExecutorProtocol.Version, request.GetProperty("protocolVersion").GetInt32());
 
         // Every stage transition carries its own timestamp, and the executor's log is named
         // from the first event it reported onward.
@@ -480,9 +559,12 @@ public sealed class LaunchBackendTests
 
         public IReadOnlyList<string> Arguments { get; private set; } = Array.Empty<string>();
 
+        public IReadOnlyDictionary<string, string?>? Environment { get; private set; }
+
         public Process Start(ProcessStartInfo startInfo)
         {
             Arguments = startInfo.ArgumentList.ToArray();
+            Environment = new Dictionary<string, string?>(startInfo.Environment);
             Process process = StartSleepingProcess();
             ProcessId = process.Id;
             return process;

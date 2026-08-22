@@ -101,6 +101,7 @@ public sealed class McpServerTests
         CallToolResult result = await tools.BuildAndLaunchAsync(
             repository,
             timeoutSeconds: 20,
+            environment: null,
             progress: null,
             CancellationToken.None);
 
@@ -149,6 +150,7 @@ public sealed class McpServerTests
         CallToolResult result = await tools.LaunchExistingAsync(
             repository,
             timeoutSeconds: 20,
+            environment: null,
             progress: null,
             CancellationToken.None);
 
@@ -211,6 +213,7 @@ public sealed class McpServerTests
         CallToolResult result = await tools.BuildAndLaunchAsync(
             repository,
             timeoutSeconds: 20,
+            environment: null,
             progress: null,
             CancellationToken.None);
 

@@ -13,7 +13,7 @@ public sealed class CliProcessTests
           rwl context --cwd <path> [--json]
           rwl worktree list --project <id> [--local-only] [--json]
           rwl worktree inspect --path <path> [--json]
-          rwl launch --path <path> [--timeout <seconds>] [--json]
+          rwl launch --path <path> [--timeout <seconds>] [--env <NAME=VALUE>] [--json]
           rwl rhino instances [--json]
           rwl doctor [--json]
           rwl integration status [claude|codex] [--json]

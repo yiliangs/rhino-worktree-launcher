@@ -825,6 +825,7 @@ public partial class MainWindow : Window
                 worktree.LaunchMode,
                 TimeSpan.FromMinutes(3),
                 progress,
+                environment: null,
                 CancellationToken.None);
             logPath = result.Value?.DiagnosticsLogPath;
             failure = result.Succeeded ? null : result.Diagnostics[0];

@@ -29,6 +29,7 @@ internal sealed class LaunchCoordinator
         LaunchMode launchMode,
         TimeSpan timeout,
         IProgress<LaunchProgress>? progress,
+        IReadOnlyDictionary<string, string>? environment,
         CancellationToken cancellationToken)
     {
         if (timeout <= TimeSpan.Zero)
@@ -60,6 +61,12 @@ internal sealed class LaunchCoordinator
                 requestedPath = worktreePath,
                 timestamp = startedAt
             });
+
+            // The executor re-checks the same rule; refusing here is what keeps an invalid
+            // map from costing a resolve and a build first.
+            string? environmentOffense = LaunchEnvironment.Describe(environment);
+            if (environmentOffense is not null)
+                return Fail(new Diagnostic("invalid_environment", environmentOffense));
 
             log.Report(LaunchStage.Resolve, "Resolving the registered project and selected worktree.");
             CommandResult<ResolvedContext> contextResult = await _contextResolver.ResolveAsync(path, token);
@@ -101,7 +108,10 @@ internal sealed class LaunchCoordinator
                 WorkingDirectory = artifacts.WorktreePath,
                 LocksDirectory = _options.LocksDirectory,
                 LogsDirectory = _options.LogsDirectory,
-                TimeoutSeconds = remaining.TotalSeconds
+                TimeoutSeconds = remaining.TotalSeconds,
+                Environment = environment is null || environment.Count == 0
+                    ? null
+                    : new Dictionary<string, string>(environment)
             };
             log.Record(new
             {
@@ -116,6 +126,8 @@ internal sealed class LaunchCoordinator
                 request.RhinoRuntime,
                 request.WorkingDirectory,
                 request.TimeoutSeconds,
+                // Names only: a caller-supplied value may be sensitive.
+                environmentVariables = request.Environment?.Keys.ToArray(),
                 timestamp = DateTimeOffset.UtcNow
             });
 

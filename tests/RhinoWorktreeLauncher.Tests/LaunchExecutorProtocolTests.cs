@@ -56,6 +56,33 @@ public sealed class LaunchExecutorProtocolTests
         Assert.True(round.IsResult);
     }
 
+    // Dictionary equality is referential on the record, so the environment's survival is
+    // asserted by content rather than by the record's own Equals.
+    [Fact]
+    public void A_request_environment_survives_the_wire_unchanged()
+    {
+        LaunchExecutorRequest request = new LaunchExecutorRequest
+        {
+            LaunchId = "abc",
+            Environment = new Dictionary<string, string> { ["NATALIE_SUITE_REPRO"] = "1" }
+        };
+
+        LaunchExecutorRequest? round = LaunchExecutorProtocol.DeserializeRequest(
+            LaunchExecutorProtocol.SerializeRequest(request));
+
+        Assert.NotNull(round);
+        Assert.Equal("1", round!.Environment!["NATALIE_SUITE_REPRO"]);
+        // A request without one stays without one: null must not round-trip into empty.
+        Assert.Null(LaunchExecutorProtocol.DeserializeRequest(
+            LaunchExecutorProtocol.SerializeRequest(new LaunchExecutorRequest()))!.Environment);
+    }
+
+    [Fact]
+    public void A_reserved_environment_name_is_described_by_the_shared_rule() =>
+        Assert.Contains(
+            LaunchEnvironment.ReservedPrefix,
+            LaunchEnvironment.Describe(new Dictionary<string, string> { ["rwl_launch_id"] = "x" }));
+
     [Fact]
     public void A_request_carries_the_current_protocol_version_by_default() =>
         Assert.Equal(LaunchExecutorProtocol.Version, new LaunchExecutorRequest().ProtocolVersion);

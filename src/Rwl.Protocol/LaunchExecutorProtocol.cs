@@ -9,7 +9,10 @@ internal static class LaunchExecutorProtocol
 {
     // Raised on every incompatible change to the request or event shape. A host and an
     // executor that disagree fail by name instead of misreading each other's fields.
-    public const int Version = 1;
+    // Version 2 added the caller-supplied environment: an older executor would deserialize
+    // a version-1-shaped request and silently start Rhino without the variables the caller
+    // depends on, so the field is a version raise rather than a compatible addition.
+    public const int Version = 2;
 
     private static readonly JsonSerializerOptions Wire = new JsonSerializerOptions
     {
@@ -73,6 +76,7 @@ internal static class LaunchExecutorCodes
     public const string RegistrationWriteBackUnrestorable = "registration_write_back_unrestorable";
     public const string RhinoStarted = "rhino_started";
     public const string RhinoIdentityStamped = "rhino_identity_stamped";
+    public const string RhinoEnvironmentInjected = "rhino_environment_injected";
     public const string RhinoExitedBeforeVerification = "rhino_exited_before_verification";
     public const string LaunchVerified = "launch_verified";
     public const string LaunchTimeout = "launch_timeout";
@@ -111,6 +115,42 @@ internal sealed record LaunchExecutorRequest
     public string LocksDirectory { get; init; } = string.Empty;
     public string LogsDirectory { get; init; } = string.Empty;
     public double TimeoutSeconds { get; init; }
+
+    // Caller-supplied variables injected into the launched Rhino process only, beside the
+    // two identity variables. This is how an in-Rhino automation harness that arms on an
+    // environment read is entered through an ordinary launch. Null means an ordinary
+    // launch; LaunchEnvironment.Describe owns what a valid map is.
+    public Dictionary<string, string>? Environment { get; init; }
+}
+
+// The one definition of a valid caller-supplied environment, shared by every host adapter
+// and the executor so both sides refuse the same maps by name.
+internal static class LaunchEnvironment
+{
+    // The launch identity belongs to the launch; a caller must not be able to spoof it.
+    public const string ReservedPrefix = "RWL_";
+    public const int MaxVariables = 32;
+
+    // Null means valid. Otherwise one displayable sentence naming the first offense.
+    public static string? Describe(IReadOnlyDictionary<string, string>? environment)
+    {
+        if (environment is null)
+            return null;
+        if (environment.Count > MaxVariables)
+            return $"The launch environment carries {environment.Count} variables; at most {MaxVariables} are allowed.";
+        foreach (KeyValuePair<string, string> variable in environment)
+        {
+            if (string.IsNullOrWhiteSpace(variable.Key))
+                return "A launch environment variable has an empty name.";
+            if (variable.Key.AsSpan().IndexOfAny('=', '\0') >= 0)
+                return $"Launch environment variable name '{variable.Key}' carries '=' or a NUL character.";
+            if (variable.Key.StartsWith(ReservedPrefix, StringComparison.OrdinalIgnoreCase))
+                return $"Launch environment variable name '{variable.Key}' uses the reserved {ReservedPrefix} prefix, which belongs to the launch identity.";
+            if (variable.Value is null || variable.Value.Contains('\0'))
+                return $"Launch environment variable '{variable.Key}' carries a null value or a NUL character.";
+        }
+        return null;
+    }
 }
 
 // One streamed step or the single terminal result. Code is always set on a result and on

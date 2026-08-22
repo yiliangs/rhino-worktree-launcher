@@ -56,6 +56,8 @@ Step 5 exists because a process can be started with its current-user registry wr
 
 Step 11 exists because Rhino writes the artifact it loaded back into its own registration, and it does so while the launch that started it has already restored and returned. Without it, a worktree path can be left registered for ordinary Rhino sessions.
 
+A launch can also carry caller-supplied environment variables into the Rhino process it starts (the MCP launch tools take a map; the CLI takes one `--env NAME=VALUE`). They exist for in-Rhino automation harnesses that arm on an environment read, they are scoped to that one process, and names with the `RWL_` prefix are refused because that prefix carries the launch identity.
+
 The journal is written before anything is touched and removed only after the launched Rhino is gone, so a launch killed mid-flight cannot leave the install seed behind. The next launch of the same plug-in restores the journal first: a displaced registration comes back, and a seed the killed launch left is deleted before it can make an ordinary Rhino session install the worktree artifact permanently.
 
 Every failure ends in a named diagnostic code identifying the step that failed, and a launch that queues behind another session's lock reports which launch holds it rather than expiring as an unexplained timeout. Each launch writes a JSONL log under `logs`, and the executor writes its own beside it, named in the first.
@@ -119,7 +121,7 @@ rwl project remove <id>
 rwl context --cwd <path> --json
 rwl worktree list --project <id> [--local-only] --json
 rwl worktree inspect --path <path> --json
-rwl launch --path <path> --timeout <seconds> --json
+rwl launch --path <path> --timeout <seconds> [--env <NAME=VALUE>] --json
 rwl rhino instances --json
 rwl doctor --json
 rwl integration status [claude|codex] --json
