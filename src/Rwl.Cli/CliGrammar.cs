@@ -25,9 +25,14 @@ internal sealed record WorktreeListCommand(
 
 internal sealed record WorktreeInspectCommand(string Path, bool Json) : CliCommand;
 
+// Environment carries one raw NAME=VALUE pair; Program parses it. One occurrence only,
+// like every value option here (first duplicate wins is a grammar-wide rule): the CLI is
+// the fallback launch host, and the harness case needs exactly one variable. The MCP
+// tools carry a full map.
 internal sealed record LaunchCommand(
     string Path,
     string? Timeout,
+    string? Environment,
     bool Json) : CliCommand;
 
 internal sealed record RhinoInstancesCommand(bool Json) : CliCommand;
@@ -60,6 +65,7 @@ internal static class CliGrammar
     private static readonly OptionSpec ProjectOption = OptionSpec.Value("--project", "<id>");
     private static readonly OptionSpec PathOption = OptionSpec.Value("--path", "<path>");
     private static readonly OptionSpec TimeoutOption = OptionSpec.Value("--timeout", "<seconds>");
+    private static readonly OptionSpec EnvOption = OptionSpec.Value("--env", "<NAME=VALUE>");
     private static readonly OptionSpec PipeOption = OptionSpec.Value("--pipe", "<name>");
     private static readonly OptionSpec BootstrapOption = OptionSpec.Value("--bootstrap", "<path>");
     private static readonly OptionSpec PluginProjectOption = OptionSpec.Value("--plugin-project", "<path>");
@@ -186,11 +192,13 @@ internal static class CliGrammar
                 {
                     OptionGroupSpec.Required(PathOption),
                     OptionGroupSpec.Optional(TimeoutOption),
+                    OptionGroupSpec.Optional(EnvOption),
                     OptionGroupSpec.Optional(JsonOption)
                 },
                 (arguments, _) => new LaunchCommand(
                     arguments.Required(PathOption),
                     arguments.Optional(TimeoutOption),
+                    arguments.Optional(EnvOption),
                     arguments.HasFlag(JsonOption))),
             new CommandSpec(
                 new[]

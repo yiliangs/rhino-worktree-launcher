@@ -31,6 +31,14 @@ internal sealed class LaunchExecutorEngine
         Guid pluginId = ParsePluginId(request, channel);
         if (pluginId == Guid.Empty)
             return channel.LastResult!;
+        // The same rule every host adapter applies, re-checked where the injection happens,
+        // so a caller-supplied variable can never displace the launch identity.
+        string? environmentOffense = LaunchEnvironment.Describe(request.Environment);
+        if (environmentOffense is not null)
+        {
+            channel.Result(LaunchExecutorCodes.ExecutorRequestInvalid, environmentOffense);
+            return channel.LastResult!;
+        }
 
         PluginNamespaceLeaseRequest leaseRequest = new PluginNamespaceLeaseRequest(
             request.LocksDirectory,
@@ -292,10 +300,16 @@ internal sealed class LaunchExecutorEngine
         startInfo.ArgumentList.Add("/notemplate");
         startInfo.ArgumentList.Add($"/{request.RhinoRuntime}");
         // Rhino otherwise inherits the interactive shell's environment, which is what an
-        // ordinary Rhino start gets (ADR 0015). These two variables are the one deliberate
-        // difference: they let code inside Rhino identify its own launch with one
-        // environment read, which matters because concurrent launches leave several Rhino
-        // processes running, each a different build.
+        // ordinary Rhino start gets (ADR 0015). The deliberate differences are the caller's
+        // requested variables (validated: never RWL_-prefixed) and the two identity
+        // variables written after them, which let code inside Rhino identify its own launch
+        // with one environment read, which matters because concurrent launches leave
+        // several Rhino processes running, each a different build.
+        if (request.Environment is not null)
+        {
+            foreach (KeyValuePair<string, string> variable in request.Environment)
+                startInfo.Environment[variable.Key] = variable.Value;
+        }
         startInfo.Environment[LaunchIdentity.LaunchIdVariable] = request.LaunchId;
         startInfo.Environment[LaunchIdentity.ArtifactVariable] = request.PluginPath;
         // The registration lease is the only loading mechanism. Also passing the .rhp on
@@ -319,6 +333,16 @@ internal sealed class LaunchExecutorEngine
             $"{LaunchIdentity.LaunchIdVariable}={request.LaunchId} and " +
             $"{LaunchIdentity.ArtifactVariable}='{request.PluginPath}', so code running inside " +
             "it can identify this launch without asking another process.");
+        if (request.Environment is not null && request.Environment.Count > 0)
+        {
+            // Names only: a caller-supplied value may be sensitive, and the name is what a
+            // reader needs to connect this launch to the harness it armed.
+            channel.Progress(
+                LaunchStage.Rhino,
+                LaunchExecutorCodes.RhinoEnvironmentInjected,
+                $"Rhino process {rhino.Id} also carries the requested variable(s) " +
+                $"{string.Join(", ", request.Environment.Keys)}.");
+        }
         return rhino;
     }
 

@@ -122,6 +122,7 @@ internal static class Program
         }
 
         double timeoutSeconds = ParseTimeout(command.Timeout);
+        IReadOnlyDictionary<string, string>? environment = ParseEnvironment(command.Environment);
         Progress<LaunchProgress>? progress = command.Json
             ? null
             : new Progress<LaunchProgress>(update => Console.Error.WriteLine($"[{update.StageToken}] {update.Message}"));
@@ -131,6 +132,7 @@ internal static class Program
                 context.Value!.BuildProfile.LaunchMode,
                 TimeSpan.FromSeconds(timeoutSeconds),
                 progress,
+                environment,
                 CancellationToken.None),
             command.Json,
             value => value.Status == LaunchStatus.Succeeded
@@ -237,6 +239,16 @@ internal static class Program
     {
         Console.Error.WriteLine(CliGrammar.Usage);
         return 2;
+    }
+
+    private static IReadOnlyDictionary<string, string>? ParseEnvironment(string? value)
+    {
+        if (value is null)
+            return null;
+        int separator = value.IndexOf('=');
+        return separator > 0
+            ? new Dictionary<string, string> { [value[..separator]] = value[(separator + 1)..] }
+            : throw new ArgumentException("--env expects NAME=VALUE.");
     }
 
     private static double ParseTimeout(string? value)

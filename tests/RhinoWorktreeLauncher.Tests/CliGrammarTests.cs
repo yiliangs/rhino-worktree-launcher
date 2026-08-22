@@ -13,7 +13,7 @@ public sealed class CliGrammarTests
           rwl context --cwd <path> [--json]
           rwl worktree list --project <id> [--local-only] [--json]
           rwl worktree inspect --path <path> [--json]
-          rwl launch --path <path> [--timeout <seconds>] [--json]
+          rwl launch --path <path> [--timeout <seconds>] [--env <NAME=VALUE>] [--json]
           rwl rhino instances [--json]
           rwl doctor [--json]
           rwl integration status [claude|codex] [--json]
@@ -50,7 +50,10 @@ public sealed class CliGrammarTests
                 new WorktreeInspectCommand("repository", Json: true)),
             (
                 new[] { "launch", "--path", "repository", "--timeout", "not-a-number", "--json" },
-                new LaunchCommand("repository", "not-a-number", Json: true)),
+                new LaunchCommand("repository", "not-a-number", Environment: null, Json: true)),
+            (
+                new[] { "launch", "--path", "repository", "--env", "NATALIE_SUITE_REPRO=1" },
+                new LaunchCommand("repository", null, "NATALIE_SUITE_REPRO=1", Json: false)),
             (
                 new[] { "rhino", "instances", "--json" },
                 new RhinoInstancesCommand(Json: true)),
@@ -175,7 +178,7 @@ public sealed class CliGrammarTests
                 Direct: false, NoRemote: false, Json: false),
             CliGrammar.Parse(new[] { "project", "register", "repository", "--plugin-project" }));
         Assert.Equal(
-            new LaunchCommand("repository", null, Json: false),
+            new LaunchCommand("repository", null, Environment: null, Json: false),
             CliGrammar.Parse(new[] { "launch", "--path", "repository", "--timeout" }));
     }
 

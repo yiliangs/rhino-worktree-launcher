@@ -24,6 +24,7 @@ public sealed class BuildFailureTests
             LaunchMode.BuildAndLaunch,
             TimeSpan.FromMinutes(2),
             progress: null,
+            environment: null,
             CancellationToken.None);
 
         Assert.False(result.Succeeded);
@@ -58,6 +59,7 @@ public sealed class BuildFailureTests
             LaunchMode.DirectLaunch,
             TimeSpan.FromMinutes(2),
             progress: null,
+            environment: null,
             CancellationToken.None);
 
         Assert.False(result.Succeeded);

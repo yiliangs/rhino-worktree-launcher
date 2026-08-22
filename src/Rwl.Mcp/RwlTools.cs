@@ -105,9 +105,10 @@ internal sealed class RwlTools
     public async Task<CallToolResult> BuildAndLaunchAsync(
         [Description("Absolute path inside the exact worktree to build and launch.")] string path,
         [Description("Terminal timeout in seconds. Must be between 1 and 1800.")] double timeoutSeconds = 180,
+        [Description("Optional environment variables injected into the launched Rhino process only — how an in-Rhino automation harness that arms on an environment read is entered through an ordinary launch. Names must not start with RWL_ (reserved for the launch identity).")] Dictionary<string, string>? environment = null,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken cancellationToken = default)
-        => await LaunchAsync(path, LaunchMode.BuildAndLaunch, timeoutSeconds, progress, cancellationToken);
+        => await LaunchAsync(path, LaunchMode.BuildAndLaunch, timeoutSeconds, environment, progress, cancellationToken);
 
     [McpServerTool(
         Name = "rhino_worktree_launch_existing",
@@ -122,14 +123,16 @@ internal sealed class RwlTools
     public async Task<CallToolResult> LaunchExistingAsync(
         [Description("Absolute path inside the exact worktree whose existing artifact should be launched.")] string path,
         [Description("Terminal timeout in seconds. Must be between 1 and 1800.")] double timeoutSeconds = 180,
+        [Description("Optional environment variables injected into the launched Rhino process only — how an in-Rhino automation harness that arms on an environment read is entered through an ordinary launch. Names must not start with RWL_ (reserved for the launch identity).")] Dictionary<string, string>? environment = null,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken cancellationToken = default)
-        => await LaunchAsync(path, LaunchMode.DirectLaunch, timeoutSeconds, progress, cancellationToken);
+        => await LaunchAsync(path, LaunchMode.DirectLaunch, timeoutSeconds, environment, progress, cancellationToken);
 
     private async Task<CallToolResult> LaunchAsync(
         string path,
         LaunchMode requestedLaunchMode,
         double timeoutSeconds,
+        Dictionary<string, string>? environment,
         IProgress<ProgressNotificationValue>? progress,
         CancellationToken cancellationToken)
     {
@@ -160,6 +163,7 @@ internal sealed class RwlTools
             requestedLaunchMode,
             TimeSpan.FromSeconds(timeoutSeconds),
             launchProgress,
+            environment,
             cancellationToken));
     }
 

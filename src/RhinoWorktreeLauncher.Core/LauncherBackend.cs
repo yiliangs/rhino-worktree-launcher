@@ -290,11 +290,13 @@ public sealed class LauncherBackend
         LaunchMode launchMode,
         TimeSpan timeout,
         IProgress<LaunchProgress>? progress,
+        IReadOnlyDictionary<string, string>? environment,
         CancellationToken cancellationToken) => _launchCoordinator.LaunchAsync(
             path,
             launchMode,
             timeout,
             progress,
+            environment,
             cancellationToken);
 
     public async Task<CommandResult<DoctorReport>> RunDoctorAsync(CancellationToken cancellationToken)

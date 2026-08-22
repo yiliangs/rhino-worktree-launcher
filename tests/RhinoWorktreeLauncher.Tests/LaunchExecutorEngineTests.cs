@@ -98,6 +98,53 @@ public sealed class LaunchExecutorEngineTests
             ReadWhileOpen(result.ExecutorLogPath!));
     }
 
+    // The caller's variables ride the same start request as the identity variables. This is
+    // the whole mechanism behind entering an in-Rhino harness through an ordinary launch:
+    // the harness arms on one environment read inside the launched process.
+    [Fact]
+    public async Task A_launch_injects_the_requested_environment_into_the_rhino_it_starts()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        using StandInRhino rhino = new StandInRhino(sandbox);
+        LaunchExecutorRequest request = Request(sandbox) with
+        {
+            Environment = new Dictionary<string, string> { ["NATALIE_SUITE_REPRO"] = "1" }
+        };
+
+        LaunchExecutorEvent result = await RunAsync(sandbox, rhino, request);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("1", rhino.Requested!.Environment["NATALIE_SUITE_REPRO"]);
+        // The identity variables still ride beside the caller's.
+        Assert.Equal(request.LaunchId, rhino.Requested.Environment[LaunchIdentity.LaunchIdVariable]);
+        Assert.Contains("NATALIE_SUITE_REPRO", ReadWhileOpen(result.ExecutorLogPath!));
+    }
+
+    // A caller must not be able to spoof the launch identity, and the refusal happens
+    // before Rhino starts, by name, on both sides of the pipe.
+    [Fact]
+    public async Task A_reserved_environment_name_ends_the_launch_as_an_invalid_request()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        using StandInRhino rhino = new StandInRhino(sandbox);
+        LaunchExecutorRequest request = Request(sandbox) with
+        {
+            Environment = new Dictionary<string, string> { ["RWL_ARTIFACT"] = @"C:\spoof.rhp" }
+        };
+
+        LaunchExecutorEvent result = await RunAsync(sandbox, rhino, request);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(LaunchExecutorCodes.ExecutorRequestInvalid, result.Code);
+        Assert.Null(rhino.ProcessId);
+    }
+
     [Fact]
     public async Task A_competing_machine_registration_ends_the_launch_before_rhino_starts()
     {
