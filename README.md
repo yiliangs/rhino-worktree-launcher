@@ -1,6 +1,6 @@
 # Rhino Worktree Launcher
 
-Rhino Worktree Launcher is a native Windows tool for registering Rhino plug-in projects, inspecting their Git worktrees, and launching the exact selected `.rhp` with loaded-binary verification. A shared .NET 8 backend serves the WPF desktop application, `rwl` CLI, and local stdio MCP server.
+Native Windows tool for registering Rhino plug-in projects, inspecting their Git worktrees, and launching the exact selected `.rhp` with loaded-binary verification. One .NET 8 backend serves the WPF desktop, `rwl` CLI, and stdio MCP server.
 
 ![The Rhino Worktree Launcher main window. A project drop-down reading "Acme Panelizer" sits above the repository path, and a rail below it lists six Git worktrees, each with its launch mode, its uncommitted line counts, and how long ago it was touched. Settings, Open folder, and Build and Launch run along the bottom.](docs/images/main-window.png)
 
@@ -8,63 +8,61 @@ Rhino Worktree Launcher is a native Windows tool for registering Rhino plug-in p
 
 ## Requirements
 
-- Windows x64 and Rhino 8. A registered project records Rhino 8, and the launch resolves `Rhino.exe` from that version's default installation directory. Rhino 7 and Rhino 9 are not supported yet.
-- Git and the .NET SDK on `PATH`. RWL runs the plug-in solution's ordinary build, so the SDK must be the one that solution needs. Run `rwl doctor` to check both.
-- A repository containing at least one Rhino plug-in project. Registration refuses a repository with none.
+- Windows x64 and Rhino 8. `Rhino.exe` resolves from that version's default install directory. Rhino 7 and Rhino 9 are not supported yet.
+- Git and the .NET SDK on `PATH`, the SDK your plug-in solution needs. `rwl doctor` checks both.
+- A repository with at least one Rhino plug-in project. Registration refuses one with none.
 
 ## Project and build model
 
-RWL uses the selected Git worktree as the source of truth. It never creates a second source or build tree. Project Config stores one Rhino plug-in project, Visual Studio solution, solution Configuration and Platform, plus the desktop launch-mode default for the whole registered Git project. If a repository contains multiple Rhino plug-in projects, Config presents them for an explicit choice instead of guessing from existing `.rhp` files. RWL reopens the same relative project and solution in the selected worktree and verifies the selection before launch.
+The selected Git worktree is the source of truth; RWL never creates a second source or build tree. Config stores one plug-in project, one solution, its Configuration and Platform, and the desktop launch-mode default, per registered Git project. Where a repository holds more than one plug-in project, Config asks instead of guessing from existing `.rhp` files. The same relative project and solution reopen in whichever worktree is selected.
 
-The two launch modes are:
+Two launch modes:
 
-- **Build & Launch** (default): run `dotnet build` on the selected solution and configuration in the selected worktree, evaluate the plug-in project's mapped `TargetPath`, then launch that `.rhp`.
-- **Direct Launch**: evaluate the same `TargetPath` and load the existing `.rhp` without building or making a freshness claim.
+- **Build & Launch** (default): `dotnet build` the selected solution and configuration in the selected worktree, evaluate the plug-in project's mapped `TargetPath`, launch that `.rhp`.
+- **Direct Launch**: evaluate the same `TargetPath` and load the existing `.rhp`, without building or claiming freshness.
 
-The desktop action follows the default saved in Config. MCP agents choose per request by calling `rhino_worktree_build_and_launch` or `rhino_worktree_launch_existing`; the MCP tools never inherit the desktop default.
+The desktop follows the Config default. MCP agents choose per request with `rhino_worktree_build_and_launch` or `rhino_worktree_launch_existing`, never inheriting that default.
 
-All ordinary build behavior remains owned by the solution and its MSBuild settings, including project imports, output paths, pre-build and post-build targets, and configuration mapping. RWL does not substitute a project-only build, copy the sources, reroute caches, or run an imported driver.
+Your solution and its MSBuild settings own all build behavior: imports, output paths, pre- and post-build targets, configuration mapping. RWL never substitutes a project-only build, copies sources, reroutes caches, or reads a driver or configuration file from your repository. Your plug-in needs no RWL command, callback, or receipt writer, and no receipt is used to infer freshness.
 
-Adding a project grants access to its Git worktrees and, by default, remote-status access. A Build & Launch operation can modify ordinary solution outputs in the selected worktree. The remote grant is optional and remains editable in Config.
+Registering a project grants access to its worktrees and, by default, remote status. Build & Launch can modify that worktree's ordinary solution outputs. The remote grant is optional and editable in Config. Refresh runs read-only Git, never fetching into the repository or moving its refs.
 
-RWL-owned state remains under `%LOCALAPPDATA%\RhinoWorktreeLauncher`:
+State lives under `%LOCALAPPDATA%\RhinoWorktreeLauncher`:
 
-- `projects.json`: project grants and canonical solution selections
-- `remotes\<project-id>.git`: remote mirror used for ahead/behind calculation
+- `projects.json`: grants and canonical solution selections
+- `remotes\<project-id>.git`: mirror for ahead/behind
 - `locks`: the per (Rhino version, plug-in ID) registration lock and journal
-- `logs`: terminal launch diagnostics, and the launch executor's own record of each launch
-
-Refresh uses read-only Git commands against the project. It does not fetch into the repository or update repository refs.
+- `logs`: launch diagnostics, and the executor's own record
 
 ## Launch and verification
 
-A launch performs these steps:
+A launch succeeds only once the Rhino it started holds the selected `.rhp` mapped in its address space. Process creation is not success, and an unverified Rhino is killed at the timeout.
 
-1. Resolve the registered project and exact Git worktree.
-2. Revalidate the saved solution and configuration in that worktree.
-3. Build the selected solution when the mode is Build & Launch, or skip the build in Direct Launch.
-4. Ask MSBuild for the plug-in project's mapped `TargetPath` and require that exact `.rhp` to exist.
-5. Start a launch executor through the interactive Windows shell and hand it the rest. Everything below happens in that process, never in the application, CLI, or MCP server that asked for the launch.
-6. Journal whatever is registered for that plug-in ID in both registry hives, then displace it: the current-user key is cleared and reseeded with Rhino's documented install seed, `Name` and `FileName` naming the selected `.rhp`, plus the `LoadMode` the displaced registration recorded so a plug-in that loads at startup keeps doing so. Where a machine registration already names the selected `.rhp`, the key is cleared and left empty, because Rhino loads the file from that registration already.
-7. Confirm through a separate process that the registration just written is really there, and stop before starting Rhino if it is not.
-8. Start Rhino. That registration is the only loading mechanism, and the `.rhp` is not passed on Rhino's command line.
-9. Wait for the launched Rhino process to map the selected `.rhp` into its address space.
+1. Resolve the registered project and exact worktree.
+2. Revalidate the saved solution and configuration there.
+3. Build, or skip the build in Direct Launch.
+4. Ask MSBuild for the plug-in project's mapped `TargetPath` and require that exact `.rhp`.
+5. Start a launch executor through the interactive Windows shell. Everything below runs there, never in the desktop, CLI, or MCP server that asked.
+6. Journal both registry hives for that plug-in ID, then displace: the current-user key is cleared and rewritten as Rhino's documented install seed naming the selected `.rhp`, carrying the load mode the displaced registration recorded so a startup plug-in still loads at startup. Where a machine registration already names that `.rhp`, the key is cleared and left empty, since Rhino loads it from there.
+7. Confirm from a separate process that the registration is really there, and stop before starting Rhino if it is not.
+8. Start Rhino. That registration is the only loading mechanism, and the `.rhp` never goes on Rhino's command line.
+9. Wait for that Rhino to map the selected `.rhp`.
 10. Fail closed unless that exact file is in use, then restore both hives from the journal.
-11. Stay behind, detached, until that Rhino exits, and put the pre-launch registrations back once more if Rhino rewrote them. The journal is deleted only then.
+11. Linger detached until Rhino exits, restore again if Rhino rewrote either hive, then delete the journal.
 
-Step 5 exists because a process can be started with its current-user registry writes intercepted, so that it reads its own writes back and sees them while the registry Rhino reads never receives them. That was observed for RWL's MCP server on 2026-08-18. A process the Windows shell starts is outside that interception. Step 7 is what makes the condition visible instead of silent: the writing process cannot detect it by reading its own key, so an independent process is asked, and a launch whose registration nobody else can see ends in seconds with `registry_seed_not_visible` rather than at the verification timeout. A host that cannot start an executor through the shell at all says so once at startup and fails every launch immediately with `interactive_spawn_unavailable`. Either code identifies the host rather than the worktree, so the fallback is the same launch from a host outside that process chain: `rwl launch --path <worktree>` in an ordinary terminal, or the desktop application. `rwl doctor` runs the same check on demand.
+Steps 5 and 7: a launcher host can run with its current-user registry writes intercepted, reading its own seed back while the registry Rhino reads never receives it. A shell-started process is outside that interception, and only an independent reader can catch it, so the launch fails in seconds with `registry_seed_not_visible` instead of at the verification timeout. A host that cannot reach the shell at all says so at startup and fails every launch with `interactive_spawn_unavailable`. Both codes name the host, not the worktree, so rerun from outside that process chain: `rwl launch --path <worktree>` in an ordinary terminal, or the desktop. `rwl doctor` checks on demand, and [ADR 0015](docs/adr/0015-mutate-registrations-only-from-an-interactive-launch-executor.md) records the observation behind it.
 
-Step 11 exists because Rhino writes the artifact it loaded back into its own registration, and it does so while the launch that started it has already restored and returned. Without it, a worktree path can be left registered for ordinary Rhino sessions.
+Step 11: Rhino writes the artifact it loaded back into its registration, after the launch that started it has restored and returned. Without the detached wait, a worktree path stays registered for ordinary Rhino sessions. The journal is written before anything is touched and deleted only once Rhino is gone, so a killed launch cannot strand its seed: the next launch of the same plug-in restores the journal first.
 
-A launch can also carry caller-supplied environment variables into the Rhino process it starts (the MCP launch tools take a map; the CLI takes one `--env NAME=VALUE`). They exist for in-Rhino automation harnesses that arm on an environment read, they are scoped to that one process, and names with the `RWL_` prefix are refused because that prefix carries the launch identity.
+Every failure carries a named diagnostic code for the step that failed, and a launch queued behind another session's lock names the holder rather than expiring unexplained. Each launch writes JSONL under `logs`, and the executor writes its own beside it, named in the first.
 
-The journal is written before anything is touched and removed only after the launched Rhino is gone, so a launch killed mid-flight cannot leave the install seed behind. The next launch of the same plug-in restores the journal first: a displaced registration comes back, and a seed the killed launch left is deleted before it can make an ordinary Rhino session install the worktree artifact permanently.
+A launch can carry caller-supplied environment variables into the Rhino it starts, for in-Rhino harnesses that arm on an environment read: MCP takes a map, the CLI one `--env NAME=VALUE`. They are scoped to that process, and `RWL_` names are refused because that prefix carries the launch identity.
 
-Every failure ends in a named diagnostic code identifying the step that failed, and a launch that queues behind another session's lock reports which launch holds it rather than expiring as an unexplained timeout. Each launch writes a JSONL log under `logs`, and the executor writes its own beside it, named in the first.
+### A competing machine-wide registration
 
-If a machine-wide registration claims the same plug-in ID and names a different file, for example an all-users install or a registration left by debugging another checkout, Rhino resolves the duplicate ID to that machine-wide file. Where your account holds write access to the machine `Plug-ins` key, granted once with an elevated account, the launch displaces that registration too and restores it when the launch ends, so ordinary Rhino sessions keep the installed copy. Without that access the launch refuses before Rhino starts and names the exact key, since RWL never elevates; grant the access or remove the key if it is stale. A machine registration already naming the selected `.rhp` is not a conflict. An existing current-user registration never blocks a launch: it is captured whole, displaced, and restored afterward.
+A machine-wide registration for the same plug-in ID naming a different file, say an all-users install or one left from debugging another checkout, wins: Rhino resolves the duplicate ID to that file. With write access to the machine `Plug-ins` key, granted once from an elevated account, the launch displaces and restores that one too, so ordinary sessions keep the installed copy. Without that access the launch refuses before Rhino starts and names the key, since RWL never elevates; grant access, or remove the key if it is stale. A machine registration already naming the selected `.rhp` is not a conflict, and a current-user registration never blocks a launch: it is captured whole, displaced, and restored.
 
-To grant the access, run once from an elevated PowerShell:
+Grant it once from an elevated PowerShell:
 
 ```powershell
 $path = 'HKLM:\SOFTWARE\McNeel\Rhinoceros\8.0\Plug-ins'
@@ -74,14 +72,10 @@ $acl.AddAccessRule([System.Security.AccessControl.RegistryAccessRule]::new(
 Set-Acl $path $acl
 ```
 
-The launched plug-in does not need to expose an RWL command, callback, or receipt writer. A build receipt is not used to infer freshness.
-
 ## Desktop configuration
 
-The main window separates two scopes:
-
-- **Config** is project-specific. It selects the Rhino plug-in project, solution, Configuration and Platform, Build & Launch or Direct Launch, remote reads, and remote-cache clearing.
-- **Settings** is global. It contains MCP setup for Claude Code and Codex.
+- **Config** is per project: plug-in project, solution, Configuration and Platform, Build & Launch or Direct Launch, remote reads, remote-cache clearing.
+- **Settings** is global: MCP setup for Claude Code and Codex.
 
 The primary action follows Config and reads **Build & Launch** or **Launch Rhino**.
 
@@ -89,13 +83,13 @@ The primary action follows Config and reads **Build & Launch** or **Launch Rhino
 
 ### End users
 
-Download `RhinoWorktreeLauncher-<version>-win-x64.zip` from a GitHub release, extract it, and double-click `Install.bat`. The package is self-contained, so the user does not need the .NET SDK. It installs a versioned payload and the stable `%LOCALAPPDATA%\RhinoWorktreeLauncher\bootstrap\rwl.exe`, then opens the desktop application.
+Download `RhinoWorktreeLauncher-<version>-win-x64.zip` from a release, extract it, and double-click `Install.bat`. It installs a versioned payload plus the stable `%LOCALAPPDATA%\RhinoWorktreeLauncher\bootstrap\rwl.exe`, then opens the desktop. `--no-shortcut` skips the Start Menu entry.
 
-The packaged install needs nothing beyond Windows itself. The payload's own `rwl.exe` performs it, so there is no PowerShell to install and no execution policy to change. Pass `--no-shortcut` to skip the Start Menu entry.
+Nothing beyond Windows is required. The package is self-contained, so no .NET SDK, and its own `rwl.exe` performs the install, so no PowerShell and no execution policy to change.
 
-Each release publishes a SHA-256 checksum beside the archive. The binaries are not yet Authenticode-signed, so Windows SmartScreen may warn until a signing certificate is added to the release pipeline.
+Each release publishes a SHA-256 checksum beside the archive. Binaries are not yet Authenticode-signed, so SmartScreen may warn until signing is added.
 
-Use **Settings** in the desktop application to configure Claude Code or Codex. RWL updates only its owned client entry, creates a `.rwl-backup` beside an existing client configuration before changing it, and reports whether the stable bootstrap is available. Restart the client after setup.
+Configure Claude Code or Codex from **Settings**. RWL touches only its own client entry, backs up an existing client configuration to `.rwl-backup` first, and reports whether the stable bootstrap is available. Restart the client afterward.
 
 ### Developers
 
@@ -109,31 +103,33 @@ pwsh -NoProfile -File src/RhinoWorktreeLauncher/Install-RhinoWorktreeLauncher.ps
   -Launch
 ```
 
-Source installation first produces the same installable payload as a release package, then installs that payload. `eng/New-RwlPackage.ps1` is the only binary producer; the installer never maintains a second publish path.
+Source install asks `eng/New-RwlPackage.ps1`, the only producer of installable binaries, for the same payload a release contains, then installs it.
 
-Each update publishes a versioned release under `%LOCALAPPDATA%\RhinoWorktreeLauncher\releases`. The Start Menu shortcut, CLI, MCP registration, and Claude hook target the stable bootstrap. The bootstrap reads `current.json`, so integrations do not contain version-specific paths.
+Each update publishes a versioned release under `%LOCALAPPDATA%\RhinoWorktreeLauncher\releases`. Shortcut, CLI, MCP registration, and Claude hook all target the stable bootstrap, which reads `current.json`, so integrations hold no version-specific paths.
 
 ## CLI
 
 ```text
-rwl project register <path> [--plugin-project <path>] [--solution <path>] [--configuration <name> --platform <name>] [--direct] [--no-remote]
-rwl project remove <id>
-rwl context --cwd <path> --json
-rwl worktree list --project <id> [--local-only] --json
-rwl worktree inspect --path <path> --json
-rwl launch --path <path> --timeout <seconds> [--env <NAME=VALUE>] --json
-rwl rhino instances --json
-rwl doctor --json
-rwl integration status [claude|codex] --json
-rwl integration install <claude|codex> [--no-session-context]
-rwl integration remove <claude|codex>
+rwl project register <path> [--plugin-project <path>] [--solution <path>] [--configuration <name> --platform <name>] [--direct] [--no-remote] [--json]
+rwl project remove <id> [--json]
+rwl context --cwd <path> [--json]
+rwl worktree list --project <id> [--local-only] [--json]
+rwl worktree inspect --path <path> [--json]
+rwl launch --path <path> [--timeout <seconds>] [--env <NAME=VALUE>] [--json]
+rwl rhino instances [--json]
+rwl doctor [--json]
+rwl integration status [claude|codex] [--json]
+rwl integration install <claude|codex> [--bootstrap <path>] [--no-session-context] [--json]
+rwl integration remove <claude|codex> [--json]
 ```
 
-`rwl rhino instances` lists every live Rhino process with its start time and the plug-in artifacts it holds mapped in its address space, read the same way a launch verifies its own Rhino. Concurrent launches legitimately leave several verified Rhino processes running, each a different build, so this is how a caller that does not already hold a launch result's `rhinoProcessId` decides which process to act on. A Rhino this account may not read is listed as unattributable with the reason rather than omitted. MCP clients call `rhino_worktree_attribution` for the same answer, and `rwl doctor` includes it beside its process inventory.
+`rwl --help` prints the same list, generated from the parser.
 
-`rwl doctor` also lists the RWL processes that are running: role, release directory, start time, and whether the process that started each one is still alive. It warns about a server whose parent is gone, which can serve nobody, and about one still serving a release the installation has replaced. Servers end with the session that started them, so an orphan means a process from an earlier release.
+`rwl rhino instances` lists every live Rhino with its start time and the plug-in artifacts it holds mapped, read the way a launch verifies its own. Concurrent launches legitimately leave several verified Rhinos running, each a different build, so this is how a caller without a launch result's `rhinoProcessId` picks one. A Rhino this account cannot read is listed as unattributable with the reason, not omitted. MCP calls `rhino_worktree_attribution` for the same answer; `rwl doctor` includes it beside its process inventory.
 
-Claude Code can optionally receive a SessionStart message resolving the exact registered worktree. The MCP server independently publishes tool descriptions, JSON schemas, server instructions, side-effect annotations, cancellation behavior, and backend-enforced project grants. Its separate build-and-launch and launch-existing tools make the per-request build choice explicit while preserving RWL verification in both paths.
+`rwl doctor` also lists live RWL processes: role, release directory, start time, parent alive. Since a server ends with the session that started it, two states warn: a parentless server, which can serve nobody, and one serving a release the installation has replaced.
+
+Claude Code can optionally receive a SessionStart message naming the exact registered worktree. The MCP server's separate build-and-launch and launch-existing tools make the per-request build choice explicit, with RWL verification governing both. Grants are backend-enforced: a path no registered project covers is refused with `project_not_registered`.
 
 ## Build and verify
 
@@ -143,7 +139,7 @@ dotnet test tests/RhinoWorktreeLauncher.Tests/RhinoWorktreeLauncher.Tests.csproj
 dotnet test tests/RhinoWorktreeLauncher.UiTests/RhinoWorktreeLauncher.UiTests.csproj
 ```
 
-To produce the same self-contained package used by releases:
+Package exactly as releases do:
 
 ```powershell
 pwsh -NoProfile -File eng/New-RwlPackage.ps1 `
@@ -151,13 +147,10 @@ pwsh -NoProfile -File eng/New-RwlPackage.ps1 `
   -Version 1.0.0
 ```
 
-The WPF application remains a fixed 720 x 1000 native surface with embedded IBM Plex Sans and Geist Mono fonts. Backend code is in `RhinoWorktreeLauncher.Core`; WPF, CLI, and MCP projects contain presentation or transport logic only.
+The WPF app is a fixed 720 x 1000 native surface with embedded IBM Plex Sans and Geist Mono. Backend lives in `RhinoWorktreeLauncher.Core`; WPF, CLI, and MCP hold presentation or transport only.
 
 ## License
 
-Rhino Worktree Launcher is released under the MIT License. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
-The embedded IBM Plex Sans and Geist Mono font files are not covered by that
-license. They remain under the SIL Open Font License, Version 1.1, with the
-full text and attribution in
-[`src/RhinoWorktreeLauncher/Assets/Fonts/LICENSES.txt`](src/RhinoWorktreeLauncher/Assets/Fonts/LICENSES.txt).
+The embedded IBM Plex Sans and Geist Mono files are not covered by it. They remain under the SIL Open Font License 1.1, with full text and attribution in [`src/RhinoWorktreeLauncher/Assets/Fonts/LICENSES.txt`](src/RhinoWorktreeLauncher/Assets/Fonts/LICENSES.txt).
