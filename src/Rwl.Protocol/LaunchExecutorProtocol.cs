@@ -40,6 +40,12 @@ internal static class LaunchExecutorMode
     // A round trip that proves the interactive spawn chain works without touching a
     // registration: the host spawns an executor, the executor answers, both end.
     public const string Ping = "ping";
+
+    // Rewrites the standing registration so an ordinary Rhino start loads the requested
+    // artifact. It is a registry mutation, so it belongs here rather than in a host
+    // (ADR 0015, 0016). No protocol version raise: an executor that predates this mode
+    // answers it as executor_request_invalid, which is loud rather than silent.
+    public const string SetRegistration = "set-registration";
 }
 
 internal static class LaunchExecutorEventKind
@@ -72,6 +78,9 @@ internal static class LaunchExecutorCodes
     public const string PluginRegistrationDisplaced = "plugin_registration_displaced";
     public const string PluginRegistrationSeeded = "plugin_registration_seeded";
     public const string PluginRegistrationRestored = "plugin_registration_restored";
+    public const string PluginRegistrationSwitched = "plugin_registration_switched";
+    public const string PluginRegistrationJournalPending = "plugin_registration_journal_pending";
+    public const string PluginRegistrationNotVisible = "plugin_registration_not_visible";
     public const string RegistrationWriteBackCorrected = "registration_write_back_corrected";
     public const string RegistrationWriteBackUnrestorable = "registration_write_back_unrestorable";
     public const string RhinoStarted = "rhino_started";
@@ -167,6 +176,14 @@ internal sealed record LaunchExecutorEvent
     public bool Succeeded { get; init; }
     public int RhinoProcessId { get; init; }
     public string? ExecutorLogPath { get; init; }
+
+    // Where a set-registration result was written and what that registration named before,
+    // null on every other result the way RhinoProcessId is zero outside a launch. Only the
+    // process that performed the write knows these, so it reports them rather than leaving
+    // its client to read the registry back and hope nothing moved in between.
+    public string? RegistryHive { get; init; }
+    public string? RegistryKeyPath { get; init; }
+    public string? PreviousRegisteredPath { get; init; }
 
     public bool IsResult => string.Equals(Kind, LaunchExecutorEventKind.Result, StringComparison.Ordinal);
 }

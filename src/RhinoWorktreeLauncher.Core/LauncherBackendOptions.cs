@@ -51,6 +51,10 @@ public sealed class LauncherBackendOptions
         RhinoInstanceReader.MappedPlugIns;
     internal Func<string, ProjectBuildOptions> ProjectBuildOptionsDiscovery { get; init; } =
         BuildProfileDiscovery.DiscoverOptions;
+    // The registration Rhino resolves for a project's plug-in ID outside any launch. Reading
+    // it in a host process is allowed; only mutation belongs to the executor (ADR 0015).
+    internal Func<int, Guid, RegisteredPlugin?> StandingRegistrationReader { get; init; } =
+        StandingRegistration.Read;
 
     private static string ResolveGitHubCliPath()
     {

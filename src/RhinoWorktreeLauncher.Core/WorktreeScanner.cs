@@ -29,6 +29,7 @@ internal sealed class WorktreeScanner
             listed.Value));
         CommandResult<ProjectWorktrees> local = await EnrichLocalAsync(
             listed.Value,
+            listed.Diagnostics,
             cancellationToken);
         if (!local.Succeeded || local.Value is null)
             return local;
@@ -63,13 +64,20 @@ internal sealed class WorktreeScanner
                 primary,
                 new[] { "worktree", "list", "--porcelain" },
                 cancellationToken);
+            List<Diagnostic> diagnostics = new List<Diagnostic>();
+            // Read once per scan: which build Rhino loads outside RWL is one registry fact,
+            // not a fact about each worktree.
+            RegisteredPlugin? registration = ReadStandingRegistration(project, diagnostics);
             List<WorktreeSnapshot> worktrees = new List<WorktreeSnapshot>();
             foreach (WorktreeDescriptor descriptor in Parse(listing))
                 worktrees.Add(CreateListedSnapshot(project, descriptor));
 
-            return CommandResult<ProjectWorktrees>.Success(new ProjectWorktrees(
-                project,
-                Order(worktrees)));
+            return CommandResult<ProjectWorktrees>.Success(
+                new ProjectWorktrees(
+                    project,
+                    Order(MarkRegistered(worktrees, registration)),
+                    registration),
+                diagnostics);
         }
         catch (OperationCanceledException)
         {
@@ -106,17 +114,89 @@ internal sealed class WorktreeScanner
             null,
             false,
             isPrimary,
+            false,
             project.Registration.BuildProfile.LaunchMode,
             canLaunch,
             false,
             false);
     }
 
+    private RegisteredPlugin? ReadStandingRegistration(
+        ProjectSnapshot project,
+        List<Diagnostic> diagnostics)
+    {
+        Guid pluginId = project.Registration.BuildProfile.Artifacts.PluginId;
+        if (pluginId == Guid.Empty)
+            return null;
+
+        try
+        {
+            return _options.StandingRegistrationReader(project.Registration.RhinoVersion, pluginId);
+        }
+        // A registration RWL cannot read is one chip the surface cannot show, never a scan
+        // that failed: the worktrees are still the answer the caller asked for.
+        catch (Exception exception)
+        {
+            diagnostics.Add(new Diagnostic(
+                "standing_registration_unavailable",
+                "The plug-in registration Rhino resolves outside RWL could not be read: " +
+                exception.Message,
+                DiagnosticSeverity.Warning));
+            return null;
+        }
+    }
+
+    // The registered worktree is the one whose tree contains the registered file. A worktree
+    // nested under the primary checkout lies under both, so the longest match wins and
+    // exactly one row is marked. A registered file outside every worktree marks none.
+    private static IReadOnlyList<WorktreeSnapshot> MarkRegistered(
+        IReadOnlyList<WorktreeSnapshot> worktrees,
+        RegisteredPlugin? registration)
+    {
+        if (registration is null)
+            return worktrees;
+
+        WorktreeSnapshot? registered = worktrees
+            .Where(worktree => Contains(worktree.Path, registration.Path))
+            .OrderByDescending(worktree => worktree.Path.Length)
+            .FirstOrDefault();
+        return registered is null
+            ? worktrees
+            : worktrees
+                .Select(worktree => ReferenceEquals(worktree, registered)
+                    ? worktree with { IsRegistered = true }
+                    : worktree)
+                .ToArray();
+    }
+
+    // A registration RWL cannot even parse names no worktree rather than throwing a scan
+    // away.
+    private static bool Contains(string worktreePath, string registeredPath)
+    {
+        try
+        {
+            return PathIdentity.IsUnder(registeredPath, worktreePath);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+        catch (PathTooLongException)
+        {
+            return false;
+        }
+    }
+
     private async Task<CommandResult<ProjectWorktrees>> EnrichLocalAsync(
         ProjectWorktrees listed,
+        IReadOnlyList<Diagnostic> listedDiagnostics,
         CancellationToken cancellationToken)
     {
-        List<Diagnostic> diagnostics = new List<Diagnostic>();
+        List<Diagnostic> diagnostics = new List<Diagnostic>(listedDiagnostics);
         List<WorktreeSnapshot> worktrees = new List<WorktreeSnapshot>();
         foreach (WorktreeSnapshot worktree in listed.Worktrees)
         {
@@ -151,7 +231,7 @@ internal sealed class WorktreeScanner
         }
 
         return CommandResult<ProjectWorktrees>.Success(
-            new ProjectWorktrees(listed.Project, Order(worktrees)),
+            new ProjectWorktrees(listed.Project, Order(worktrees), listed.Registration),
             diagnostics);
     }
 
@@ -266,7 +346,7 @@ internal sealed class WorktreeScanner
         ApplyDivergenceScale(worktrees);
 
         return CommandResult<ProjectWorktrees>.Success(
-            new ProjectWorktrees(local.Project, Order(worktrees)),
+            new ProjectWorktrees(local.Project, Order(worktrees), local.Registration),
             diagnostics);
     }
 

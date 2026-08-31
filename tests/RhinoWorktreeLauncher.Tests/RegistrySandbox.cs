@@ -106,6 +106,35 @@ internal sealed class RegistrySandbox : IPluginNamespace, IDisposable
             request.Holder,
             cancellationToken);
 
+    public Task<RegistrationSwitchResult> SwitchAsync(
+        PluginNamespaceLeaseRequest request,
+        IProgress<FileLockWait>? waiting,
+        CancellationToken cancellationToken) => PluginNamespaceLease.SwitchAsync(
+            Registry.CurrentUser,
+            UserPluginsKeyPath,
+            Registry.CurrentUser,
+            MachinePluginsKeyPath,
+            JournalPathFor(request.PluginId),
+            LockPathFor(request.PluginId),
+            request.PluginId,
+            request.PluginName,
+            request.PluginPath,
+            request.Holder,
+            waiting,
+            cancellationToken);
+
+    public Task<RegistrationSwitchResult> SwitchAsync(string pluginPath) => SwitchAsync(
+        new PluginNamespaceLeaseRequest(
+            LocksDirectory,
+            RhinoVersion,
+            PluginId,
+            "Sample",
+            pluginPath,
+            Holder("test-switch"),
+            VisibilityNonce: string.Empty),
+        waiting: null,
+        CancellationToken.None);
+
     public Task<PluginNamespaceLeaseResult> AcquireAsync(string pluginPath) =>
         AcquireAsync(pluginPath, PluginId, CancellationToken.None);
 

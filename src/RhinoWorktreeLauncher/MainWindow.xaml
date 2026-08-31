@@ -241,6 +241,26 @@
             </Setter>
         </Style>
 
+        <!-- The action that lives inside a worktree row. It is the footer buttons' control,
+             smaller, so a row action reads as something to press rather than as another
+             chip stating a fact. Visibility belongs to the style rather than to the button,
+             so no local value can outrank the trigger that decides when the row offers it. -->
+        <Style x:Key="RowActionButton" TargetType="Button" BasedOn="{StaticResource ControlButton}">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
+                        <Condition Binding="{Binding IsRegistered}" Value="False" />
+                        <Condition Binding="{Binding HasBuildConfiguration}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="PrimaryButton" TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
             <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
@@ -596,6 +616,11 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="200" />
+                            <!-- The rows reserve a trailing gutter for their own action, so
+                                 the header reserves the same width. Without it the BEHIND
+                                 and AHEAD captions stand over empty space and the bars they
+                                 name sit a gutter's width to their left. -->
+                            <ColumnDefinition x:Name="HeaderActionSpacer" Width="108" />
                         </Grid.ColumnDefinitions>
                         <local:TrackingTextBlock Grid.Column="0"
                                    VerticalAlignment="Center"
@@ -613,7 +638,9 @@
                                    FontSize="11"
                                    LineHeight="13.2"
                                    LineStackingStrategy="BlockLineHeight" />
-                        <Grid Grid.Column="4" Width="200">
+                        <Grid x:Name="DivergenceCaptions"
+                              Grid.Column="4"
+                              Width="200">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="99" />
                                 <ColumnDefinition Width="2" />
@@ -668,206 +695,248 @@
                             </ListBox.Template>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
+                                    <!-- Two columns: everything the row says, and a gutter
+                                         carved on the right for the one thing the row does.
+                                         Identity anchors the left edge and the metrics
+                                         already sit right, so the action goes beyond them,
+                                         inside the content and therefore clear of the
+                                         scrollbar that floats over the row's own padding. -->
+                                    <Grid x:Name="WorktreeRow">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="12" />
+                                            <ColumnDefinition x:Name="RowActionGutter" Width="96" />
+                                        </Grid.ColumnDefinitions>
 
-                                        <local:InlineIdentityPanel Grid.Row="0"
-                                                                   Gap="9">
-                                            <TextBlock x:Name="WorktreeName"
-                                                       MinWidth="48"
-                                                       VerticalAlignment="Center"
-                                                       Text="{Binding DisplayName}"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       TextWrapping="NoWrap"
-                                                       ToolTip="{Binding DisplayName}"
-                                                       Foreground="{DynamicResource TextBodyBrush}"
-                                                       FontFamily="{StaticResource MonoFont}"
-                                                       FontSize="14"
-                                                       LineHeight="16.8"
-                                                       LineStackingStrategy="BlockLineHeight"
-                                                       FontWeight="Normal" />
-                                            <local:InsetHighlightBorder Padding="6,3"
-                                                                        VerticalAlignment="Center"
-                                                                        Background="{DynamicResource BadgeBrush}"
-                                                                        BorderBrush="{DynamicResource BadgeBorderBrush}"
-                                                                        BorderThickness="1"
-                                                                        CornerRadius="{StaticResource SmallCornerRadius}"
-                                                                        Effect="{DynamicResource ChipShadowEffect}"
-                                                                        HighlightBrush="{DynamicResource ChipHighlightBrush}"
-                                                                        Visibility="{Binding IsPrimary, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <local:TrackingTextBlock Text="DEFAULT"
-                                                                         Tracking="0.1"
-                                                                         LineHeight="9"
-                                                                         Foreground="{DynamicResource TextBadgeBrush}"
-                                                                         FontSize="9"
-                                                                         FontWeight="Medium" />
-                                            </local:InsetHighlightBorder>
-                                            <local:InsetHighlightBorder x:Name="PullRequestBadge"
-                                                                        Padding="7,3"
-                                                                        VerticalAlignment="Center"
-                                                                        Background="{DynamicResource FreshBackgroundBrush}"
-                                                                        BorderBrush="{DynamicResource FreshBorderBrush}"
-                                                                        BorderThickness="1"
-                                                                        CornerRadius="{StaticResource SmallCornerRadius}"
-                                                                        Effect="{DynamicResource ChipShadowEffect}"
-                                                                        HighlightBrush="{DynamicResource ChipHighlightBrush}"
-                                                                        Visibility="{Binding HasPullRequest, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <Ellipse x:Name="PullRequestDot"
-                                                             Width="5"
-                                                             Height="5"
-                                                             Margin="0,0,5,0"
-                                                             VerticalAlignment="Center"
-                                                             Fill="{DynamicResource AheadFillBrush}" />
-                                                    <TextBlock x:Name="PullRequestText"
-                                                               Text="{Binding PullRequestLabel}"
-                                                               Foreground="{DynamicResource FreshTextBrush}"
-                                                               FontFamily="{StaticResource MonoFont}"
-                                                               FontSize="10"
-                                                               LineHeight="10"
-                                                               LineStackingStrategy="BlockLineHeight"
-                                                               FontWeight="Medium" />
-                                                </StackPanel>
-                                            </local:InsetHighlightBorder>
-                                        </local:InlineIdentityPanel>
+                                        <Grid Grid.Column="0">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="8" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
 
-                                        <Grid Grid.Row="2">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="18" />
-                                                <ColumnDefinition Width="200" />
-                                            </Grid.ColumnDefinitions>
-
-                                            <Grid Grid.Column="0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="9" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="9" />
-                                                    <ColumnDefinition Width="*" />
-                                                </Grid.ColumnDefinitions>
-                                                <local:InsetHighlightBorder x:Name="LaunchModeBadge"
-                                                                            Grid.Column="0"
-                                                                            Padding="6,3"
+                                            <local:InlineIdentityPanel Grid.Row="0"
+                                                                       Gap="9">
+                                                <TextBlock x:Name="WorktreeName"
+                                                           MinWidth="48"
+                                                           VerticalAlignment="Center"
+                                                           Text="{Binding DisplayName}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           TextWrapping="NoWrap"
+                                                           ToolTip="{Binding DisplayName}"
+                                                           Foreground="{DynamicResource TextBodyBrush}"
+                                                           FontFamily="{StaticResource MonoFont}"
+                                                           FontSize="14"
+                                                           LineHeight="16.8"
+                                                           LineStackingStrategy="BlockLineHeight"
+                                                           FontWeight="Normal" />
+                                                <local:InsetHighlightBorder Padding="6,3"
+                                                                            VerticalAlignment="Center"
+                                                                            Background="{DynamicResource BadgeBrush}"
+                                                                            BorderBrush="{DynamicResource BadgeBorderBrush}"
+                                                                            BorderThickness="1"
+                                                                            CornerRadius="{StaticResource SmallCornerRadius}"
+                                                                            Effect="{DynamicResource ChipShadowEffect}"
+                                                                            HighlightBrush="{DynamicResource ChipHighlightBrush}"
+                                                                            ToolTip="The repository's main working tree"
+                                                                            Visibility="{Binding IsPrimary, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <local:TrackingTextBlock Text="PRIMARY"
+                                                                             Tracking="0.1"
+                                                                             LineHeight="9"
+                                                                             Foreground="{DynamicResource TextBadgeBrush}"
+                                                                             FontSize="9"
+                                                                             FontWeight="Medium" />
+                                                </local:InsetHighlightBorder>
+                                                <local:InsetHighlightBorder Padding="6,3"
+                                                                            VerticalAlignment="Center"
+                                                                            Background="{DynamicResource BadgeBrush}"
+                                                                            BorderBrush="{DynamicResource BadgeBorderBrush}"
+                                                                            BorderThickness="1"
+                                                                            CornerRadius="{StaticResource SmallCornerRadius}"
+                                                                            Effect="{DynamicResource ChipShadowEffect}"
+                                                                            HighlightBrush="{DynamicResource ChipHighlightBrush}"
+                                                                            ToolTip="Rhino loads this worktree's build when started outside RWL"
+                                                                            Visibility="{Binding IsRegistered, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <local:TrackingTextBlock Text="DEFAULT"
+                                                                             Tracking="0.1"
+                                                                             LineHeight="9"
+                                                                             Foreground="{DynamicResource TextBadgeBrush}"
+                                                                             FontSize="9"
+                                                                             FontWeight="Medium" />
+                                                </local:InsetHighlightBorder>
+                                                <local:InsetHighlightBorder x:Name="PullRequestBadge"
+                                                                            Padding="7,3"
+                                                                            VerticalAlignment="Center"
                                                                             Background="{DynamicResource FreshBackgroundBrush}"
                                                                             BorderBrush="{DynamicResource FreshBorderBrush}"
                                                                             BorderThickness="1"
                                                                             CornerRadius="{StaticResource SmallCornerRadius}"
                                                                             Effect="{DynamicResource ChipShadowEffect}"
-                                                                            HighlightBrush="{DynamicResource ChipHighlightBrush}">
-                                                    <local:TrackingTextBlock x:Name="LaunchModeText"
-                                                               Text="{Binding LaunchModeLabel}"
-                                                               Tracking="0.1"
-                                                               LineHeight="9"
-                                                               Foreground="{DynamicResource FreshTextBrush}"
-                                                               FontSize="9"
-                                                               FontWeight="Medium" />
-                                                </local:InsetHighlightBorder>
-                                                <local:InsetHighlightBorder Grid.Column="2"
-                                                                            Padding="7,3"
-                                                                            Background="{DynamicResource DiffBoxBrush}"
-                                                                            BorderBrush="{DynamicResource DiffBoxBorderBrush}"
-                                                                            BorderThickness="1"
-                                                                            CornerRadius="{StaticResource SmallCornerRadius}"
-                                                                            Effect="{DynamicResource ChipShadowEffect}"
-                                                                            HighlightBrush="{DynamicResource ChipHighlightBrush}">
-                                                    <StackPanel VerticalAlignment="Center"
-                                                                Orientation="Horizontal">
-                                                        <TextBlock x:Name="AddedText"
-                                                                   VerticalAlignment="Center"
-                                                                   Text="{Binding LocalAdded, StringFormat=+{0}}"
-                                                                   Foreground="{DynamicResource AheadTextBrush}"
+                                                                            HighlightBrush="{DynamicResource ChipHighlightBrush}"
+                                                                            Visibility="{Binding HasPullRequest, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Ellipse x:Name="PullRequestDot"
+                                                                 Width="5"
+                                                                 Height="5"
+                                                                 Margin="0,0,5,0"
+                                                                 VerticalAlignment="Center"
+                                                                 Fill="{DynamicResource AheadFillBrush}" />
+                                                        <TextBlock x:Name="PullRequestText"
+                                                                   Text="{Binding PullRequestLabel}"
+                                                                   Foreground="{DynamicResource FreshTextBrush}"
                                                                    FontFamily="{StaticResource MonoFont}"
-                                                                   FontSize="10.5"
-                                                                   LineHeight="10.5"
-                                                                   LineStackingStrategy="BlockLineHeight" />
-                                                        <Border Width="1"
-                                                                Height="9"
-                                                                Margin="7,0"
-                                                                VerticalAlignment="Center"
-                                                                Background="{DynamicResource DiffBoxBorderBrush}" />
-                                                        <TextBlock x:Name="DeletedText"
-                                                                   VerticalAlignment="Center"
-                                                                   Text="{Binding LocalDeleted, StringFormat=−{0}}"
-                                                                   Foreground="{DynamicResource BehindTextBrush}"
-                                                                   FontFamily="{StaticResource MonoFont}"
-                                                                   FontSize="10.5"
-                                                                   LineHeight="10.5"
-                                                                   LineStackingStrategy="BlockLineHeight" />
+                                                                   FontSize="10"
+                                                                   LineHeight="10"
+                                                                   LineStackingStrategy="BlockLineHeight"
+                                                                   FontWeight="Medium" />
                                                     </StackPanel>
                                                 </local:InsetHighlightBorder>
-                                                <TextBlock x:Name="ActivityText"
-                                                           Grid.Column="4"
-                                                           VerticalAlignment="Center"
-                                                           Text="{Binding RelativeActivityLabel}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           TextWrapping="NoWrap"
-                                                           Foreground="{DynamicResource TextMutedBrush}"
-                                                           FontSize="11"
-                                                           LineHeight="11"
-                                                           LineStackingStrategy="BlockLineHeight" />
-                                            </Grid>
+                                            </local:InlineIdentityPanel>
 
-                                            <Grid Grid.Column="2"
-                                                  Width="200"
-                                                  ToolTip="Compared with the default branch">
+                                            <Grid Grid.Row="2">
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="99" />
-                                                    <ColumnDefinition Width="2" />
-                                                    <ColumnDefinition Width="99" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="18" />
+                                                    <ColumnDefinition Width="200" />
                                                 </Grid.ColumnDefinitions>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto" />
-                                                    <RowDefinition Height="6" />
-                                                    <RowDefinition Height="5" />
-                                                </Grid.RowDefinitions>
-                                                <TextBlock x:Name="BehindText"
-                                                           Grid.Column="0"
-                                                           Margin="0,0,9,0"
-                                                           HorizontalAlignment="Right"
-                                                           Text="{Binding BehindCount}"
-                                                           Foreground="{DynamicResource BehindTextBrush}"
-                                                           FontFamily="{StaticResource MonoFont}"
-                                                           FontSize="10.5"
-                                                           LineHeight="10.5"
-                                                           LineStackingStrategy="BlockLineHeight" />
-                                                <TextBlock x:Name="AheadText"
-                                                           Grid.Column="2"
-                                                           Margin="9,0,0,0"
-                                                           HorizontalAlignment="Left"
-                                                           Text="{Binding AheadCount}"
-                                                           Foreground="{DynamicResource AheadTextBrush}"
-                                                           FontFamily="{StaticResource MonoFont}"
-                                                           FontSize="10.5"
-                                                           LineHeight="10.5"
-                                                           LineStackingStrategy="BlockLineHeight" />
-                                                <Border Grid.Column="0"
-                                                        Grid.Row="2"
-                                                        Background="{DynamicResource TrackBrush}" />
-                                                <Border x:Name="BehindBar"
-                                                        Grid.Column="0"
-                                                        Grid.Row="2"
-                                                        Width="{Binding BehindBarWidth}"
-                                                        HorizontalAlignment="Right"
-                                                        Background="{DynamicResource BehindFillBrush}" />
-                                                <Border Grid.Column="1"
-                                                        Grid.Row="2"
-                                                        Background="{DynamicResource TrackCenterBrush}" />
-                                                <Border Grid.Column="2"
-                                                        Grid.Row="2"
-                                                        Background="{DynamicResource TrackBrush}" />
-                                                <Border x:Name="AheadBar"
-                                                        Grid.Column="2"
-                                                        Grid.Row="2"
-                                                        Width="{Binding AheadBarWidth}"
-                                                        HorizontalAlignment="Left"
-                                                        Background="{DynamicResource AheadFillBrush}" />
+
+                                                <Grid Grid.Column="0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="9" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="9" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <local:InsetHighlightBorder x:Name="LaunchModeBadge"
+                                                                                Grid.Column="0"
+                                                                                Padding="6,3"
+                                                                                Background="{DynamicResource FreshBackgroundBrush}"
+                                                                                BorderBrush="{DynamicResource FreshBorderBrush}"
+                                                                                BorderThickness="1"
+                                                                                CornerRadius="{StaticResource SmallCornerRadius}"
+                                                                                Effect="{DynamicResource ChipShadowEffect}"
+                                                                                HighlightBrush="{DynamicResource ChipHighlightBrush}">
+                                                        <local:TrackingTextBlock x:Name="LaunchModeText"
+                                                                   Text="{Binding LaunchModeLabel}"
+                                                                   Tracking="0.1"
+                                                                   LineHeight="9"
+                                                                   Foreground="{DynamicResource FreshTextBrush}"
+                                                                   FontSize="9"
+                                                                   FontWeight="Medium" />
+                                                    </local:InsetHighlightBorder>
+                                                    <local:InsetHighlightBorder Grid.Column="2"
+                                                                                Padding="7,3"
+                                                                                Background="{DynamicResource DiffBoxBrush}"
+                                                                                BorderBrush="{DynamicResource DiffBoxBorderBrush}"
+                                                                                BorderThickness="1"
+                                                                                CornerRadius="{StaticResource SmallCornerRadius}"
+                                                                                Effect="{DynamicResource ChipShadowEffect}"
+                                                                                HighlightBrush="{DynamicResource ChipHighlightBrush}">
+                                                        <StackPanel VerticalAlignment="Center"
+                                                                    Orientation="Horizontal">
+                                                            <TextBlock x:Name="AddedText"
+                                                                       VerticalAlignment="Center"
+                                                                       Text="{Binding LocalAdded, StringFormat=+{0}}"
+                                                                       Foreground="{DynamicResource AheadTextBrush}"
+                                                                       FontFamily="{StaticResource MonoFont}"
+                                                                       FontSize="10.5"
+                                                                       LineHeight="10.5"
+                                                                       LineStackingStrategy="BlockLineHeight" />
+                                                            <Border Width="1"
+                                                                    Height="9"
+                                                                    Margin="7,0"
+                                                                    VerticalAlignment="Center"
+                                                                    Background="{DynamicResource DiffBoxBorderBrush}" />
+                                                            <TextBlock x:Name="DeletedText"
+                                                                       VerticalAlignment="Center"
+                                                                       Text="{Binding LocalDeleted, StringFormat=−{0}}"
+                                                                       Foreground="{DynamicResource BehindTextBrush}"
+                                                                       FontFamily="{StaticResource MonoFont}"
+                                                                       FontSize="10.5"
+                                                                       LineHeight="10.5"
+                                                                       LineStackingStrategy="BlockLineHeight" />
+                                                        </StackPanel>
+                                                    </local:InsetHighlightBorder>
+                                                    <TextBlock x:Name="ActivityText"
+                                                               Grid.Column="4"
+                                                               VerticalAlignment="Center"
+                                                               Text="{Binding RelativeActivityLabel}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               TextWrapping="NoWrap"
+                                                               Foreground="{DynamicResource TextMutedBrush}"
+                                                               FontSize="11"
+                                                               LineHeight="11"
+                                                               LineStackingStrategy="BlockLineHeight" />
+                                                </Grid>
+
+                                                <Grid x:Name="DivergenceBars"
+                                                      Grid.Column="2"
+                                                      Width="200"
+                                                      ToolTip="Compared with the default branch">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="99" />
+                                                        <ColumnDefinition Width="2" />
+                                                        <ColumnDefinition Width="99" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="6" />
+                                                        <RowDefinition Height="5" />
+                                                    </Grid.RowDefinitions>
+                                                    <TextBlock x:Name="BehindText"
+                                                               Grid.Column="0"
+                                                               Margin="0,0,9,0"
+                                                               HorizontalAlignment="Right"
+                                                               Text="{Binding BehindCount}"
+                                                               Foreground="{DynamicResource BehindTextBrush}"
+                                                               FontFamily="{StaticResource MonoFont}"
+                                                               FontSize="10.5"
+                                                               LineHeight="10.5"
+                                                               LineStackingStrategy="BlockLineHeight" />
+                                                    <TextBlock x:Name="AheadText"
+                                                               Grid.Column="2"
+                                                               Margin="9,0,0,0"
+                                                               HorizontalAlignment="Left"
+                                                               Text="{Binding AheadCount}"
+                                                               Foreground="{DynamicResource AheadTextBrush}"
+                                                               FontFamily="{StaticResource MonoFont}"
+                                                               FontSize="10.5"
+                                                               LineHeight="10.5"
+                                                               LineStackingStrategy="BlockLineHeight" />
+                                                    <Border Grid.Column="0"
+                                                            Grid.Row="2"
+                                                            Background="{DynamicResource TrackBrush}" />
+                                                    <Border x:Name="BehindBar"
+                                                            Grid.Column="0"
+                                                            Grid.Row="2"
+                                                            Width="{Binding BehindBarWidth}"
+                                                            HorizontalAlignment="Right"
+                                                            Background="{DynamicResource BehindFillBrush}" />
+                                                    <Border Grid.Column="1"
+                                                            Grid.Row="2"
+                                                            Background="{DynamicResource TrackCenterBrush}" />
+                                                    <Border Grid.Column="2"
+                                                            Grid.Row="2"
+                                                            Background="{DynamicResource TrackBrush}" />
+                                                    <Border x:Name="AheadBar"
+                                                            Grid.Column="2"
+                                                            Grid.Row="2"
+                                                            Width="{Binding AheadBarWidth}"
+                                                            HorizontalAlignment="Left"
+                                                            Background="{DynamicResource AheadFillBrush}" />
+                                                </Grid>
                                             </Grid>
                                         </Grid>
+
+                                        <Button x:Name="SetDefaultButton"
+                                                Grid.Column="2"
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource RowActionButton}"
+                                                Content="Set default"
+                                                IsEnabled="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                ToolTip="Make Rhino load this worktree's build when started outside RWL"
+                                                Click="SetDefault_Click" />
                                     </Grid>
                                     <DataTemplate.Triggers>
                                         <DataTrigger Binding="{Binding HasBuildConfiguration}" Value="False">

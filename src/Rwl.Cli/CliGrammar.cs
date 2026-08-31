@@ -35,6 +35,9 @@ internal sealed record LaunchCommand(
     string? Environment,
     bool Json) : CliCommand;
 
+// Rewrites the standing registration so an ordinary Rhino start loads this worktree's build.
+internal sealed record RegistrationSetCommand(string Path, bool Json) : CliCommand;
+
 internal sealed record RhinoInstancesCommand(bool Json) : CliCommand;
 
 internal sealed record DoctorCommand(bool Json) : CliCommand;
@@ -199,6 +202,20 @@ internal static class CliGrammar
                     arguments.Required(PathOption),
                     arguments.Optional(TimeoutOption),
                     arguments.Optional(EnvOption),
+                    arguments.HasFlag(JsonOption))),
+            new CommandSpec(
+                new[]
+                {
+                    OperandSpec.Literal("registration"),
+                    OperandSpec.Literal("set")
+                },
+                new[]
+                {
+                    OptionGroupSpec.Required(PathOption),
+                    OptionGroupSpec.Optional(JsonOption)
+                },
+                (arguments, _) => new RegistrationSetCommand(
+                    arguments.Required(PathOption),
                     arguments.HasFlag(JsonOption))),
             new CommandSpec(
                 new[]

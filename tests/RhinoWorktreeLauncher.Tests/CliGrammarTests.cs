@@ -14,6 +14,7 @@ public sealed class CliGrammarTests
           rwl worktree list --project <id> [--local-only] [--json]
           rwl worktree inspect --path <path> [--json]
           rwl launch --path <path> [--timeout <seconds>] [--env <NAME=VALUE>] [--json]
+          rwl registration set --path <path> [--json]
           rwl rhino instances [--json]
           rwl doctor [--json]
           rwl integration status [claude|codex] [--json]
@@ -54,6 +55,9 @@ public sealed class CliGrammarTests
             (
                 new[] { "launch", "--path", "repository", "--env", "NATALIE_SUITE_REPRO=1" },
                 new LaunchCommand("repository", null, "NATALIE_SUITE_REPRO=1", Json: false)),
+            (
+                new[] { "registration", "set", "--path", "repository", "--json" },
+                new RegistrationSetCommand("repository", Json: true)),
             (
                 new[] { "rhino", "instances", "--json" },
                 new RhinoInstancesCommand(Json: true)),

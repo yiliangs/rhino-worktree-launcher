@@ -69,6 +69,20 @@ public static class LaunchExecutorHost
             });
             return 0;
         }
+        // Rewriting the standing registration displaces nothing, so this process ends with
+        // its one terminal result: no linger, no journal, and nothing to correct after an
+        // exit (ADR 0016).
+        if (string.Equals(request.Mode, LaunchExecutorMode.SetRegistration, StringComparison.Ordinal))
+        {
+            using ExecutorLog switchLog = new ExecutorLog(ExecutorLog.PathFor(request));
+            LaunchExecutorEvent switched = await new LaunchExecutorEngine().SwitchRegistrationAsync(
+                request,
+                new ImmediateProgress<LaunchExecutorEvent>(channel.Send),
+                switchLog,
+                disconnected.Token,
+                cancellationToken);
+            return switched.Succeeded ? 0 : 1;
+        }
         if (!string.Equals(request.Mode, LaunchExecutorMode.Launch, StringComparison.Ordinal))
         {
             channel.Send(Failure(

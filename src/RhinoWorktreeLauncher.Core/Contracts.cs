@@ -103,9 +103,22 @@ public sealed record ResolvedContext(
     int RhinoVersion,
     BuildProfile BuildProfile);
 
+/// <summary>
+/// The registration Rhino resolves for one plug-in ID outside any launch, which is the build
+/// an ordinary Rhino start loads. <see cref="Hive"/> is the hive token the registry probe
+/// speaks, and <see cref="KeyPath"/> is the key inside it.
+/// </summary>
+public sealed record RegisteredPlugin(string Path, string Hive, string KeyPath);
+
+/// <summary>
+/// The project's worktrees and the standing registration they were marked against. The
+/// registration is carried whole, so a surface can name the registered file even when it
+/// lies outside every worktree and no row is marked.
+/// </summary>
 public sealed record ProjectWorktrees(
     ProjectSnapshot Project,
-    IReadOnlyList<WorktreeSnapshot> Worktrees);
+    IReadOnlyList<WorktreeSnapshot> Worktrees,
+    RegisteredPlugin? Registration);
 
 public enum WorktreeRefreshStage
 {
@@ -157,6 +170,9 @@ public sealed record WorktreeSnapshot(
     int? PullRequestNumber,
     bool IsPullRequestDraft,
     bool IsPrimary,
+    // The worktree whose tree contains the standing registration's file: the build Rhino
+    // loads when it is started outside RWL. A Git fact and a registry fact, side by side.
+    bool IsRegistered,
     LaunchMode LaunchMode,
     bool HasBuildConfiguration,
     bool HasLocalState,
@@ -243,6 +259,20 @@ public sealed record LaunchResult(
     string DiagnosticsLogPath,
     DateTimeOffset StartedAt,
     DateTimeOffset CompletedAt);
+
+/// <summary>
+/// One completed rewrite of the standing registration: which worktree's artifact Rhino now
+/// loads by default, where that was written, and what it named before. <see cref="PreviousPath"/>
+/// is null where the plug-in was not registered at all.
+/// </summary>
+public sealed record RegistrationSwitchOutcome(
+    string ProjectId,
+    string WorktreePath,
+    string PluginPath,
+    string Hive,
+    string RegistryKeyPath,
+    string? PreviousPath,
+    string DiagnosticsLogPath);
 
 // One live Rhino process and the plug-in artifacts it holds mapped in its address space.
 // A process this account may not read is carried with the reason rather than dropped: a

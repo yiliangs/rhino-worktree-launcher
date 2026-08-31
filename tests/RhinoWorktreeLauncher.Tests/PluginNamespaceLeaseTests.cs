@@ -629,4 +629,138 @@ public sealed class PluginNamespaceLeaseTests
         Assert.False(drift.JournalFound);
         Assert.False(drift.Drifted);
     }
+
+    // Switching the standing registration is not a lease: it displaces nothing, writes no
+    // journal, and leaves the registration Rhino resolves naming the requested file.
+    [Fact]
+    public async Task Switching_rewrites_a_complete_machine_registration_in_place()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        using (RegistryKey installed = sandbox.CreateMachineRegistration())
+        {
+            installed.SetValue("Name", "Installed", RegistryValueKind.String);
+            using RegistryKey plugin = installed.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", @"C:\primary\Sample.rhp", RegistryValueKind.String);
+        }
+        string selected = sandbox.PathFor("selected/Sample.rhp");
+
+        RegistrationSwitchResult result = await sandbox.SwitchAsync(selected);
+
+        Assert.Null(result.Refusal);
+        Assert.False(result.JournalPending);
+        Assert.Equal(@"C:\primary\Sample.rhp", result.PreviousPath);
+        Assert.Equal(Path.GetFullPath(selected), result.NewPath);
+        Assert.EndsWith(@"\PlugIn", result.KeyPath, StringComparison.Ordinal);
+        using (RegistryKey machine = sandbox.OpenMachineRegistration()!)
+        {
+            // The registration is edited, never recreated, so everything Rhino recorded
+            // beside the file name survives.
+            Assert.Equal("Installed", machine.GetValue("Name"));
+            using RegistryKey plugin = machine.OpenSubKey("PlugIn")!;
+            Assert.Equal(Path.GetFullPath(selected), plugin.GetValue("FileName"));
+        }
+        Assert.Null(sandbox.OpenUserRegistration());
+        Assert.False(File.Exists(sandbox.JournalPath));
+        Assert.Null(FileLock.ReadHolder(FileLock.HolderPath(sandbox.LockPath)));
+    }
+
+    [Fact]
+    public async Task Switching_rewrites_a_current_user_registration_when_no_machine_one_exists()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        using (RegistryKey installed = sandbox.CreateUserRegistration())
+        {
+            using RegistryKey plugin = installed.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", @"C:\primary\Sample.rhp", RegistryValueKind.String);
+        }
+        string selected = sandbox.PathFor("selected/Sample.rhp");
+
+        RegistrationSwitchResult result = await sandbox.SwitchAsync(selected);
+
+        Assert.Null(result.Refusal);
+        Assert.Equal(@"C:\primary\Sample.rhp", result.PreviousPath);
+        using RegistryKey user = sandbox.OpenUserRegistration()!;
+        using RegistryKey rewritten = user.OpenSubKey("PlugIn")!;
+        Assert.Equal(Path.GetFullPath(selected), rewritten.GetValue("FileName"));
+        Assert.Null(sandbox.OpenMachineRegistration());
+        Assert.False(File.Exists(sandbox.JournalPath));
+    }
+
+    [Fact]
+    public async Task Switching_an_unregistered_plugin_writes_the_documented_install_seed()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        string selected = sandbox.PathFor("selected/Sample.rhp");
+
+        RegistrationSwitchResult result = await sandbox.SwitchAsync(selected);
+
+        Assert.Null(result.PreviousPath);
+        using RegistryKey seed = sandbox.OpenUserRegistration()!;
+        Assert.Equal("Sample", seed.GetValue("Name"));
+        Assert.Equal(Path.GetFullPath(selected), seed.GetValue("FileName"));
+        // Nothing was displaced, so there is no recorded load mode to carry and no nonce:
+        // exactly the shape Rhino installs from.
+        Assert.Equal(2, seed.GetValueNames().Length);
+        Assert.Empty(seed.GetSubKeyNames());
+        Assert.False(File.Exists(sandbox.JournalPath));
+    }
+
+    // A pending journal belongs to a launch that has not finished restoring. Its post-exit
+    // correction would put the old path back over this write, so the switch refuses instead
+    // of restoring a journal it does not own.
+    [Fact]
+    public async Task Switching_refuses_while_a_launch_journal_is_pending()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        using (RegistryKey installed = sandbox.CreateMachineRegistration())
+        {
+            using RegistryKey plugin = installed.CreateSubKey("PlugIn", writable: true)!;
+            plugin.SetValue("FileName", @"C:\primary\Sample.rhp", RegistryValueKind.String);
+        }
+        await File.WriteAllTextAsync(sandbox.JournalPath, "{}");
+
+        RegistrationSwitchResult result = await sandbox.SwitchAsync(
+            sandbox.PathFor("selected/Sample.rhp"));
+
+        Assert.True(result.JournalPending);
+        Assert.Null(result.Refusal);
+        using RegistryKey machine = sandbox.OpenMachineRegistration()!;
+        using RegistryKey untouched = machine.OpenSubKey("PlugIn")!;
+        Assert.Equal(@"C:\primary\Sample.rhp", untouched.GetValue("FileName"));
+        Assert.Null(sandbox.OpenUserRegistration());
+        Assert.True(File.Exists(sandbox.JournalPath));
+    }
+
+    [Fact]
+    public async Task Switching_rewrites_a_seed_form_registration_at_its_root()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        using (RegistryKey seeded = sandbox.CreateMachineRegistration())
+            seeded.SetValue("FileName", @"C:\primary\Sample.rhp", RegistryValueKind.String);
+        string selected = sandbox.PathFor("selected/Sample.rhp");
+
+        RegistrationSwitchResult result = await sandbox.SwitchAsync(selected);
+
+        Assert.Equal(@"C:\primary\Sample.rhp", result.PreviousPath);
+        Assert.DoesNotContain(@"\PlugIn", result.KeyPath, StringComparison.Ordinal);
+        using RegistryKey machine = sandbox.OpenMachineRegistration()!;
+        Assert.Equal(Path.GetFullPath(selected), machine.GetValue("FileName"));
+        Assert.Empty(machine.GetSubKeyNames());
+        Assert.Single(machine.GetValueNames());
+    }
 }

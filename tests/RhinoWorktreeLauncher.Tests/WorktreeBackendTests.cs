@@ -1,4 +1,5 @@
 using RhinoWorktreeLauncher;
+using Rwl.Protocol;
 
 namespace RhinoWorktreeLauncher.Tests;
 
@@ -557,6 +558,108 @@ public sealed class WorktreeBackendTests
         Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "build_configuration_unavailable");
         Assert.Equal(DiagnosticSeverity.Error, result.Diagnostics[0].Severity);
     }
+
+    // Which build Rhino loads at an ordinary start is the standing registration, and the
+    // worktree holding that file is the registered one. A worktree nested under the primary
+    // checkout lies under both, so the longest path match has to win.
+    [Fact]
+    public async Task The_worktree_containing_the_standing_registration_is_the_registered_one()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        string nested = NestedWorktree(temporary, repository);
+        string registered = Path.Combine(nested, "Sample", "bin", "Debug", "net8.0", "Sample.rhp");
+        LauncherBackend backend = Backend(
+            temporary,
+            new RegisteredPlugin(registered, RegistryHives.LocalMachine, MachineKeyPath));
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        CommandResult<ProjectWorktrees> result = await backend.GetWorktreeSnapshotAsync(
+            "repository",
+            includeRemote: false,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.Equal(registered, result.Value!.Registration!.Path);
+        Assert.Equal(RegistryHives.LocalMachine, result.Value.Registration.Hive);
+        Assert.True(Single(result.Value, nested).IsRegistered);
+        Assert.False(Single(result.Value, repository).IsRegistered);
+    }
+
+    [Fact]
+    public async Task A_registration_outside_every_worktree_marks_no_row_and_is_still_reported()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        string nested = NestedWorktree(temporary, repository);
+        string registered = @"C:\Program Files\Rhino 8\Plug-ins\Sample.rhp";
+        LauncherBackend backend = Backend(
+            temporary,
+            new RegisteredPlugin(registered, RegistryHives.LocalMachine, MachineKeyPath));
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        CommandResult<ProjectWorktrees> result = await backend.GetWorktreeSnapshotAsync(
+            "repository",
+            includeRemote: false,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.Equal(registered, result.Value!.Registration!.Path);
+        Assert.DoesNotContain(result.Value.Worktrees, worktree => worktree.IsRegistered);
+        Assert.False(Single(result.Value, nested).IsRegistered);
+    }
+
+    [Fact]
+    public async Task No_registration_at_all_marks_no_row()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        _ = NestedWorktree(temporary, repository);
+        LauncherBackend backend = Backend(temporary, registration: null);
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        CommandResult<ProjectWorktrees> result = await backend.GetWorktreeSnapshotAsync(
+            "repository",
+            includeRemote: false,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.Null(result.Value!.Registration);
+        Assert.DoesNotContain(result.Value.Worktrees, worktree => worktree.IsRegistered);
+    }
+
+    private const string MachineKeyPath =
+        @"Software\McNeel\Rhinoceros\8.0\Plug-ins\735b6a53-ddc2-46e9-a82c-c0cd86d0609a";
+
+    private static LauncherBackend Backend(
+        TemporaryDirectory temporary,
+        RegisteredPlugin? registration) => new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            GitHubExecutable = temporary.PathFor("missing-gh.exe"),
+            StandingRegistrationReader = (_, _) => registration
+        });
+
+    private static string NestedWorktree(TemporaryDirectory temporary, string repository)
+    {
+        string nested = temporary.PathFor("repository/.claude/worktrees/nested");
+        temporary.Run("git", repository, "worktree", "add", "--quiet", "-b", "nested", nested);
+        return nested;
+    }
+
+    private static WorktreeSnapshot Single(ProjectWorktrees worktrees, string path) => Assert.Single(
+        worktrees.Worktrees,
+        worktree => string.Equals(
+            worktree.Path,
+            Path.GetFullPath(path),
+            StringComparison.OrdinalIgnoreCase));
 }
 
 internal static class RepositoryFixture

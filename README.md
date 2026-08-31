@@ -58,6 +58,12 @@ Every failure carries a named diagnostic code for the step that failed, and a la
 
 A launch can carry caller-supplied environment variables into the Rhino it starts, for in-Rhino harnesses that arm on an environment read: MCP takes a map, the CLI one `--env NAME=VALUE`. They are scoped to that process, and `RWL_` names are refused because that prefix carries the launch identity.
 
+### The build Rhino loads outside RWL
+
+Between launches, Rhino resolves the plug-in ID from the standing registration: the machine hive if it holds one, otherwise the current-user hive, in the installed shape or the seed shape. The worktree whose tree contains that file is the registered one, by longest path match, and the desktop marks it DEFAULT beside the PRIMARY chip that names the repository's main working tree. They are different facts and a row can carry either, both, or neither.
+
+`rwl registration set --path <worktree>` rewrites that registration to the worktree's canonical artifact, so an ordinary Rhino start loads that build. It never builds: the artifact has to be there already, and a missing one fails the way a direct launch does, before anything is written. The write itself runs in the launch executor like every other registry mutation, in place into whichever value the existing registration uses, and an independent process confirms it before the change is reported. It refuses while a launch of the same plug-in still has a journal pending, because that launch's restore would undo it; close that Rhino, or launch again so RWL restores it, then retry. The desktop offers the same change as SET DEFAULT on the selected row. [ADR 0016](docs/adr/0016-switch-the-standing-registration-through-the-launch-executor.md) records the decision.
+
 ### A competing machine-wide registration
 
 A machine-wide registration for the same plug-in ID naming a different file, say an all-users install or one left from debugging another checkout, wins: Rhino resolves the duplicate ID to that file. With write access to the machine `Plug-ins` key, granted once from an elevated account, the launch displaces and restores that one too, so ordinary sessions keep the installed copy. Without that access the launch refuses before Rhino starts and names the key, since RWL never elevates; grant access, or remove the key if it is stale. A machine registration already naming the selected `.rhp` is not a conflict, and a current-user registration never blocks a launch: it is captured whole, displaced, and restored.
@@ -116,6 +122,7 @@ rwl context --cwd <path> [--json]
 rwl worktree list --project <id> [--local-only] [--json]
 rwl worktree inspect --path <path> [--json]
 rwl launch --path <path> [--timeout <seconds>] [--env <NAME=VALUE>] [--json]
+rwl registration set --path <path> [--json]
 rwl rhino instances [--json]
 rwl doctor [--json]
 rwl integration status [claude|codex] [--json]

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Windows;
 using System.Xml.Linq;
 
 namespace RhinoWorktreeLauncher.UiTests;
@@ -60,16 +61,39 @@ public sealed class ListScrollRailTests
         Assert.Equal("4", bar.Attribute("MaxWidth")?.Value);
     }
 
+    // Symmetric panel insets used to be enough, because the row ran to the same edge the
+    // header did. The row now reserves a trailing gutter for its own action, so equal insets
+    // would put the captions a gutter's width to the right of the bars they name. What has
+    // to hold is the alignment itself, so it is read from the arranged surface rather than
+    // inferred from two margins.
     [Fact]
-    public void The_column_captions_sit_the_same_distance_from_both_panel_edges()
+    public void The_column_captions_sit_over_the_divergence_bars_they_name()
     {
-        XDocument document = LoadMainWindow();
-        string[] margin = (Named(document, "WorktreeCountText").Parent!.Attribute("Margin")?.Value ?? "")
-            .Split(',');
+        IReadOnlyDictionary<string, Rect> layout = WorktreeSurface.Arrange();
+        Rect captions = layout.Part("DivergenceCaptions");
+        Rect bars = layout.Part("DivergenceBars");
 
-        // The right inset carried the old gutter. With the gutter gone the captions sit
-        // over the row columns they name only if both insets match.
-        Assert.Equal(margin[0], margin[2]);
+        // Within a pixel: the panel header's inset and the row's padding differ by the
+        // panel border, which predates the gutter. A gutter the header did not match would
+        // be out by the width of the gutter, not by a pixel.
+        Assert.InRange(Math.Abs(captions.Left - bars.Left), 0, 1);
+        Assert.InRange(Math.Abs(captions.Right - bars.Right), 0, 1);
+    }
+
+    // The scrollbar floats over the row's own padding, which lies outside the content the
+    // row template arranges. The row action lives inside that content, so it can never end
+    // up under the scrollbar, and this reads both bounds rather than trusting the arithmetic.
+    [Fact]
+    public void The_row_action_stays_clear_of_the_floating_scrollbar()
+    {
+        IReadOnlyDictionary<string, Rect> layout = WorktreeSurface.Arrange();
+        Rect row = layout.Part("RowBackground");
+        Rect action = layout.Part("SetDefaultButton");
+
+        Assert.True(
+            row.Right - action.Right >= 4,
+            $"The row action reaches {row.Right - action.Right:0.###}px from the row edge, " +
+            "inside the 4px the scrollbar floats over.");
     }
 
     private static XElement Named(XDocument document, string name) => document

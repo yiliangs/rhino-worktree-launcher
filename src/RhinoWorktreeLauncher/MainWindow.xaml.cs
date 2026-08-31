@@ -174,6 +174,7 @@ public partial class MainWindow : Window
     private bool _isUpdatingWorktrees;
     private bool? _isLightTheme;
     private bool _isLaunching;
+    private bool _isSwitchingRegistration;
     private LaunchStage? _launchStage;
     private string _hint = string.Empty;
     private string _repositoryPath = string.Empty;
@@ -737,7 +738,12 @@ public partial class MainWindow : Window
     {
         WorktreeSnapshot? selected = WorktreeList.SelectedItem as WorktreeSnapshot;
         OpenFolderButton.IsEnabled = selected is not null;
-        LaunchButton.IsEnabled = CanLaunch(_isLaunching, selected?.HasBuildConfiguration == true);
+        // The row's own action follows the same busy state the launch button does. The list
+        // carries it because a data template has no name scope reaching this window.
+        WorktreeList.Tag = !_isLaunching && !_isSwitchingRegistration;
+        LaunchButton.IsEnabled = CanLaunch(
+            _isLaunching || _isSwitchingRegistration,
+            selected?.HasBuildConfiguration == true);
         LaunchButtonText.Text = selected is null || selected.LaunchMode == LaunchMode.DirectLaunch
             ? "Launch Rhino"
             : "Build & Launch";
@@ -851,6 +857,63 @@ public partial class MainWindow : Window
             };
             _ = dialog.ShowDialog();
         }
+    }
+
+    // The row action, not a launch: it changes which build an ordinary Rhino start loads and
+    // starts nothing. The row comes from the clicked element's own data context, because the
+    // action belongs to that row rather than to the list selection.
+    private async void SetDefault_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element ||
+            element.DataContext is not WorktreeSnapshot worktree ||
+            _isLaunching ||
+            _isSwitchingRegistration)
+        {
+            return;
+        }
+
+        _isSwitchingRegistration = true;
+        _hint = "Setting the default build...";
+        UpdateState();
+        Diagnostic? failure = null;
+        string? logPath = null;
+        try
+        {
+            CommandResult<RegistrationSwitchOutcome> result = await _backend.SetStandingRegistrationAsync(
+                worktree.Path,
+                progress: null,
+                CancellationToken.None);
+            logPath = result.Value?.DiagnosticsLogPath;
+            failure = result.Succeeded ? null : result.Diagnostics[0];
+        }
+        catch (Exception ex)
+        {
+            failure = new Diagnostic("set_registration_host_failed", ex.Message);
+        }
+        finally
+        {
+            _isSwitchingRegistration = false;
+        }
+
+        _hint = failure is null
+            ? $"Rhino now loads {worktree.DisplayName} by default"
+            : "Default build unchanged";
+        UpdateState();
+        if (failure is not null)
+        {
+            LaunchFailureDialog dialog = new LaunchFailureDialog(failure, logPath)
+            {
+                Owner = this
+            };
+            _ = dialog.ShowDialog();
+            return;
+        }
+
+        // The chips move only once the registration is read again, so the row list is the
+        // surface that confirms the change rather than the hint alone.
+        await RefreshAsync(fetchRemote: false);
+        _hint = $"Rhino now loads {worktree.DisplayName} by default";
+        UpdateState();
     }
 
     private void BeginLaunchProgress()
