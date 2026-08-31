@@ -751,6 +751,57 @@
                                                                FontWeight="Medium" />
                                                 </StackPanel>
                                             </local:InsetHighlightBorder>
+                                            <Button x:Name="SetDefaultButton"
+                                                    VerticalAlignment="Center"
+                                                    Cursor="Hand"
+                                                    FocusVisualStyle="{x:Null}"
+                                                    IsEnabled="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                    ToolTip="Make Rhino load this worktree's build when started outside RWL"
+                                                    Click="SetDefault_Click">
+                                                <Button.Style>
+                                                    <Style TargetType="Button">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <local:InsetHighlightBorder Padding="6,3"
+                                                                                                Background="{DynamicResource FreshBackgroundBrush}"
+                                                                                                BorderBrush="{DynamicResource FreshBorderBrush}"
+                                                                                                BorderThickness="1"
+                                                                                                CornerRadius="{StaticResource SmallCornerRadius}"
+                                                                                                Effect="{DynamicResource ChipShadowEffect}"
+                                                                                                HighlightBrush="{DynamicResource ChipHighlightBrush}">
+                                                                        <local:TrackingTextBlock Text="SET DEFAULT"
+                                                                                                 Tracking="0.1"
+                                                                                                 LineHeight="9"
+                                                                                                 Foreground="{DynamicResource FreshTextBrush}"
+                                                                                                 FontSize="9"
+                                                                                                 FontWeight="Medium" />
+                                                                    </local:InsetHighlightBorder>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsEnabled" Value="False">
+                                                                            <Setter Property="Opacity" Value="0.4" />
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                        <Style.Triggers>
+                                                            <!-- The action offers what the row does not already have, on the
+                                                                 row the user is acting on, and only where there is a build
+                                                                 configuration to register. -->
+                                                            <MultiDataTrigger>
+                                                                <MultiDataTrigger.Conditions>
+                                                                    <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
+                                                                    <Condition Binding="{Binding IsRegistered}" Value="False" />
+                                                                    <Condition Binding="{Binding HasBuildConfiguration}" Value="True" />
+                                                                </MultiDataTrigger.Conditions>
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </MultiDataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
                                         </local:InlineIdentityPanel>
 
                                         <Grid Grid.Row="2">
