@@ -169,7 +169,7 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
             // The machine hive decides whether the launch can run at all, so it is
             // resolved before anything is written: a refusal must precede every mutation
             // and therefore reaches the caller before Rhino starts.
-            string? competing = ReadRegisteredPath(machineHive, machinePluginsKeyPath, registration);
+            string? competing = StandingRegistration.ReadRegisteredPath(machineHive, machinePluginsKeyPath, registration);
             bool machineNamesSelected = competing is not null && NamesSelectedArtifact(competing, selectedPath);
             bool machineCompetes = competing is not null && !machineNamesSelected;
             using RegistryKey? machinePluginsKey = machineCompetes
@@ -191,7 +191,7 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
             using RegistryKey userPluginsKey = userHive.CreateSubKey(userPluginsKeyPath, writable: true) ??
                 throw new UnauthorizedAccessException(
                     $@"The launcher cannot open '{userHive.Name}\{userPluginsKeyPath}'.");
-            string? displacedUser = ReadRegisteredPath(userHive, userPluginsKeyPath, registration);
+            string? displacedUser = StandingRegistration.ReadRegisteredPath(userHive, userPluginsKeyPath, registration);
             RegistryKeySnapshot? userSnapshot = Capture(userPluginsKey, registration);
             // The machine pre-state is captured whether or not this launch displaces it,
             // because the post-exit correction compares against it. Only MachineDisplaced
@@ -330,8 +330,8 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
         PluginNamespaceJournal journal = ReadJournal(journalPath);
         string? expectedUser = RegisteredPathOf(journal.User);
         string? expectedMachine = RegisteredPathOf(journal.Machine);
-        string? observedUser = ReadRegisteredPath(userHive, userPluginsKeyPath, journal.Registration);
-        string? observedMachine = ReadRegisteredPath(machineHive, machinePluginsKeyPath, journal.Registration);
+        string? observedUser = StandingRegistration.ReadRegisteredPath(userHive, userPluginsKeyPath, journal.Registration);
+        string? observedMachine = StandingRegistration.ReadRegisteredPath(machineHive, machinePluginsKeyPath, journal.Registration);
         bool userDrifted = !SameRegisteredPath(observedUser, expectedUser);
         bool machineDrifted = !SameRegisteredPath(observedMachine, expectedMachine);
 
@@ -514,30 +514,6 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
         return recorded?.Number is long number ? unchecked((int)number) : null;
     }
 
-    // An installed registration names its file under PlugIn and an install seed names it
-    // at the root. Both claim the plug-in ID, so both are registrations that compete.
-    [SupportedOSPlatform("windows")]
-    private static string? ReadRegisteredPath(RegistryKey hive, string pluginsKeyPath, string registration)
-    {
-        try
-        {
-            using RegistryKey? key = hive.OpenSubKey($@"{pluginsKeyPath}\{registration}", writable: false);
-            if (key is null)
-                return null;
-            using RegistryKey? installed = key.OpenSubKey("PlugIn", writable: false);
-            string? registered = installed?.GetValue("FileName") as string ?? key.GetValue("FileName") as string;
-            return string.IsNullOrWhiteSpace(registered) ? null : registered;
-        }
-        catch (SecurityException)
-        {
-            return null;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
-
     // The same reading rule applied to a captured pre-state, so the post-exit correction
     // compares like with like. Environment strings are captured unexpanded and read back
     // expanded, so the pre-state is expanded here too.
@@ -611,8 +587,11 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
             ? RegistryHives.LocalMachine
             : RegistryHives.CurrentUser;
 
+    // One definition of the Plug-ins key path and one of the registration reader, shared
+    // with the standing-registration reader so the lease and the surfaces that display a
+    // registration can never disagree about what is registered.
     private static string PluginsKeyPath(int rhinoVersion) =>
-        $@"Software\McNeel\Rhinoceros\{rhinoVersion}.0\Plug-ins";
+        StandingRegistration.PluginsKeyPath(rhinoVersion);
 
     private static string JournalPath(string locksDirectory, int rhinoVersion, Guid pluginId) =>
         Path.Combine(locksDirectory, $"rhino-{rhinoVersion}-{pluginId:D}.registration.json");
