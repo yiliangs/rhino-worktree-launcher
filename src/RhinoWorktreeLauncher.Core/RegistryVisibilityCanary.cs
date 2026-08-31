@@ -90,6 +90,36 @@ internal static class RegistryVisibilityCanary
             $@"{HiveName(seed.Hive)}\{seed.KeyPath}");
     }
 
+    // One value another process must read back exactly as it was just written. A switch of
+    // the standing registration displaces nothing and carries no nonce, so the written value
+    // is itself what distinguishes a real write from an intercepted one (ADR 0016).
+    public static async Task<RegistryVisibility> VerifyValueAsync(
+        string hive,
+        string keyPath,
+        string valueName,
+        string expected,
+        RegistryProbeRunner probe,
+        bool spawnInteractively,
+        CancellationToken cancellationToken)
+    {
+        RegistryProbeResult observed = await probe(
+            new RegistryProbeRequest
+            {
+                Hive = hive,
+                KeyPath = keyPath,
+                Values = new[] { valueName }
+            },
+            spawnInteractively,
+            cancellationToken);
+        string? read = observed.Value(valueName);
+        return new RegistryVisibility(
+            string.Equals(read, expected, StringComparison.OrdinalIgnoreCase),
+            expected,
+            read,
+            observed.Error,
+            $@"{HiveName(hive)}\{keyPath}");
+    }
+
     public const string NonceValue = "RwlLaunchNonce";
 
     [SupportedOSPlatform("windows")]

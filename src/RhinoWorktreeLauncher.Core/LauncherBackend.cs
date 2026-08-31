@@ -299,6 +299,18 @@ public sealed class LauncherBackend
             environment,
             cancellationToken);
 
+    /// <summary>
+    /// Rewrites the standing registration so an ordinary Rhino start loads the build in this
+    /// worktree. The registry mutation runs in the launch executor, never here (ADR 0015).
+    /// </summary>
+    public Task<CommandResult<RegistrationSwitchOutcome>> SetStandingRegistrationAsync(
+        string worktreePath,
+        IProgress<LaunchProgress>? progress,
+        CancellationToken cancellationToken) => _launchCoordinator.SetStandingRegistrationAsync(
+            worktreePath,
+            progress,
+            cancellationToken);
+
     public async Task<CommandResult<DoctorReport>> RunDoctorAsync(CancellationToken cancellationToken)
     {
         List<DoctorCheck> checks = new List<DoctorCheck>();

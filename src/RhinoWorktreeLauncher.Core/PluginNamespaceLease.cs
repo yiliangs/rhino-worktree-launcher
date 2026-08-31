@@ -84,6 +84,32 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
             cancellationToken);
     }
 
+    // Rewrites the standing registration in place so an ordinary Rhino start loads the
+    // requested artifact (ADR 0016). It takes the same lock the lease takes, because one
+    // component owns everything registered for a (Rhino version, plug-in ID) pair, but it
+    // displaces nothing and therefore writes no journal: there is nothing to restore.
+    public static Task<RegistrationSwitchResult> SwitchAsync(
+        PluginNamespaceLeaseRequest request,
+        IProgress<FileLockWait>? waiting,
+        CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("Rhino plug-in registrations require Windows.");
+        return SwitchAsync(
+            Registry.CurrentUser,
+            PluginsKeyPath(request.RhinoVersion),
+            Registry.LocalMachine,
+            PluginsKeyPath(request.RhinoVersion),
+            JournalPath(request.LocksDirectory, request.RhinoVersion, request.PluginId),
+            LockPath(request.LocksDirectory, request.RhinoVersion, request.PluginId),
+            request.PluginId,
+            request.PluginName,
+            request.PluginPath,
+            request.Holder,
+            waiting,
+            cancellationToken);
+    }
+
     // A pending journal means an earlier lease never restored, or restored while the Rhino
     // it started was still able to write a registration back. Restoring it is a correctness
     // requirement even for a launch that displaces nothing, so this runs on every launch
@@ -279,6 +305,78 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
         }
     }
 
+    // The target is decided once, the way Rhino resolves the ID: a machine registration wins,
+    // otherwise the current-user one, otherwise a new current-user install seed. The write is
+    // in place, into whichever value the existing registration already names its file with,
+    // so no key is ever deleted or recreated and the other hive is never touched.
+    [SupportedOSPlatform("windows")]
+    internal static async Task<RegistrationSwitchResult> SwitchAsync(
+        RegistryKey userHive,
+        string userPluginsKeyPath,
+        RegistryKey machineHive,
+        string machinePluginsKeyPath,
+        string journalPath,
+        string lockPath,
+        Guid pluginId,
+        string pluginName,
+        string pluginPath,
+        FileLockHolder holder,
+        IProgress<FileLockWait>? waiting,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(lockPath)!);
+        string registration = pluginId.ToString("D");
+        string selectedPath = Path.GetFullPath(pluginPath);
+        using FileLockHandle namespaceLock = await FileLock.AcquireAsync(
+            lockPath,
+            holder,
+            waiting,
+            cancellationToken);
+
+        // A pending journal is not restored here. It may belong to an executor still
+        // lingering behind a live Rhino, whose post-exit correction would put the old path
+        // back over this write. The switch refuses and says how to end that launch instead.
+        if (File.Exists(journalPath))
+            return RegistrationSwitchResult.Pending;
+
+        string? machine = StandingRegistration.ReadRegisteredPath(
+            machineHive,
+            machinePluginsKeyPath,
+            registration);
+        if (machine is not null)
+        {
+            using RegistryKey? machinePluginsKey = OpenWritable(machineHive, machinePluginsKeyPath);
+            return machinePluginsKey is null
+                ? RegistrationSwitchResult.Refused(new PluginRegistrationConflict(
+                    machine,
+                    $@"{machineHive.Name}\{machinePluginsKeyPath}\{registration}"))
+                : Write(
+                    machinePluginsKey,
+                    HiveToken(machineHive),
+                    machinePluginsKeyPath,
+                    registration,
+                    pluginName,
+                    selectedPath,
+                    machine);
+        }
+
+        string? user = StandingRegistration.ReadRegisteredPath(
+            userHive,
+            userPluginsKeyPath,
+            registration);
+        using RegistryKey userPluginsKey = userHive.CreateSubKey(userPluginsKeyPath, writable: true) ??
+            throw new UnauthorizedAccessException(
+                $@"The launcher cannot open '{userHive.Name}\{userPluginsKeyPath}'.");
+        return Write(
+            userPluginsKey,
+            HiveToken(userHive),
+            userPluginsKeyPath,
+            registration,
+            pluginName,
+            selectedPath,
+            user);
+    }
+
     [SupportedOSPlatform("windows")]
     internal static async Task RecoverAsync(
         RegistryKey userHive,
@@ -448,6 +546,51 @@ internal sealed class PluginNamespaceLease : IPluginNamespaceLease
 
         if (deleteJournal)
             File.Delete(journalPath);
+    }
+
+    // An installed registration names its file under PlugIn and a seed names it at the root.
+    // The switch writes into whichever of the two the registration already uses, so Rhino
+    // reads the shape it wrote itself. A key that names nothing yet is completed into the
+    // documented install seed, Name and FileName and nothing else: nothing was displaced, so
+    // there is no recorded load mode to carry (ADR 0014).
+    [SupportedOSPlatform("windows")]
+    private static RegistrationSwitchResult Write(
+        RegistryKey pluginsKey,
+        string hive,
+        string pluginsKeyPath,
+        string registration,
+        string pluginName,
+        string selectedPath,
+        string? previousPath)
+    {
+        using RegistryKey key = pluginsKey.CreateSubKey(registration, writable: true) ??
+            throw new UnauthorizedAccessException(
+                $@"The launcher cannot open '{pluginsKeyPath}\{registration}'.");
+        using RegistryKey? installed = key.OpenSubKey("PlugIn", writable: true);
+        if (installed?.GetValue("FileName") is not null)
+        {
+            installed.SetValue("FileName", selectedPath, RegistryValueKind.String);
+            return new RegistrationSwitchResult(
+                Refusal: null,
+                JournalPending: false,
+                hive,
+                $@"{pluginsKeyPath}\{registration}\PlugIn",
+                "FileName",
+                previousPath,
+                selectedPath);
+        }
+
+        if (previousPath is null)
+            key.SetValue("Name", pluginName, RegistryValueKind.String);
+        key.SetValue("FileName", selectedPath, RegistryValueKind.String);
+        return new RegistrationSwitchResult(
+            Refusal: null,
+            JournalPending: false,
+            hive,
+            $@"{pluginsKeyPath}\{registration}",
+            "FileName",
+            previousPath,
+            selectedPath);
     }
 
     [SupportedOSPlatform("windows")]
@@ -644,6 +787,39 @@ internal sealed record PluginNamespaceLeaseResult(
     string? DisplacedMachineRegistration,
     string? DisplacedUserRegistration,
     PluginSeed? Seed);
+
+// One rewrite of the standing registration. Exactly one of Refusal and JournalPending can be
+// set, and neither carries a write: Hive, KeyPath, ValueName and NewPath describe the value
+// an independent reader must confirm, and PreviousPath is what the registration named before,
+// null where nothing was registered.
+internal sealed record RegistrationSwitchResult(
+    PluginRegistrationConflict? Refusal,
+    bool JournalPending,
+    string Hive,
+    string KeyPath,
+    string ValueName,
+    string? PreviousPath,
+    string NewPath)
+{
+    public static RegistrationSwitchResult Pending { get; } = new RegistrationSwitchResult(
+        null,
+        true,
+        string.Empty,
+        string.Empty,
+        string.Empty,
+        null,
+        string.Empty);
+
+    public static RegistrationSwitchResult Refused(PluginRegistrationConflict refusal) =>
+        new RegistrationSwitchResult(
+            refusal,
+            false,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            null,
+            string.Empty);
+}
 
 // What the post-exit correction found. A registration that drifted is one Rhino rewrote
 // after the launch restored, which is the state that would otherwise leave a worktree

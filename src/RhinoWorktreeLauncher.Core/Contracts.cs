@@ -260,6 +260,20 @@ public sealed record LaunchResult(
     DateTimeOffset StartedAt,
     DateTimeOffset CompletedAt);
 
+/// <summary>
+/// One completed rewrite of the standing registration: which worktree's artifact Rhino now
+/// loads by default, where that was written, and what it named before. <see cref="PreviousPath"/>
+/// is null where the plug-in was not registered at all.
+/// </summary>
+public sealed record RegistrationSwitchOutcome(
+    string ProjectId,
+    string WorktreePath,
+    string PluginPath,
+    string Hive,
+    string RegistryKeyPath,
+    string? PreviousPath,
+    string DiagnosticsLogPath);
+
 // One live Rhino process and the plug-in artifacts it holds mapped in its address space.
 // A process this account may not read is carried with the reason rather than dropped: a
 // list that accounts for every live Rhino must say so when it cannot attribute one.

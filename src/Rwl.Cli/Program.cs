@@ -51,6 +51,7 @@ internal static class Program
                     inspect.Json,
                     value => value.CanLaunch ? "Ready to launch." : "Not ready to launch."),
                 LaunchCommand launch => await LaunchAsync(backend, launch),
+                RegistrationSetCommand registration => await SetRegistrationAsync(backend, registration),
                 RhinoInstancesCommand instances => await WriteAsync(
                     await backend.DescribeRhinoInstancesAsync(CancellationToken.None),
                     instances.Json,
@@ -138,6 +139,27 @@ internal static class Program
             value => value.Status == LaunchStatus.Succeeded
                 ? $"Verified {value.PluginPath} in Rhino process {value.RhinoProcessId}."
                 : $"Launch failed. Diagnostics: {value.DiagnosticsLogPath}");
+    }
+
+    private static async Task<int> SetRegistrationAsync(
+        LauncherBackend backend,
+        RegistrationSetCommand command)
+    {
+        Progress<LaunchProgress>? progress = command.Json
+            ? null
+            : new Progress<LaunchProgress>(update =>
+                Console.Error.WriteLine($"[{update.StageToken}] {update.Message}"));
+        return await WriteAsync(
+            await backend.SetStandingRegistrationAsync(
+                command.Path,
+                progress,
+                CancellationToken.None),
+            command.Json,
+            // A failed change still carries its log path, so the plain output says which
+            // outcome it is rather than announcing a registration nobody wrote.
+            value => value.PluginPath.Length == 0
+                ? $"The registration is unchanged. Diagnostics: {value.DiagnosticsLogPath}"
+                : $"Rhino now loads '{value.PluginPath}' by default.");
     }
 
     private static async Task<int> DoctorAsync(LauncherBackend backend, DoctorCommand command)

@@ -384,6 +384,77 @@ public sealed class LaunchExecutorEngineTests
         Assert.Contains(LaunchExecutorCodes.RegistrationWriteBackCorrected, ReadWhileOpen(log.Path));
     }
 
+    // Switching the standing registration is a registry mutation, so it runs in the executor
+    // and is proven by an independent reader before it is reported, exactly as a launch seed
+    // is (ADR 0015, 0016).
+    [Fact]
+    public async Task A_registration_switch_an_independent_reader_confirms_is_reported_as_switched()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        LaunchExecutorRequest request = Request(sandbox) with
+        {
+            Mode = LaunchExecutorMode.SetRegistration
+        };
+
+        LaunchExecutorEvent result = await SwitchAsync(sandbox, request, TestRegistryProbe.Truthful);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(LaunchExecutorCodes.PluginRegistrationSwitched, result.Code);
+        Assert.Contains(request.PluginPath, result.Message, StringComparison.Ordinal);
+        Assert.Equal(RegistryHives.CurrentUser, result.RegistryHive);
+        Assert.Null(result.PreviousRegisteredPath);
+        using RegistryKey registered = sandbox.OpenUserRegistration(request.PluginGuid())!;
+        Assert.Equal(request.PluginPath, registered.GetValue("FileName"));
+    }
+
+    [Fact]
+    public async Task A_registration_switch_no_independent_reader_confirms_says_what_that_reader_saw()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        LaunchExecutorRequest request = Request(sandbox) with
+        {
+            Mode = LaunchExecutorMode.SetRegistration
+        };
+        RegistryProbeRunner disagreeing = (probed, _, _) => Task.FromResult(new RegistryProbeResult
+        {
+            Exists = true,
+            Values = probed.Values.ToDictionary(
+                name => name,
+                _ => (string?)@"C:\primary\Sample.rhp")
+        });
+
+        LaunchExecutorEvent result = await SwitchAsync(sandbox, request, disagreeing);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(LaunchExecutorCodes.PluginRegistrationNotVisible, result.Code);
+        Assert.Contains(@"C:\primary\Sample.rhp", result.Message, StringComparison.Ordinal);
+    }
+
+    private static async Task<LaunchExecutorEvent> SwitchAsync(
+        RegistrySandbox sandbox,
+        LaunchExecutorRequest request,
+        RegistryProbeRunner probe)
+    {
+        LaunchExecutorEngine engine = new LaunchExecutorEngine(new LaunchExecutorOptions
+        {
+            PluginNamespace = sandbox,
+            RegistryProbeRunner = probe
+        });
+        using ExecutorLog log = new ExecutorLog(ExecutorLog.PathFor(request));
+        return await engine.SwitchRegistrationAsync(
+            request,
+            new ImmediateProgress<LaunchExecutorEvent>(_ => { }),
+            log,
+            CancellationToken.None,
+            CancellationToken.None);
+    }
+
     private static async Task<LaunchExecutorEvent> RunAsync(
         RegistrySandbox sandbox,
         StandInRhino rhino,
@@ -465,6 +536,12 @@ public sealed class LaunchExecutorEngineTests
         public Task<RegistrationDrift> CorrectAfterExitAsync(
             PluginNamespaceLeaseRequest request,
             CancellationToken cancellationToken) => Task.FromResult(RegistrationDrift.NoJournal);
+
+        public Task<RegistrationSwitchResult> SwitchAsync(
+            PluginNamespaceLeaseRequest request,
+            IProgress<FileLockWait>? waiting,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(RegistrationSwitchResult.Refused(_conflict));
     }
 }
 

@@ -25,14 +25,24 @@ internal static class InProcessExecutor
         Func<int, string, bool> fileInUseInspector) => async (request, events, cancellationToken) =>
         {
             using ExecutorLog log = new ExecutorLog(ExecutorLog.PathFor(request));
-            return await new LaunchExecutorEngine(new LaunchExecutorOptions
+            LaunchExecutorEngine engine = new LaunchExecutorEngine(new LaunchExecutorOptions
             {
                 PluginNamespace = pluginNamespace,
                 RegistryProbeRunner = TestRegistryProbe.Truthful,
                 RhinoProcessStarter = rhinoProcessStarter,
                 FileInUseInspector = fileInUseInspector,
                 FileUsePollDelay = TimeSpan.FromMilliseconds(50)
-            }).RunAsync(request, events, log, CancellationToken.None, cancellationToken);
+            });
+            // The executor process dispatches on the request's mode, so this does too: a test
+            // drives the same choice the shipped host makes.
+            return string.Equals(request.Mode, LaunchExecutorMode.SetRegistration, StringComparison.Ordinal)
+                ? await engine.SwitchRegistrationAsync(
+                    request,
+                    events,
+                    log,
+                    CancellationToken.None,
+                    cancellationToken)
+                : await engine.RunAsync(request, events, log, CancellationToken.None, cancellationToken);
         };
 }
 
@@ -72,4 +82,12 @@ internal sealed class StubPluginNamespace : IPluginNamespace
     public Task<RegistrationDrift> CorrectAfterExitAsync(
         PluginNamespaceLeaseRequest request,
         CancellationToken cancellationToken) => Task.FromResult(RegistrationDrift.NoJournal);
+
+    // This stub answers one fixed lease outcome, which says nothing about a registration
+    // switch, so it refuses rather than inventing one.
+    public Task<RegistrationSwitchResult> SwitchAsync(
+        PluginNamespaceLeaseRequest request,
+        IProgress<FileLockWait>? waiting,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException("This plug-in namespace stub does not switch registrations.");
 }

@@ -10,6 +10,10 @@ namespace RhinoWorktreeLauncher;
 // current-user registry writes never reach the hive Rhino reads.
 internal sealed class LaunchCoordinator
 {
+    // Switching the standing registration waits on nothing that involves Rhino, so its budget
+    // covers one lock, one registry write, and one independent read of that write.
+    private static readonly TimeSpan SetRegistrationTimeout = TimeSpan.FromSeconds(60);
+
     private readonly LauncherBackendOptions _options;
     private readonly ContextResolver _contextResolver;
     private readonly BuildCoordinator _buildCoordinator;
@@ -193,6 +197,150 @@ internal sealed class LaunchCoordinator
                     log.Path,
                     startedAt,
                     completedAt),
+                diagnostic);
+        }
+    }
+
+    /// <summary>
+    /// Rewrites the standing registration so an ordinary Rhino start loads the selected
+    /// worktree's canonical artifact (ADR 0016). It runs the same way a launch does up to the
+    /// executor: resolve the worktree, resolve the existing artifact without building it, and
+    /// hand the registry mutation to a process the interactive Windows shell started.
+    /// </summary>
+    public async Task<CommandResult<RegistrationSwitchOutcome>> SetStandingRegistrationAsync(
+        string path,
+        IProgress<LaunchProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset startedAt = DateTimeOffset.UtcNow;
+        Directory.CreateDirectory(_options.LogsDirectory);
+        LaunchLog log = new LaunchLog(
+            Guid.NewGuid().ToString("N"),
+            _options.LogsDirectory,
+            startedAt,
+            progress);
+        string projectId = string.Empty;
+        string worktreePath = Path.GetFullPath(path);
+        using CancellationTokenSource timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(SetRegistrationTimeout);
+        CancellationToken token = timeoutSource.Token;
+
+        try
+        {
+            log.Record(new
+            {
+                type = "set_registration",
+                launchId = log.LaunchId,
+                hostKind = _options.HostKind,
+                releaseId = _options.ReleaseId,
+                timeoutSeconds = SetRegistrationTimeout.TotalSeconds,
+                requestedPath = worktreePath,
+                timestamp = startedAt
+            });
+
+            log.Report(LaunchStage.Resolve, "Resolving the registered project and selected worktree.");
+            CommandResult<ResolvedContext> contextResult = await _contextResolver.ResolveAsync(path, token);
+            if (!contextResult.Succeeded)
+                return Fail(contextResult.Diagnostics[0]);
+            ResolvedContext context = contextResult.Value!;
+            projectId = context.ProjectId;
+            worktreePath = context.WorktreePath;
+
+            // The artifact has to exist before Rhino is pointed at it, and it is never built
+            // here: this changes which build loads, it does not produce one. A missing
+            // artifact therefore fails exactly the way a direct launch fails.
+            log.Report(LaunchStage.Prepare, "Resolving the selected solution configuration and canonical artifact.");
+            CommandResult<PreparedLaunchArtifacts> prepared = await _buildCoordinator.PrepareAsync(
+                path,
+                LaunchMode.DirectLaunch,
+                new ForwardBuildProgress(log),
+                token);
+            if (!prepared.Succeeded)
+                return Fail(prepared.Diagnostics[0]);
+            PreparedLaunchArtifacts artifacts = prepared.Value!;
+
+            LaunchExecutorRequest request = new LaunchExecutorRequest
+            {
+                Mode = LaunchExecutorMode.SetRegistration,
+                LaunchId = log.LaunchId,
+                HostKind = _options.HostKind,
+                ReleaseId = _options.ReleaseId,
+                RhinoVersion = context.RhinoVersion,
+                PluginId = artifacts.PluginId.ToString("D"),
+                PluginName = Path.GetFileNameWithoutExtension(artifacts.PluginPath),
+                PluginPath = Path.GetFullPath(artifacts.PluginPath),
+                LocksDirectory = _options.LocksDirectory,
+                LogsDirectory = _options.LogsDirectory,
+                TimeoutSeconds = SetRegistrationTimeout.TotalSeconds
+            };
+            log.Record(new
+            {
+                type = "executor_request",
+                launchId = log.LaunchId,
+                protocolVersion = request.ProtocolVersion,
+                request.Mode,
+                request.RhinoVersion,
+                request.PluginId,
+                request.PluginName,
+                request.PluginPath,
+                request.TimeoutSeconds,
+                timestamp = DateTimeOffset.UtcNow
+            });
+
+            log.Report(
+                LaunchStage.Registration,
+                "Starting a launch executor through the interactive Windows shell.");
+            LaunchExecutorEvent result = await _options.LaunchExecutorInvoker(
+                request,
+                new ImmediateProgress<LaunchExecutorEvent>(log.Relay),
+                token);
+            log.Relay(result);
+            if (!result.Succeeded)
+                return Fail(new Diagnostic(result.Code, result.Message));
+
+            log.Report(LaunchStage.Complete, "Rhino now loads this worktree's build by default.");
+            return CommandResult<RegistrationSwitchOutcome>.Success(new RegistrationSwitchOutcome(
+                projectId,
+                worktreePath,
+                request.PluginPath,
+                result.RegistryHive ?? string.Empty,
+                result.RegistryKeyPath ?? string.Empty,
+                result.PreviousRegisteredPath,
+                log.Path));
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return Fail(new Diagnostic(
+                LaunchExecutorCodes.LaunchTimeout,
+                $"The registration change did not complete within {SetRegistrationTimeout.TotalSeconds:0.###} seconds."));
+        }
+        catch (OperationCanceledException)
+        {
+            return Fail(new Diagnostic(
+                LaunchExecutorCodes.LaunchCancelled,
+                "The registration change was cancelled."));
+        }
+        catch (LaunchDiagnosticException exception)
+        {
+            return Fail(new Diagnostic(exception.Code, exception.Message));
+        }
+        catch (Exception exception)
+        {
+            return Fail(new Diagnostic(LaunchExecutorCodes.LaunchFailed, exception.Message));
+        }
+
+        CommandResult<RegistrationSwitchOutcome> Fail(Diagnostic diagnostic)
+        {
+            log.RecordDiagnostic(diagnostic, DateTimeOffset.UtcNow);
+            return CommandResult<RegistrationSwitchOutcome>.Failure(
+                new RegistrationSwitchOutcome(
+                    projectId,
+                    worktreePath,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    null,
+                    log.Path),
                 diagnostic);
         }
     }

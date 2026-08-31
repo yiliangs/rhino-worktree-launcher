@@ -83,6 +83,49 @@ public sealed class LaunchExecutorProtocolTests
             LaunchEnvironment.ReservedPrefix,
             LaunchEnvironment.Describe(new Dictionary<string, string> { ["rwl_launch_id"] = "x" }));
 
+    // The set-registration mode rides the existing request shape, so an executor that
+    // predates it refuses it by name rather than misreading it as a launch.
+    [Fact]
+    public void The_set_registration_mode_survives_the_wire_unchanged()
+    {
+        LaunchExecutorRequest request = new LaunchExecutorRequest
+        {
+            Mode = LaunchExecutorMode.SetRegistration,
+            LaunchId = "switch"
+        };
+
+        LaunchExecutorRequest? round = LaunchExecutorProtocol.DeserializeRequest(
+            LaunchExecutorProtocol.SerializeRequest(request));
+
+        Assert.Equal("set-registration", LaunchExecutorMode.SetRegistration);
+        Assert.Equal(LaunchExecutorMode.SetRegistration, round!.Mode);
+        Assert.Equal(LaunchExecutorProtocol.Version, round.ProtocolVersion);
+    }
+
+    // Where the switch was written is known only to the process that wrote it, so the result
+    // carries it rather than leaving the client to read the registry back.
+    [Fact]
+    public void A_result_carries_where_a_registration_switch_was_written()
+    {
+        LaunchExecutorEvent value = new LaunchExecutorEvent
+        {
+            Kind = LaunchExecutorEventKind.Result,
+            Code = LaunchExecutorCodes.PluginRegistrationSwitched,
+            Succeeded = true,
+            RegistryHive = "hklm",
+            RegistryKeyPath = @"Software\McNeel\Rhinoceros\8.0\Plug-ins\{id}\PlugIn",
+            PreviousRegisteredPath = @"C:\primary\Sample.rhp"
+        };
+
+        LaunchExecutorEvent round = Assert.IsType<LaunchExecutorEvent>(
+            LaunchExecutorProtocol.DeserializeEvent(LaunchExecutorProtocol.SerializeEvent(value)));
+
+        Assert.Equal(value, round);
+        // A launch result never claims a registry write it did not make.
+        Assert.Null(LaunchExecutorProtocol.DeserializeEvent(
+            LaunchExecutorProtocol.SerializeEvent(new LaunchExecutorEvent()))!.RegistryKeyPath);
+    }
+
     [Fact]
     public void A_request_carries_the_current_protocol_version_by_default() =>
         Assert.Equal(LaunchExecutorProtocol.Version, new LaunchExecutorRequest().ProtocolVersion);

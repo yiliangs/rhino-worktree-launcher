@@ -145,6 +145,127 @@ internal sealed class LaunchExecutorEngine
         }
     }
 
+    // Rewrites the standing registration so an ordinary Rhino start loads the requested
+    // artifact (ADR 0016). It runs here rather than in a host for the same reason every
+    // other registry mutation does, and it ends in one terminal result: nothing is displaced,
+    // so there is no lingering, no journal, and nothing to correct after an exit.
+    public async Task<LaunchExecutorEvent> SwitchRegistrationAsync(
+        LaunchExecutorRequest request,
+        IProgress<LaunchExecutorEvent> events,
+        ExecutorLog log,
+        CancellationToken clientDisconnected,
+        CancellationToken cancellationToken)
+    {
+        ExecutorChannel channel = new ExecutorChannel(request, events, log);
+        Guid pluginId = ParsePluginId(request, channel);
+        if (pluginId == Guid.Empty)
+            return channel.LastResult!;
+
+        PluginNamespaceLeaseRequest switchRequest = new PluginNamespaceLeaseRequest(
+            request.LocksDirectory,
+            request.RhinoVersion,
+            pluginId,
+            request.PluginName,
+            request.PluginPath,
+            new FileLockHolder(
+                request.LaunchId,
+                Environment.ProcessId,
+                request.HostKind,
+                DateTimeOffset.UtcNow),
+            VisibilityNonce: string.Empty);
+
+        using CancellationTokenSource abort = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            clientDisconnected);
+        abort.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
+        CancellationToken token = abort.Token;
+
+        try
+        {
+            channel.Progress(
+                LaunchStage.Registration,
+                LaunchExecutorCodes.ExecutorStarted,
+                $"Launch executor {Environment.ProcessId} is rewriting the standing plug-in " +
+                $"registration outside the {request.HostKind} host process.");
+
+            RegistrationSwitchResult switched = await _options.PluginNamespace.SwitchAsync(
+                switchRequest,
+                waiting: null,
+                token);
+            if (switched.JournalPending)
+            {
+                return channel.Result(
+                    LaunchExecutorCodes.PluginRegistrationJournalPending,
+                    "A launch of this plug-in has not finished restoring the registration it " +
+                    "displaced, so rewriting it now would be undone when that launch ends. " +
+                    "Close the Rhino that launch started, or launch again so RWL restores it, " +
+                    "then try again.");
+            }
+            if (switched.Refusal is not null)
+            {
+                return channel.Result(
+                    LaunchExecutorCodes.PluginRegistrationConflict,
+                    Describe(switched.Refusal));
+            }
+
+            // Nothing may depend on a write this process cannot prove is real, here for the
+            // same reason a launch proves its seed (ADR 0015).
+            RegistryVisibility visibility = await RegistryVisibilityCanary.VerifyValueAsync(
+                switched.Hive,
+                switched.KeyPath,
+                switched.ValueName,
+                switched.NewPath,
+                _options.RegistryProbeRunner,
+                spawnInteractively: false,
+                token);
+            if (!visibility.Visible)
+            {
+                return channel.Result(
+                    LaunchExecutorCodes.PluginRegistrationNotVisible,
+                    visibility.Describe() +
+                    " The value is written here, so which file Rhino now resolves is unknown; " +
+                    "check the registration before relying on it.");
+            }
+
+            return channel.Result(
+                LaunchExecutorCodes.PluginRegistrationSwitched,
+                $"Rhino {request.RhinoVersion} now loads '{switched.NewPath}' by default, from " +
+                $"'{visibility.KeyPath}'. It previously loaded " +
+                (switched.PreviousPath is null
+                    ? "nothing: the plug-in was not registered."
+                    : $"'{switched.PreviousPath}'."),
+                succeeded: true,
+                switched: switched);
+        }
+        catch (OperationCanceledException) when (clientDisconnected.IsCancellationRequested)
+        {
+            return channel.Result(
+                LaunchExecutorCodes.ExecutorClientDisconnected,
+                "The launcher host that requested this registration change disconnected before " +
+                "it completed.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return channel.Result(
+                LaunchExecutorCodes.LaunchCancelled,
+                "The registration change was cancelled.");
+        }
+        catch (OperationCanceledException)
+        {
+            return channel.Result(
+                LaunchExecutorCodes.LaunchTimeout,
+                $"The registration change did not complete within {request.TimeoutSeconds:0.###} seconds.");
+        }
+        catch (LaunchDiagnosticException exception)
+        {
+            return channel.Result(exception.Code, exception.Message);
+        }
+        catch (Exception exception)
+        {
+            return channel.Result(LaunchExecutorCodes.LaunchFailed, exception.Message);
+        }
+    }
+
     // Waits for the Rhino this launch verified, then puts the journaled pre-state back once
     // more. Rhino writes the artifact it loaded into its own registration, and the restore
     // above ran while that Rhino was still alive, so without this the machine registration
@@ -478,6 +599,11 @@ internal interface IPluginNamespace
     Task<RegistrationDrift> CorrectAfterExitAsync(
         PluginNamespaceLeaseRequest request,
         CancellationToken cancellationToken);
+
+    Task<RegistrationSwitchResult> SwitchAsync(
+        PluginNamespaceLeaseRequest request,
+        IProgress<FileLockWait>? waiting,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class RegistryPluginNamespace : IPluginNamespace
@@ -510,6 +636,12 @@ internal sealed class RegistryPluginNamespace : IPluginNamespace
             request.PluginId,
             request.Holder,
             cancellationToken);
+
+    public Task<RegistrationSwitchResult> SwitchAsync(
+        PluginNamespaceLeaseRequest request,
+        IProgress<FileLockWait>? waiting,
+        CancellationToken cancellationToken) =>
+        PluginNamespaceLease.SwitchAsync(request, waiting, cancellationToken);
 }
 
 // Every event the executor emits goes to the caller and to the executor's own log, so a
@@ -546,7 +678,8 @@ internal sealed class ExecutorChannel
         string code,
         string message,
         bool succeeded = false,
-        int rhinoProcessId = 0)
+        int rhinoProcessId = 0,
+        RegistrationSwitchResult? switched = null)
     {
         LaunchExecutorEvent result = new LaunchExecutorEvent
         {
@@ -558,7 +691,10 @@ internal sealed class ExecutorChannel
             Severity = succeeded ? "info" : "error",
             Succeeded = succeeded,
             RhinoProcessId = rhinoProcessId,
-            ExecutorLogPath = _log.Path
+            ExecutorLogPath = _log.Path,
+            RegistryHive = switched?.Hive,
+            RegistryKeyPath = switched?.KeyPath,
+            PreviousRegisteredPath = switched?.PreviousPath
         };
         LastResult = result;
         Emit(result);

@@ -519,6 +519,92 @@ public sealed class LaunchBackendTests
             StringComparison.Ordinal);
     }
 
+    // Switching which build Rhino loads by default is its own operation with its own log
+    // record, and it hands the registry mutation to the executor the way a launch does.
+    [Fact]
+    public async Task Setting_the_standing_registration_records_it_and_reports_where_it_was_written()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        using RegistrySandbox registry = new RegistrySandbox(temporary);
+        temporary.Run(
+            "dotnet",
+            repository,
+            "build",
+            temporary.PathFor("repository/Sample.slnx"),
+            "-c",
+            "Debug",
+            "-p:Platform=x64");
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            LaunchExecutorInvoker = InProcessExecutor.For(registry, new FakeRhino())
+        });
+        CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+        Assert.True(registration.Succeeded, registration.Diagnostics.FirstOrDefault()?.Message);
+
+        CommandResult<RegistrationSwitchOutcome> result = await backend.SetStandingRegistrationAsync(
+            repository,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.Equal("repository", result.Value!.ProjectId);
+        Assert.EndsWith("Sample.rhp", result.Value.PluginPath, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(result.Value.PluginPath));
+        Assert.Null(result.Value.PreviousPath);
+        Assert.NotEmpty(result.Value.RegistryKeyPath);
+        string[] records = await File.ReadAllLinesAsync(result.Value.DiagnosticsLogPath);
+        Assert.Equal(
+            "set_registration",
+            JsonDocument.Parse(records[0]).RootElement.GetProperty("type").GetString());
+        Assert.Contains("plugin_registration_switched", string.Join(Environment.NewLine, records));
+    }
+
+    // Pointing Rhino at a build that is not there is the one thing this must not do, and it
+    // fails the way a direct launch fails, before an executor is ever started.
+    [Fact]
+    public async Task Setting_the_standing_registration_refuses_a_missing_artifact_before_the_executor()
+    {
+        using TemporaryDirectory temporary = RepositoryFixture.Create();
+        string repository = temporary.PathFor("repository");
+        bool executorStarted = false;
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            LocksDirectory = temporary.PathFor("launcher/locks"),
+            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            LaunchExecutorInvoker = (_, _, _) =>
+            {
+                executorStarted = true;
+                return Task.FromException<LaunchExecutorEvent>(
+                    new InvalidOperationException("No executor may run for a missing artifact."));
+            }
+        });
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        CommandResult<RegistrationSwitchOutcome> result = await backend.SetStandingRegistrationAsync(
+            repository,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.False(executorStarted);
+        Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("artifact_prepare_failed", diagnostic.Code);
+        Assert.Contains("Build this configuration first", diagnostic.Message, StringComparison.Ordinal);
+        // The failure still names its log, the way a failed launch does.
+        Assert.True(File.Exists(result.Value!.DiagnosticsLogPath));
+    }
+
     private static string? Kind(JsonElement record) => record.GetProperty("type").GetString();
 
     private static Process StartExitedProcess()
