@@ -200,6 +200,37 @@ public sealed class LaunchExecutorEngineTests
         Assert.False(File.Exists(sandbox.JournalPathFor(request.PluginGuid())));
     }
 
+    // Verification passing is not the launch succeeding. Everything between it and the
+    // result can still fail, and the reported case is the restore itself throwing on a
+    // registry key another program has marked for deletion. The caller is told the launch
+    // failed, so the Rhino it started must not survive it.
+    [Fact]
+    public async Task A_failure_after_verification_still_ends_the_rhino_the_launch_started()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using RegistrySandbox sandbox = new RegistrySandbox();
+        using StandInRhino rhino = new StandInRhino(sandbox);
+        LaunchExecutorRequest request = Request(sandbox);
+
+        LaunchExecutorEvent result = await RunAsync(
+            sandbox,
+            rhino,
+            request,
+            pluginNamespace: new RestoreFailingPluginNamespace(
+                sandbox,
+                "Illegal operation attempted on a registry key that has been marked for deletion."));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(LaunchExecutorCodes.LaunchFailed, result.Code);
+        Assert.Contains("marked for deletion", result.Message, StringComparison.Ordinal);
+        Assert.True(StandInRhino.HasExited(rhino.ProcessId!.Value));
+        // The lease released itself before it threw, so disposing it again changes nothing
+        // and the journal stays for the next launch's recovery to restore.
+        Assert.True(File.Exists(sandbox.JournalPathFor(request.PluginGuid())));
+    }
+
     [Fact]
     public async Task A_rhino_that_exits_before_verification_fails_with_its_own_diagnostic()
     {
@@ -542,6 +573,76 @@ public sealed class LaunchExecutorEngineTests
             IProgress<FileLockWait>? waiting,
             CancellationToken cancellationToken) =>
             Task.FromResult(RegistrationSwitchResult.Refused(_conflict));
+    }
+
+    // The real namespace with one fault injected: the lease restores as it always does and
+    // then reports the failure a contended registry key produces, which is what reaches the
+    // executor after Rhino has started.
+    private sealed class RestoreFailingPluginNamespace : IPluginNamespace
+    {
+        private readonly IPluginNamespace _namespace;
+        private readonly string _message;
+
+        public RestoreFailingPluginNamespace(IPluginNamespace pluginNamespace, string message)
+        {
+            _namespace = pluginNamespace;
+            _message = message;
+        }
+
+        public Task RecoverAsync(
+            PluginNamespaceLeaseRequest request,
+            IProgress<FileLockWait>? waiting,
+            CancellationToken cancellationToken) =>
+            _namespace.RecoverAsync(request, waiting, cancellationToken);
+
+        public async Task<PluginNamespaceLeaseResult> AcquireAsync(
+            PluginNamespaceLeaseRequest request,
+            IProgress<FileLockWait>? waiting,
+            CancellationToken cancellationToken)
+        {
+            PluginNamespaceLeaseResult acquired = await _namespace.AcquireAsync(
+                request,
+                waiting,
+                cancellationToken);
+            return acquired.Lease is null
+                ? acquired
+                : acquired with { Lease = new RestoreFailingLease(acquired.Lease, _message) };
+        }
+
+        public Task<RegistrationDrift> CorrectAfterExitAsync(
+            PluginNamespaceLeaseRequest request,
+            CancellationToken cancellationToken) =>
+            _namespace.CorrectAfterExitAsync(request, cancellationToken);
+
+        public Task<RegistrationSwitchResult> SwitchAsync(
+            PluginNamespaceLeaseRequest request,
+            IProgress<FileLockWait>? waiting,
+            CancellationToken cancellationToken) =>
+            _namespace.SwitchAsync(request, waiting, cancellationToken);
+    }
+
+    private sealed class RestoreFailingLease : IPluginNamespaceLease
+    {
+        private readonly IPluginNamespaceLease _lease;
+        private readonly string _message;
+
+        public RestoreFailingLease(IPluginNamespaceLease lease, string message)
+        {
+            _lease = lease;
+            _message = message;
+        }
+
+        public void ClearVisibilityNonce() => _lease.ClearVisibilityNonce();
+
+        public void RestoreRetainingJournal()
+        {
+            // The real lease marks itself released even when its restore throws, so the
+            // fault is injected after it, not instead of it.
+            _lease.RestoreRetainingJournal();
+            throw new IOException(_message);
+        }
+
+        public void Dispose() => _lease.Dispose();
     }
 }
 
