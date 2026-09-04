@@ -218,7 +218,7 @@ public sealed class LauncherBackend
             return CommandResult<WorktreeInspection>.Failure(contextResult.Diagnostics.ToArray());
 
         ResolvedContext context = contextResult.Value!;
-        string rhinoPath = Options.RhinoExecutableResolver(context.RhinoVersion);
+        RhinoInstallation rhino = Options.RhinoExecutableResolver(context.RhinoVersion);
         List<Diagnostic> diagnostics = new List<Diagnostic>();
         if (!context.BuildProfile.IsConfigured)
         {
@@ -241,14 +241,14 @@ public sealed class LauncherBackend
                 diagnostics.Add(new Diagnostic("build_configuration_unavailable", exception.Message));
             }
         }
-        if (!File.Exists(rhinoPath))
-            diagnostics.Add(new Diagnostic("rhino_missing", $"Rhino was not found at '{rhinoPath}'."));
+        if (!File.Exists(rhino.ExecutablePath))
+            diagnostics.Add(new Diagnostic("rhino_missing", rhino.DescribeMissing()));
 
         WorktreeInspection inspection = new WorktreeInspection(
             context.ProjectId,
             context.WorktreePath,
             Options.CatalogPath,
-            rhinoPath,
+            rhino.ExecutablePath,
             context.IsPrimary,
             diagnostics.Count == 0);
         return CommandResult<WorktreeInspection>.Success(inspection, diagnostics);
@@ -353,12 +353,15 @@ public sealed class LauncherBackend
                 project.Availability == ProjectAvailability.Available
                     ? DiagnosticSeverity.Info
                     : DiagnosticSeverity.Error));
-            string rhinoPath = Options.RhinoExecutableResolver(project.Registration.RhinoVersion);
+            // The message names where the path came from, so a Rhino that moved and a Rhino
+            // that was never recorded are told apart without a second look at the machine.
+            RhinoInstallation rhino = Options.RhinoExecutableResolver(project.Registration.RhinoVersion);
+            bool rhinoFound = File.Exists(rhino.ExecutablePath);
             checks.Add(new DoctorCheck(
                 $"rhino:{project.Registration.RhinoVersion}",
-                File.Exists(rhinoPath),
-                File.Exists(rhinoPath) ? rhinoPath : $"Rhino was not found at '{rhinoPath}'.",
-                File.Exists(rhinoPath) ? DiagnosticSeverity.Info : DiagnosticSeverity.Error));
+                rhinoFound,
+                rhinoFound ? rhino.DescribeFound() : rhino.DescribeMissing(),
+                rhinoFound ? DiagnosticSeverity.Info : DiagnosticSeverity.Error));
         }
 
         DoctorReport report = new DoctorReport(

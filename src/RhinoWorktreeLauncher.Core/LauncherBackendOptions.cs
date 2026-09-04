@@ -24,11 +24,12 @@ public sealed class LauncherBackendOptions
     public string GitExecutable { get; init; } = "git";
     public string GitHubExecutable { get; init; } = ResolveGitHubCliPath();
     public string DotNetExecutable { get; init; } = "dotnet";
-    public Func<int, string> RhinoExecutableResolver { get; init; } = version => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-        $"Rhino {version}",
-        "System",
-        "Rhino.exe");
+    // Where Rhino is for a project's registered major version, and how that was decided. The
+    // Rhino installer records its own location, so a Rhino 7, 8, or 9 installed outside
+    // Program Files is discovered rather than guessed at, and a diagnostic that names a path
+    // can say which answer it is naming.
+    public Func<int, RhinoInstallation> RhinoExecutableResolver { get; init; } =
+        RhinoInstallation.Resolve;
     // The one seam over everything a launch does after the build. It runs in a process the
     // interactive Windows shell starts, because no registration may be written from a host
     // that can be sandboxed (ADR 0015).

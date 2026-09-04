@@ -23,7 +23,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
@@ -63,7 +63,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
@@ -95,7 +95,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
@@ -127,7 +127,7 @@ public sealed class LaunchBackendTests
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
@@ -182,7 +182,7 @@ public sealed class LaunchBackendTests
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
@@ -236,7 +236,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
@@ -274,7 +274,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(
                 new StubPluginNamespace(new PluginRegistrationConflict(competing, competingKey)),
                 rhino)
@@ -313,7 +313,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             // The process is already gone before the executor ever polls it, so the exited
             // path is exercised without depending on a timing window.
             LaunchExecutorInvoker = InProcessExecutor.For(
@@ -353,7 +353,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(
                 new StubPluginNamespace(lease, DisplacedMachineRegistration: @"C:\primary\Sample.rhp"),
                 rhino)
@@ -392,7 +392,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(
                 new StubPluginNamespace(lease, DisplacedUserRegistration: existing),
                 rhino)
@@ -431,7 +431,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         await backend.RegisterProjectAsync(
@@ -468,7 +468,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         await backend.RegisterProjectAsync(
@@ -540,7 +540,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(registry, new FakeRhino())
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
@@ -579,7 +579,7 @@ public sealed class LaunchBackendTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = (_, _, _) =>
             {
                 executorStarted = true;

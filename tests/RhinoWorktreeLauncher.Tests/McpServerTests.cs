@@ -86,7 +86,7 @@ public sealed class McpServerTests
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
@@ -138,7 +138,7 @@ public sealed class McpServerTests
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = InProcessExecutor.For(registry, rhino)
         });
         CommandResult<ProjectRegistration> registration = await backend.RegisterProjectAsync(
@@ -197,7 +197,7 @@ public sealed class McpServerTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             LaunchExecutorInvoker = (_, _, _) =>
                 throw new InvalidOperationException("No launch may be attempted by a degraded host.")
         });
