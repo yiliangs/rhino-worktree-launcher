@@ -42,6 +42,12 @@ internal static class SurfaceLayout
             return bounds;
         });
 
+    /// <summary>
+    /// Runs <paramref name="work"/> on the fixture's STA thread, for a check that builds a
+    /// surface but asks it something other than where its parts landed.
+    /// </summary>
+    public static T Run<T>(Func<T> work) => Dispatcher.Invoke(work);
+
     private static void Collect(
         DependencyObject visual,
         Visual root,

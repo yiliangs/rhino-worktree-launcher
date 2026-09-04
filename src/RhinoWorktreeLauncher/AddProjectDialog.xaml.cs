@@ -17,7 +17,7 @@ public partial class AddProjectDialog : Window
         ProjectPathText.Text = ProjectPath;
         BuildConfigurationComboBox.SelectionChanged += BuildConfiguration_SelectionChanged;
         RenderBuildSelection();
-        Loaded += (_, _) => ApplyOwnerTheme();
+        Loaded += (_, _) => OwnerTheme.Apply(this);
     }
 
     public string ProjectPath { get; }
@@ -113,47 +113,4 @@ public partial class AddProjectDialog : Window
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
-
-    private void ApplyOwnerTheme()
-    {
-        if (Owner is null)
-            return;
-        foreach (string key in new[]
-        {
-            "WindowBrush",
-            "PanelBrush",
-            "ControlBrush",
-            "ControlHoverBrush",
-            "PanelBorderBrush",
-            "DividerBrush",
-            "ControlBorderBrush",
-            "ControlHoverBorderBrush",
-            "TextStrongBrush",
-            "TextBodyBrush",
-            "TextSecondaryBrush",
-            "TextMutedBrush",
-            "TextFaintBrush",
-            "AccentBrush",
-            "RowHoverBrush",
-            "RowActiveBrush",
-            "PatternBrush",
-            "DropdownMenuBrush",
-            "DropdownMenuBorderBrush",
-            "DropdownOpenBorderBrush",
-            "DropdownDisabledBrush",
-            "DropdownDisabledBorderBrush",
-            "DropdownFocusRingBrush",
-            "DropdownSelectedBorderBrush",
-            "DropdownAccentBrush",
-            "DropdownControlShadowEffect",
-            "DropdownMenuShadowEffect",
-            "PrimaryBrush",
-            "PrimaryTextBrush"
-        })
-        {
-            object? resource = Owner.TryFindResource(key);
-            if (resource is not null)
-                Resources[key] = resource;
-        }
-    }
 }

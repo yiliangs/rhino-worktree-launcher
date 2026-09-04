@@ -12,21 +12,11 @@
         FontFamily="{StaticResource UiFont}"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
+    <!-- The palette, the shadows and the shared dialog controls come from
+         Themes/DialogStyles.xaml, so only the styles this window alone draws are stated
+         here. The two buttons keep their own metrics because the footer sizes them to a
+         fixed width that the Project Settings buttons, being larger, would overflow. -->
     <Window.Resources>
-        <SolidColorBrush x:Key="WindowBrush" Color="#16181B" />
-        <SolidColorBrush x:Key="PanelBrush" Color="#1A1C20" />
-        <SolidColorBrush x:Key="ControlBrush" Color="#1B1D21" />
-        <SolidColorBrush x:Key="ControlHoverBrush" Color="#22252A" />
-        <SolidColorBrush x:Key="PanelBorderBrush" Color="#2A2E34" />
-        <SolidColorBrush x:Key="DividerBrush" Color="#25292E" />
-        <SolidColorBrush x:Key="TextStrongBrush" Color="#F0F2F5" />
-        <SolidColorBrush x:Key="TextBodyBrush" Color="#E6E8EB" />
-        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#9298A1" />
-        <SolidColorBrush x:Key="TextMutedBrush" Color="#707780" />
-        <SolidColorBrush x:Key="PrimaryBrush" Color="#F0F2F5" />
-        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#16181B" />
-        <SolidColorBrush x:Key="AccentBrush" Color="#7FAE7A" />
-
         <Style x:Key="ActionButton" TargetType="Button">
             <Setter Property="Height" Value="42" />
             <Setter Property="Padding" Value="18,0" />
@@ -269,7 +259,11 @@
                       IsEnabled="False"
                       Tag="Select a solution first"
                       Style="{StaticResource BuildCombo}" />
-            <TextBlock x:Name="ValidationText" Margin="0,7,0,0" Foreground="#C07D76" FontSize="11" Visibility="Collapsed" />
+            <TextBlock x:Name="ValidationText"
+                       Margin="0,7,0,0"
+                       Foreground="{DynamicResource ValidationBrush}"
+                       FontSize="11"
+                       Visibility="Collapsed" />
         </StackPanel>
 
         <Grid Grid.Row="6">
