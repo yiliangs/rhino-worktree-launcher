@@ -1112,7 +1112,7 @@
                             Click="OpenFolder_Click" />
 
                     <Button x:Name="LaunchButton"
-                            Width="164"
+                            Width="132"
                             Height="48"
                             Margin="0,0,8,0"
                             VerticalAlignment="Center"
@@ -1123,7 +1123,7 @@
                             Click="Launch_Click" />
 
                     <Button x:Name="BuildAndLaunchButton"
-                            Width="164"
+                            Width="132"
                             Height="48"
                             VerticalAlignment="Center"
                             Style="{StaticResource PrimaryButton}"
