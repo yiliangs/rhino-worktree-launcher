@@ -386,6 +386,41 @@ public sealed class WorktreeBackendTests
     }
 
     [Fact]
+    public async Task A_remote_that_is_not_a_GitHub_host_skips_the_pull_request_lookup()
+    {
+        using TemporaryDirectory temporary = new TemporaryDirectory();
+        string remote = temporary.CreateDirectory("remote.git");
+        temporary.Run("git", remote, "init", "--bare", "--quiet");
+        string repository = RepositoryFixture.Initialize(temporary, "repository");
+        string branch = temporary.Run("git", repository, "branch", "--show-current").Trim();
+        temporary.Run("git", repository, "remote", "add", "origin", remote);
+        temporary.Run("git", repository, "push", "--quiet", "-u", "origin", branch);
+
+        LauncherBackend backend = new LauncherBackend(new LauncherBackendOptions
+        {
+            CatalogPath = temporary.PathFor("launcher/projects.json"),
+            LogsDirectory = temporary.PathFor("launcher/logs"),
+            RemotesDirectory = temporary.PathFor("launcher/remotes"),
+            GitHubExecutable = temporary.PathFor("missing-gh.exe")
+        });
+        await backend.RegisterProjectAsync(
+            new ProjectRegistrationRequest(repository, ProjectAccessGrant.Full),
+            CancellationToken.None);
+
+        CommandResult<ProjectWorktrees> result = await backend.GetWorktreeSnapshotAsync(
+            "repository",
+            includeRemote: true,
+            CancellationToken.None);
+
+        // The pull-request lookup cannot apply to a remote that is not a GitHub host, so it
+        // is never attempted. A missing gh executable would have raised the warning below.
+        Assert.True(result.Succeeded, result.Diagnostics.FirstOrDefault()?.Message);
+        Assert.True(Assert.Single(result.Value!.Worktrees).HasGitState);
+        Assert.DoesNotContain(result.Diagnostics, diagnostic =>
+            diagnostic.Severity >= DiagnosticSeverity.Warning);
+    }
+
+    [Fact]
     public async Task Remote_refresh_reports_local_worktrees_while_the_remote_mirror_is_blocked()
     {
         using TemporaryDirectory temporary = new TemporaryDirectory();

@@ -253,9 +253,18 @@ internal sealed class WorktreeScanner
                 });
         }
 
-        Task<RemoteMirrorResult> mirrorTask = RefreshMirrorAsync(project, cancellationToken);
+        // One read of the configured remotes answers both remote reads: the mirror clones and
+        // fetches origin, and the pull-request lookup only applies to a GitHub host.
+        GitRemotes remotes = await ReadRemotesAsync(
+            project.Registration.PrimaryCheckout,
+            cancellationToken);
+        Task<RemoteMirrorResult> mirrorTask = RefreshMirrorAsync(
+            project,
+            remotes.OriginUrl,
+            cancellationToken);
         Task<PullRequestResult> pullRequestTask = LoadPullRequestsAsync(
             project.Registration.PrimaryCheckout,
+            remotes.Urls,
             cancellationToken);
         await Task.WhenAll(mirrorTask, pullRequestTask);
         RemoteMirrorResult mirror = await mirrorTask;
@@ -266,14 +275,60 @@ internal sealed class WorktreeScanner
             mirror.Diagnostics.Concat(pullRequests.Diagnostics).ToArray());
     }
 
+    private async Task<GitRemotes> ReadRemotesAsync(
+        string primary,
+        CancellationToken cancellationToken)
+    {
+        string output;
+        try
+        {
+            output = await RunGitAsync(
+                primary,
+                new[] { "config", "--get-regexp", "^remote\\..*\\.url$" },
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // A repository that configures no remote exits non-zero here. The mirror refresh
+            // reports that as its own failure, and an unread remote list leaves the
+            // pull-request lookup exactly where it was.
+            return GitRemotes.None;
+        }
+
+        string origin = string.Empty;
+        List<string> urls = new List<string>();
+        foreach (string line in Lines(output))
+        {
+            int separator = line.IndexOf(' ');
+            if (separator <= 0)
+                continue;
+            string key = line[..separator];
+            string url = line[(separator + 1)..].Trim();
+            if (url.Length == 0)
+                continue;
+            urls.Add(url);
+            if (origin.Length == 0 &&
+                string.Equals(key, "remote.origin.url", StringComparison.OrdinalIgnoreCase))
+            {
+                origin = url;
+            }
+        }
+        return new GitRemotes(origin, urls);
+    }
+
     private async Task<RemoteMirrorResult> RefreshMirrorAsync(
         ProjectSnapshot project,
+        string remoteUrl,
         CancellationToken cancellationToken)
     {
         try
         {
             return new RemoteMirrorResult(
-                await _remoteMirrors.RefreshAsync(project, cancellationToken),
+                await _remoteMirrors.RefreshAsync(project, remoteUrl, cancellationToken),
                 Array.Empty<Diagnostic>());
         }
         catch (OperationCanceledException)
@@ -352,8 +407,24 @@ internal sealed class WorktreeScanner
 
     private async Task<PullRequestResult> LoadPullRequestsAsync(
         string primary,
+        IReadOnlyList<string> remoteUrls,
         CancellationToken cancellationToken)
     {
+        if (!GitRemoteUrl.MayHostPullRequests(remoteUrls))
+        {
+            // Not a degradation. Pull-request state was never available for this project, so
+            // the lookup is skipped rather than run and reported as a failed remote read.
+            return new PullRequestResult(
+                new Dictionary<string, PullRequestRecord>(StringComparer.OrdinalIgnoreCase),
+                new[]
+                {
+                    new Diagnostic(
+                        "github_not_applicable",
+                        "Pull requests were not read because no configured Git remote names a GitHub host.",
+                        DiagnosticSeverity.Info)
+                });
+        }
+
         try
         {
             string output = await ProcessRunner.RunAsync(
@@ -487,6 +558,13 @@ internal sealed class WorktreeScanner
             worktree.AheadBarWidth = WorktreeSnapshot.ScaleDivergence(worktree.AheadCount, cap);
             worktree.BehindBarWidth = WorktreeSnapshot.ScaleDivergence(worktree.BehindCount, cap);
         }
+    }
+
+    private sealed record GitRemotes(string OriginUrl, IReadOnlyList<string> Urls)
+    {
+        public static GitRemotes None { get; } = new GitRemotes(
+            string.Empty,
+            Array.Empty<string>());
     }
 
     private sealed record RemoteRefresh(

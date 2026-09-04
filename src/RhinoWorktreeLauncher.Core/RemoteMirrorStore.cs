@@ -15,12 +15,9 @@ internal sealed class RemoteMirrorStore
 
     public async Task<RemoteMirror> RefreshAsync(
         ProjectSnapshot project,
+        string remoteUrl,
         CancellationToken cancellationToken)
     {
-        string remoteUrl = (await RunSourceGitAsync(
-            project.Registration.PrimaryCheckout,
-            new[] { "config", "--get", "remote.origin.url" },
-            cancellationToken)).Trim();
         if (string.IsNullOrWhiteSpace(remoteUrl))
             throw new InvalidOperationException("The registered project does not define remote 'origin'.");
 
@@ -99,15 +96,6 @@ internal sealed class RemoteMirrorStore
             Directory.Delete(mirrorPath, recursive: true);
         return Task.CompletedTask;
     }
-
-    private Task<string> RunSourceGitAsync(
-        string workingDirectory,
-        IEnumerable<string> arguments,
-        CancellationToken cancellationToken) => ProcessRunner.RunAsync(
-        _options.GitExecutable,
-        workingDirectory,
-        new[] { "--no-optional-locks", "-C", workingDirectory }.Concat(arguments),
-        cancellationToken);
 
     private Task<string> RunMirrorGitAsync(
         string mirrorPath,
