@@ -1083,55 +1083,55 @@
                 BorderBrush="{DynamicResource DividerBrush}"
                 BorderThickness="0,1,0,0">
             <Grid>
-                <!-- Four equal buttons across the window's content width: the two launch
-                     modes are separate requests, so the footer publishes both rather than
-                     one button whose label follows a setting. -->
+                <!-- Two groups: Settings acts on the application and stands alone on the
+                     left, while Open folder and the two launch modes all act on the
+                     selected worktree and gather on the right, the pair closer to each
+                     other than to Open folder because they are one choice. -->
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="150" />
-                    <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="150" />
-                    <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="GlobalSettingsButton"
                         Grid.Column="0"
-                        Width="150"
-                        Height="48"
                         HorizontalAlignment="Left"
-                        Style="{StaticResource ControlButton}"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource GhostButton}"
                         Content="Settings"
-                        FontSize="13"
                         Click="GlobalSettings_Click" />
 
-                <Button x:Name="OpenFolderButton"
-                        Grid.Column="2"
-                        Width="150"
-                        Height="48"
-                        Style="{StaticResource ControlButton}"
-                        Content="Open folder"
-                        FontSize="13"
-                        Click="OpenFolder_Click" />
+                <StackPanel x:Name="WorktreeActions"
+                            Grid.Column="1"
+                            HorizontalAlignment="Right"
+                            Orientation="Horizontal">
+                    <Button x:Name="OpenFolderButton"
+                            Margin="0,0,12,0"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource GhostButton}"
+                            Content="Open folder"
+                            Click="OpenFolder_Click" />
 
-                <Button x:Name="LaunchButton"
-                        Grid.Column="4"
-                        Width="150"
-                        Height="48"
-                        Style="{StaticResource ControlButton}"
-                        Content="Launch"
-                        FontSize="13"
-                        Click="Launch_Click" />
+                    <Button x:Name="LaunchButton"
+                            Width="132"
+                            Height="48"
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource ControlButton}"
+                            Content="Launch"
+                            FontSize="13"
+                            ToolTip="Load the existing build without building"
+                            Click="Launch_Click" />
 
-                <Button x:Name="BuildAndLaunchButton"
-                        Grid.Column="6"
-                        Width="150"
-                        Height="48"
-                        Style="{StaticResource PrimaryButton}"
-                        Content="Build &amp; Launch"
-                        FontSize="13"
-                        Click="BuildAndLaunch_Click" />
+                    <Button x:Name="BuildAndLaunchButton"
+                            Width="164"
+                            Height="48"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource PrimaryButton}"
+                            Content="Build &amp; Launch"
+                            FontSize="13"
+                            ToolTip="Build the selected solution, then load the build"
+                            Click="BuildAndLaunch_Click" />
+                </StackPanel>
             </Grid>
         </Border>
 
