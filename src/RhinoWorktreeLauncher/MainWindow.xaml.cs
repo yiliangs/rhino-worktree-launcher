@@ -609,9 +609,7 @@ public partial class MainWindow : Window
                 selectedPath;
             _ = UpdateWorktreesIfChanged(result.Value.Worktrees, currentSelection);
             UpdateSync(active: true, local: 1, git: fetchRemote ? 1 : null);
-            _hint = result.Diagnostics.Count == 0
-                ? string.Empty
-                : "Local data shown; remote enrichment unavailable";
+            _hint = WorktreeRefreshHint.Describe(result.Diagnostics);
             UpdateState();
             if (fetchRemote)
                 await Task.Delay(450, cancellation.Token);
