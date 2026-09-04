@@ -204,39 +204,19 @@ public partial class ProjectConfigDialog : Window
         return prefix + path.Substring(path.Length - low);
     }
 
+    /// <summary>
+    /// The copied keys live in <see cref="OwnerTheme"/>. The toggle palette and the logo
+    /// shadow are derived from the theme it just applied and belong to this window alone,
+    /// so they are computed here rather than listed there.
+    /// </summary>
     private void ApplyOwnerTheme()
     {
         if (Owner is null)
             return;
 
-        foreach (string key in new[]
-        {
-            "WindowBrush", "PanelBrush", "FooterBrush", "ControlBrush", "ControlHoverBrush", "TrackBrush", "PanelBorderBrush",
-            "DividerBrush", "ControlBorderBrush", "ControlHoverBorderBrush", "BadgeBrush", "BadgeBorderBrush",
-            "TextStrongBrush", "TextBodyBrush", "TextSecondaryBrush", "TextMutedBrush", "TextBadgeBrush",
-            "ControlTextBrush", "AccentBrush", "PrimaryBrush", "PrimaryHoverBrush", "RowHoverBrush",
-            "RowActiveBrush", "PatternBrush", "TextFaintBrush", "DropdownMenuBrush", "DropdownMenuBorderBrush",
-            "DropdownOpenBorderBrush", "DropdownDisabledBrush", "DropdownDisabledBorderBrush",
-            "DropdownFocusRingBrush", "DropdownSelectedBorderBrush", "DropdownAccentBrush",
-            "PrimaryTextBrush", "ControlShadowEffect", "PrimaryShadowEffect",
-            "DropdownControlShadowEffect", "DropdownMenuShadowEffect"
-        })
-        {
-            object? resource = Owner.TryFindResource(key);
-            if (resource is not null)
-                Resources[key] = resource;
-        }
-
-        CopyOwnerResource("BehindTextBrush", "ValidationBrush");
+        OwnerTheme.Apply(this, Owner);
         ApplyToggleTheme();
         Resources["LogoShadowEffect"] = CreateLogoShadow();
-    }
-
-    private void CopyOwnerResource(string ownerKey, string localKey)
-    {
-        object? resource = Owner?.TryFindResource(ownerKey);
-        if (resource is not null)
-            Resources[localKey] = resource;
     }
 
     private void ApplyToggleTheme()

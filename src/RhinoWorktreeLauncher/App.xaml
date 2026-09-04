@@ -4,6 +4,7 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/DialogStyles.xaml" />
                 <ResourceDictionary Source="Themes/DropdownStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
         <FontFamily x:Key="UiFont">/RhinoWorktreeLauncher;component/Assets/Fonts/#IBM Plex Sans</FontFamily>
