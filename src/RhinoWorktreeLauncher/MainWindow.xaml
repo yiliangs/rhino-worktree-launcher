@@ -1083,17 +1083,22 @@
                 BorderBrush="{DynamicResource DividerBrush}"
                 BorderThickness="0,1,0,0">
             <Grid>
+                <!-- Four equal buttons across the window's content width: the two launch
+                     modes are separate requests, so the footer publishes both rather than
+                     one button whose label follows a setting. -->
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="164" />
+                    <ColumnDefinition Width="150" />
                     <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="164" />
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="150" />
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="GlobalSettingsButton"
                         Grid.Column="0"
-                        Width="164"
+                        Width="150"
                         Height="48"
                         HorizontalAlignment="Left"
                         Style="{StaticResource ControlButton}"
@@ -1103,25 +1108,30 @@
 
                 <Button x:Name="OpenFolderButton"
                         Grid.Column="2"
-                        Width="164"
+                        Width="150"
                         Height="48"
                         Style="{StaticResource ControlButton}"
                         Content="Open folder"
                         FontSize="13"
-                        Click="OpenFolder_Click">
-                </Button>
+                        Click="OpenFolder_Click" />
 
                 <Button x:Name="LaunchButton"
                         Grid.Column="4"
-                        Width="164"
+                        Width="150"
+                        Height="48"
+                        Style="{StaticResource ControlButton}"
+                        Content="Launch"
+                        FontSize="13"
+                        Click="Launch_Click" />
+
+                <Button x:Name="BuildAndLaunchButton"
+                        Grid.Column="6"
+                        Width="150"
                         Height="48"
                         Style="{StaticResource PrimaryButton}"
-                        Click="Launch_Click">
-                    <TextBlock x:Name="LaunchButtonText"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Text="Launch Rhino" />
-                </Button>
+                        Content="Build &amp; Launch"
+                        FontSize="13"
+                        Click="BuildAndLaunch_Click" />
             </Grid>
         </Border>
 

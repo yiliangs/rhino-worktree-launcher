@@ -467,7 +467,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        Launch(worktree);
+        // The keyboard has one launch and the footer has two, so Enter is where the saved
+        // Config default still decides which one it is.
+        Launch(worktree, worktree.LaunchMode);
         e.Handled = true;
     }
 
@@ -484,10 +486,18 @@ public partial class MainWindow : Window
         });
     }
 
+    // Each footer button is one mode. The saved Config default is not read here: a button
+    // that names a mode and then passes a different one would be lying about what it does.
     private void Launch_Click(object sender, RoutedEventArgs e)
     {
         if (WorktreeList.SelectedItem is WorktreeSnapshot worktree)
-            Launch(worktree);
+            Launch(worktree, LaunchMode.DirectLaunch);
+    }
+
+    private void BuildAndLaunch_Click(object sender, RoutedEventArgs e)
+    {
+        if (WorktreeList.SelectedItem is WorktreeSnapshot worktree)
+            Launch(worktree, LaunchMode.BuildAndLaunch);
     }
 
     private async Task ReloadProjectsAsync(string? selectedProjectId)
@@ -741,12 +751,11 @@ public partial class MainWindow : Window
         // The row's own action follows the same busy state the launch button does. The list
         // carries it because a data template has no name scope reaching this window.
         WorktreeList.Tag = !_isLaunching && !_isSwitchingRegistration;
-        LaunchButton.IsEnabled = CanLaunch(
+        bool canLaunch = CanLaunch(
             _isLaunching || _isSwitchingRegistration,
             selected?.HasBuildConfiguration == true);
-        LaunchButtonText.Text = selected is null || selected.LaunchMode == LaunchMode.DirectLaunch
-            ? "Launch Rhino"
-            : "Build & Launch";
+        LaunchButton.IsEnabled = canLaunch;
+        BuildAndLaunchButton.IsEnabled = canLaunch;
     }
 
     // Progress reports in the banner, so the button can simply say it is unavailable
@@ -806,7 +815,7 @@ public partial class MainWindow : Window
         fill.Width = 0;
     }
 
-    private async void Launch(WorktreeSnapshot worktree)
+    private async void Launch(WorktreeSnapshot worktree, LaunchMode mode)
     {
         if (_isLaunching)
             return;
@@ -828,7 +837,7 @@ public partial class MainWindow : Window
                 });
             CommandResult<LaunchResult> result = await _backend.LaunchAsync(
                 worktree.Path,
-                worktree.LaunchMode,
+                mode,
                 TimeSpan.FromMinutes(3),
                 progress,
                 environment: null,

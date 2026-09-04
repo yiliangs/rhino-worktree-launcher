@@ -17,7 +17,7 @@ The registered project the desktop selects when it starts: the one the catalog r
 _Avoid_: default project, recent project, active project
 
 **Launch mode**:
-The choice for one launch request between Build & Launch and Direct Launch. Desktop Config stores a project-specific default for mechanical launches; MCP agents choose explicitly per request. Build & Launch builds the canonical solution before resolving its artifact, while Direct Launch loads the existing artifact without building or claiming it is fresh.
+The choice for one launch request between Build & Launch and Direct Launch. The desktop footer and the MCP tools both name the mode per request; Desktop Config stores a project-specific default, which the row's mode chip reports and which Enter on the worktree list and the CLI pass. Build & Launch builds the canonical solution before resolving its artifact, while Direct Launch loads the existing artifact without building or claiming it is fresh.
 _Avoid_: project-wide launch mode, freshness mode, build receipt
 
 **Launch executor**:

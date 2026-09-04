@@ -21,7 +21,7 @@ Two launch modes:
 - **Build & Launch** (default): `dotnet build` the selected solution and configuration in the selected worktree, evaluate the plug-in project's mapped `TargetPath`, launch that `.rhp`.
 - **Direct Launch**: evaluate the same `TargetPath` and load the existing `.rhp`, without building or claiming freshness.
 
-The desktop follows the Config default. MCP agents choose per request with `rhino_worktree_build_and_launch` or `rhino_worktree_launch_existing`, never inheriting that default.
+The desktop footer offers both, one button each. The Config default is what the worktree row's mode chip reports and what Enter on the list and the CLI pass. MCP agents choose per request with `rhino_worktree_build_and_launch` or `rhino_worktree_launch_existing`, never inheriting that default.
 
 Your solution and its MSBuild settings own all build behavior: imports, output paths, pre- and post-build targets, configuration mapping. RWL never substitutes a project-only build, copies sources, reroutes caches, or reads a driver or configuration file from your repository. Your plug-in needs no RWL command, callback, or receipt writer, and no receipt is used to infer freshness.
 
@@ -83,7 +83,7 @@ Set-Acl $path $acl
 - **Config** is per project: plug-in project, solution, Configuration and Platform, Build & Launch or Direct Launch, remote reads, remote-cache clearing.
 - **Settings** is global: MCP setup for Claude Code and Codex.
 
-The primary action follows Config and reads **Build & Launch** or **Launch Rhino**.
+The footer offers both modes: **Launch** loads the existing artifact and **Build & Launch** builds first. The Config default is what the row's mode chip reports and what Enter on the worktree list passes.
 
 ## Install
 
