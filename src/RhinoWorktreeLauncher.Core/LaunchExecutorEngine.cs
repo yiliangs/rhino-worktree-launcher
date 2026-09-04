@@ -61,7 +61,10 @@ internal sealed class LaunchExecutorEngine
 
         IPluginNamespaceLease? lease = null;
         Process? rhino = null;
-        bool verified = false;
+        // Whether this launch produced its success result, not whether verification passed.
+        // The restore and the events between the two can still fail, and a caller told its
+        // launch failed must not be left with the Rhino that launch started.
+        bool succeeded = false;
         try
         {
             channel.Progress(
@@ -87,7 +90,6 @@ internal sealed class LaunchExecutorEngine
                 code: string.Empty,
                 "Waiting for the Rhino process to hold the selected plug-in in use.");
             await WaitForPluginInUseAsync(request, rhino, token);
-            verified = true;
 
             // The lease restores both hives here, but keeps its journal: the Rhino it
             // started is still able to write its registration back, and the post-exit
@@ -97,6 +99,7 @@ internal sealed class LaunchExecutorEngine
                 LaunchStage.Verify,
                 LaunchExecutorCodes.PluginRegistrationRestored,
                 "The displaced plug-in registrations are restored.");
+            succeeded = true;
             return channel.Result(
                 LaunchExecutorCodes.LaunchVerified,
                 $"Rhino process {rhino.Id} holds '{request.PluginPath}' mapped in its address space.",
@@ -134,11 +137,14 @@ internal sealed class LaunchExecutorEngine
         }
         finally
         {
-            if (!verified)
+            if (!succeeded)
             {
-                TerminateUnverified(rhino, channel);
+                TerminateStartedRhino(rhino, channel);
                 // The journal goes with it: nothing this launch started can still write a
-                // registration back, so there is nothing left to correct.
+                // registration back, so there is nothing left to correct. A lease that
+                // already released itself, which is what a restore that threw leaves
+                // behind, ignores this and keeps its journal for the next launch to
+                // recover.
                 lease?.Dispose();
             }
             rhino?.Dispose();
@@ -490,7 +496,9 @@ internal sealed class LaunchExecutorEngine
         }
     }
 
-    private static void TerminateUnverified(Process? rhino, ExecutorChannel channel)
+    // Ends the Rhino a launch started when that launch does not return a success result,
+    // whether it never verified or failed after verifying.
+    private static void TerminateStartedRhino(Process? rhino, ExecutorChannel channel)
     {
         if (rhino is null)
             return;
@@ -501,8 +509,8 @@ internal sealed class LaunchExecutorEngine
             rhino.Kill(entireProcessTree: true);
             rhino.WaitForExit();
         }
-        // The process may exit between the check and the termination request, and an
-        // unverified Rhino that is already gone is the outcome this wanted.
+        // The process may exit between the check and the termination request, and a Rhino
+        // that is already gone is the outcome this wanted.
         catch (InvalidOperationException)
         {
         }
@@ -511,7 +519,8 @@ internal sealed class LaunchExecutorEngine
             channel.Progress(
                 LaunchStage.Verify,
                 LaunchExecutorCodes.LaunchFailed,
-                $"The unverified Rhino process {rhino.Id} could not be terminated: {exception.Message}");
+                $"The Rhino process {rhino.Id} this failed launch started could not be " +
+                $"terminated: {exception.Message}");
         }
     }
 
