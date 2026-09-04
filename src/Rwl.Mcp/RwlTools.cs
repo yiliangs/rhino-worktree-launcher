@@ -150,14 +150,12 @@ internal sealed class RwlTools
         if (!readiness.Ready)
             return ToToolResult(CommandResult<LaunchResult>.Failure(new Diagnostic(readiness.Code, readiness.Message)));
 
-        int progressStep = 0;
-        Progress<LaunchProgress>? launchProgress = progress is null
+        // Inline, never through Progress<T>: every update has to reach the session before the
+        // launch that reported it returns, or a notification can be written after the result
+        // that announced the end of the work it describes.
+        IProgress<LaunchProgress>? launchProgress = progress is null
             ? null
-            : new Progress<LaunchProgress>(update => progress.Report(new ProgressNotificationValue
-            {
-                Progress = Interlocked.Increment(ref progressStep),
-                Message = $"{update.StageToken}: {update.Message}"
-            }));
+            : new OrderedLaunchProgress(progress);
         return ToToolResult(await _backend.LaunchAsync(
             path,
             requestedLaunchMode,
