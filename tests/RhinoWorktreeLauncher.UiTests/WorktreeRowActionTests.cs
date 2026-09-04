@@ -7,10 +7,11 @@ namespace RhinoWorktreeLauncher.UiTests;
 /// <summary>
 /// Changing which build Rhino loads outside RWL is an action on one row, so it lives on that
 /// row rather than in the footer beside the launch action. It is a button, carrying the
-/// footer buttons' control in a gutter the row carves for it: shaped as a chip it read as
-/// one more label stating a fact, beside two chips that do exactly that. It is offered only
-/// where it has something to do: the row the user is acting on, not already registered, with
-/// a build configuration to register.
+/// footer buttons' control in the gutter the row carves for it: shaped as a chip it read as
+/// one more label stating a fact. It is offered wherever it has something to do: the row the
+/// user is acting on, with a build configuration to register. Already being the default is
+/// not a reason to withhold it, because a registration another tool dropped or rewrote is
+/// re-applied by writing the same worktree again.
 /// </summary>
 public sealed class WorktreeRowActionTests
 {
@@ -23,7 +24,39 @@ public sealed class WorktreeRowActionTests
 
         Assert.Equal("Button", button.Name.LocalName);
         Assert.Equal("SetDefault_Click", button.Attribute("Click")?.Value);
-        Assert.Equal("Set default", button.Attribute("Content")?.Value);
+        // The label is one of two, so it is decided where the trigger that decides it lives.
+        Assert.Null(button.Attribute("Content"));
+    }
+
+    // Same handler, same write, two labels: setting a default the row does not hold, and
+    // re-applying the one it does.
+    [Fact]
+    public void The_button_says_whether_it_sets_the_default_or_re_applies_it()
+    {
+        XElement style = Keyed(LoadMainWindow(), "RowActionButton");
+
+        Assert.Contains(
+            style.Elements().Where(element => element.Name.LocalName == "Setter"),
+            setter => setter.Attribute("Property")?.Value == "Content" &&
+                setter.Attribute("Value")?.Value == "Set default");
+
+        XElement registered = style
+            .Descendants()
+            .Single(element => element.Name.LocalName == "DataTrigger");
+        Assert.Equal("{Binding IsRegistered}", registered.Attribute("Binding")?.Value);
+        Assert.Equal("True", registered.Attribute("Value")?.Value);
+        Assert.Contains(
+            registered.Elements(),
+            setter => setter.Attribute("Property")?.Value == "Content" &&
+                setter.Attribute("Value")?.Value == "Reset default");
+        // Two different actions in the user's terms, so two different explanations.
+        Assert.Contains(
+            registered.Elements(),
+            setter => setter.Attribute("Property")?.Value == "ToolTip");
+        Assert.Contains(
+            style.Elements().Where(element => element.Name.LocalName == "Setter"),
+            setter => setter.Attribute("Property")?.Value == "ToolTip");
+        Assert.Null(Named(LoadMainWindow(), "SetDefaultButton").Attribute("ToolTip"));
     }
 
     [Fact]
@@ -79,11 +112,16 @@ public sealed class WorktreeRowActionTests
             .Select(element => element.Attribute("Binding")?.Value ?? string.Empty)
             .ToArray();
 
-        Assert.Contains(conditions, binding => binding.Contains("IsRegistered", StringComparison.Ordinal));
+        Assert.Equal(2, conditions.Length);
         Assert.Contains(conditions, binding => binding.Contains("IsSelected", StringComparison.Ordinal));
         Assert.Contains(
             conditions,
             binding => binding.Contains("HasBuildConfiguration", StringComparison.Ordinal));
+        // Whether the row is already the default decides the label, never whether the
+        // action is there at all.
+        Assert.DoesNotContain(
+            conditions,
+            binding => binding.Contains("IsRegistered", StringComparison.Ordinal));
     }
 
     // Hidden by default from the style, so a row that does not qualify shows nothing and a
@@ -109,6 +147,21 @@ public sealed class WorktreeRowActionTests
 
         Assert.Equal(30, action.Height, precision: 3);
         Assert.Equal(96, action.Width, precision: 3);
+    }
+
+    // The gutter of the row that is already the default carries the action, not the chip:
+    // a registration Rhino or another tool rewrote is re-applied from where it is read.
+    [Fact]
+    public void The_row_that_is_already_the_default_is_offered_the_action_too()
+    {
+        IReadOnlyDictionary<string, Rect> layout = WorktreeSurface.Arrange(
+            WorktreeSurface.Row(isRegistered: true),
+            selected: true);
+        Rect action = layout.Part("SetDefaultButton");
+
+        Assert.Equal(30, action.Height, precision: 3);
+        Assert.Equal(96, action.Width, precision: 3);
+        Assert.False(layout.ContainsKey("DefaultChip"), "The gutter showed the chip and the action at once.");
     }
 
     private static XElement Named(XDocument document, string name) => document

@@ -5,10 +5,12 @@ using RhinoWorktreeLauncher;
 namespace RhinoWorktreeLauncher.UiTests;
 
 /// <summary>
-/// The main window arranged with one selected worktree row, so a test can read where the
-/// row's parts actually landed rather than restating the numbers that produced them. The
-/// backend is real and is never asked anything: the window reads the catalog only from
-/// Window_Loaded, and a window that is never shown never runs it.
+/// The main window arranged with one worktree row, so a test can read where the row's parts
+/// actually landed rather than restating the numbers that produced them. The row's state and
+/// its selection are both arguments, because the gutter shows the chip or the button
+/// depending on exactly those two. The backend is real and is never asked anything: the
+/// window reads the catalog only from Window_Loaded, and a window that is never shown never
+/// runs it.
 /// </summary>
 internal static class WorktreeSurface
 {
@@ -16,7 +18,15 @@ internal static class WorktreeSurface
     // header all measure against the box the user actually sees.
     public static Size Client { get; } = new Size(720, 1000);
 
-    public static IReadOnlyDictionary<string, Rect> Arrange() => SurfaceLayout.Arrange(
+    /// <summary>
+    /// Selected, launchable, and not registered, which is the state the row action was
+    /// first drawn for.
+    /// </summary>
+    public static IReadOnlyDictionary<string, Rect> Arrange() => Arrange(Row(), selected: true);
+
+    public static IReadOnlyDictionary<string, Rect> Arrange(
+        WorktreeSnapshot row,
+        bool selected) => SurfaceLayout.Arrange(
         () =>
         {
             MainWindow window = new MainWindow(new LauncherBackend(new LauncherBackendOptions
@@ -27,15 +37,17 @@ internal static class WorktreeSurface
                     Guid.NewGuid().ToString("N"),
                     "projects.json")
             }));
-            window.WorktreeList.ItemsSource = new[] { SelectedRow() };
-            // Selected, launchable, and not registered, which is exactly the state that
-            // offers the row action.
-            window.WorktreeList.SelectedIndex = 0;
+            window.WorktreeList.ItemsSource = new[] { row };
+            if (selected)
+                window.WorktreeList.SelectedIndex = 0;
             return window;
         },
         Client);
 
-    private static WorktreeSnapshot SelectedRow() => new WorktreeSnapshot(
+    public static WorktreeSnapshot Row(
+        bool isRegistered = false,
+        bool hasBuildConfiguration = true,
+        LaunchMode launchMode = LaunchMode.BuildAndLaunch) => new WorktreeSnapshot(
         "sample",
         "feature-branch",
         "feature-branch",
@@ -48,9 +60,9 @@ internal static class WorktreeSurface
         PullRequestNumber: null,
         IsPullRequestDraft: false,
         IsPrimary: false,
-        IsRegistered: false,
-        LaunchMode.BuildAndLaunch,
-        HasBuildConfiguration: true,
+        IsRegistered: isRegistered,
+        launchMode,
+        HasBuildConfiguration: hasBuildConfiguration,
         HasLocalState: true,
         HasGitState: true);
 }

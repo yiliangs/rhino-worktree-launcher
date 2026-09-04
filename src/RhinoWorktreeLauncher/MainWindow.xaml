@@ -249,14 +249,42 @@
             <Setter Property="Height" Value="30" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Visibility" Value="Collapsed" />
+            <Setter Property="Content" Value="Set default" />
+            <Setter Property="ToolTip" Value="Make Rhino load this worktree's build when started outside RWL" />
             <Style.Triggers>
+                <!-- Already being the default is a reason to say so, never a reason to
+                     withhold the action: the same write re-applies a registration that
+                     Rhino or another tool has since dropped or rewritten. -->
+                <DataTrigger Binding="{Binding IsRegistered}" Value="True">
+                    <Setter Property="Content" Value="Reset default" />
+                    <Setter Property="ToolTip" Value="Re-apply this worktree's build as the one Rhino loads when started outside RWL" />
+                </DataTrigger>
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
                         <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
-                        <Condition Binding="{Binding IsRegistered}" Value="False" />
                         <Condition Binding="{Binding HasBuildConfiguration}" Value="True" />
                     </MultiDataTrigger.Conditions>
                     <Setter Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- The DEFAULT chip shares the row's gutter with that action: the gutter states the
+             fact while the row is idle and offers the action once the row is selected, so
+             the two never occupy it at once. Visibility belongs to the style for the same
+             reason it does on the button, so no local value can outrank the triggers. -->
+        <Style x:Key="RowDefaultChip" TargetType="local:InsetHighlightBorder">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsRegistered}" Value="True">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
+                        <Condition Binding="{Binding HasBuildConfiguration}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Visibility" Value="Collapsed" />
                 </MultiDataTrigger>
             </Style.Triggers>
         </Style>
@@ -747,23 +775,6 @@
                                                                              FontSize="9"
                                                                              FontWeight="Medium" />
                                                 </local:InsetHighlightBorder>
-                                                <local:InsetHighlightBorder Padding="6,3"
-                                                                            VerticalAlignment="Center"
-                                                                            Background="{DynamicResource BadgeBrush}"
-                                                                            BorderBrush="{DynamicResource BadgeBorderBrush}"
-                                                                            BorderThickness="1"
-                                                                            CornerRadius="{StaticResource SmallCornerRadius}"
-                                                                            Effect="{DynamicResource ChipShadowEffect}"
-                                                                            HighlightBrush="{DynamicResource ChipHighlightBrush}"
-                                                                            ToolTip="Rhino loads this worktree's build when started outside RWL"
-                                                                            Visibility="{Binding IsRegistered, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <local:TrackingTextBlock Text="DEFAULT"
-                                                                             Tracking="0.1"
-                                                                             LineHeight="9"
-                                                                             Foreground="{DynamicResource TextBadgeBrush}"
-                                                                             FontSize="9"
-                                                                             FontWeight="Medium" />
-                                                </local:InsetHighlightBorder>
                                                 <local:InsetHighlightBorder x:Name="PullRequestBadge"
                                                                             Padding="7,3"
                                                                             VerticalAlignment="Center"
@@ -929,13 +940,32 @@
                                             </Grid>
                                         </Grid>
 
+                                        <local:InsetHighlightBorder x:Name="DefaultChip"
+                                                                    Grid.Column="2"
+                                                                    Padding="6,3"
+                                                                    HorizontalAlignment="Right"
+                                                                    VerticalAlignment="Center"
+                                                                    Style="{StaticResource RowDefaultChip}"
+                                                                    Background="{DynamicResource BadgeBrush}"
+                                                                    BorderBrush="{DynamicResource BadgeBorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="{StaticResource SmallCornerRadius}"
+                                                                    Effect="{DynamicResource ChipShadowEffect}"
+                                                                    HighlightBrush="{DynamicResource ChipHighlightBrush}"
+                                                                    ToolTip="Rhino loads this worktree's build when started outside RWL">
+                                            <local:TrackingTextBlock Text="DEFAULT"
+                                                                     Tracking="0.1"
+                                                                     LineHeight="9"
+                                                                     Foreground="{DynamicResource TextBadgeBrush}"
+                                                                     FontSize="9"
+                                                                     FontWeight="Medium" />
+                                        </local:InsetHighlightBorder>
+
                                         <Button x:Name="SetDefaultButton"
                                                 Grid.Column="2"
                                                 VerticalAlignment="Center"
                                                 Style="{StaticResource RowActionButton}"
-                                                Content="Set default"
                                                 IsEnabled="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                ToolTip="Make Rhino load this worktree's build when started outside RWL"
                                                 Click="SetDefault_Click" />
                                     </Grid>
                                     <DataTemplate.Triggers>
@@ -1053,45 +1083,55 @@
                 BorderBrush="{DynamicResource DividerBrush}"
                 BorderThickness="0,1,0,0">
             <Grid>
+                <!-- Two groups: Settings acts on the application and stands alone on the
+                     left, while Open folder and the two launch modes all act on the
+                     selected worktree and gather on the right, the pair closer to each
+                     other than to Open folder because they are one choice. -->
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="164" />
-                    <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="164" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="GlobalSettingsButton"
                         Grid.Column="0"
-                        Width="164"
-                        Height="48"
                         HorizontalAlignment="Left"
-                        Style="{StaticResource ControlButton}"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource GhostButton}"
                         Content="Settings"
-                        FontSize="13"
                         Click="GlobalSettings_Click" />
 
-                <Button x:Name="OpenFolderButton"
-                        Grid.Column="2"
-                        Width="164"
-                        Height="48"
-                        Style="{StaticResource ControlButton}"
-                        Content="Open folder"
-                        FontSize="13"
-                        Click="OpenFolder_Click">
-                </Button>
+                <StackPanel x:Name="WorktreeActions"
+                            Grid.Column="1"
+                            HorizontalAlignment="Right"
+                            Orientation="Horizontal">
+                    <Button x:Name="OpenFolderButton"
+                            Margin="0,0,12,0"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource GhostButton}"
+                            Content="Open folder"
+                            Click="OpenFolder_Click" />
 
-                <Button x:Name="LaunchButton"
-                        Grid.Column="4"
-                        Width="164"
-                        Height="48"
-                        Style="{StaticResource PrimaryButton}"
-                        Click="Launch_Click">
-                    <TextBlock x:Name="LaunchButtonText"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Text="Launch Rhino" />
-                </Button>
+                    <Button x:Name="LaunchButton"
+                            Width="132"
+                            Height="48"
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource ControlButton}"
+                            Content="Launch"
+                            FontSize="13"
+                            ToolTip="Load the existing build without building"
+                            Click="Launch_Click" />
+
+                    <Button x:Name="BuildAndLaunchButton"
+                            Width="132"
+                            Height="48"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource PrimaryButton}"
+                            Content="Build &amp; Launch"
+                            FontSize="13"
+                            ToolTip="Build the selected solution, then load the build"
+                            Click="BuildAndLaunch_Click" />
+                </StackPanel>
             </Grid>
         </Border>
 

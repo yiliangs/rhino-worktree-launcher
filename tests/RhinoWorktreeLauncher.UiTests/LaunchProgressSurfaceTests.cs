@@ -16,18 +16,21 @@ public sealed class LaunchProgressSurfaceTests
     private static readonly XNamespace Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-    [Fact]
-    public void The_launch_button_carries_only_its_label()
+    [Theory]
+    [InlineData("LaunchButton")]
+    [InlineData("BuildAndLaunchButton")]
+    public void A_launch_button_carries_only_its_label(string name)
     {
         XDocument document = LoadMainWindow();
-        XElement button = Named(document, "LaunchButton");
+        XElement button = Named(document, name);
 
-        Assert.Null(button.Attribute("Content"));
-        Assert.NotNull(FindNamed(document, "LaunchButtonText"));
         // The idle and progress layers existed to swap one for the other inside the
-        // button. Progress moved out, so there is nothing left to swap.
+        // button. Progress moved out, so there is nothing left to swap, and the label a
+        // button carries is the mode it passes rather than a saved setting read back.
         Assert.Null(FindNamed(document, "LaunchRun"));
         Assert.Null(FindNamed(document, "LaunchIdleText"));
+        Assert.Null(FindNamed(document, "LaunchButtonText"));
+        Assert.NotNull(button.Attribute("Content"));
         Assert.DoesNotContain(
             button.Descendants(),
             element => string.Equals(element.Attribute(Xaml + "Name")?.Value, "LaunchProgressFill", StringComparison.Ordinal));
