@@ -540,9 +540,9 @@ public sealed class WorktreeBackendTests
         {
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
-            RhinoExecutableResolver = _ => Path.Combine(
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation(Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.System),
-                "cmd.exe")
+                "cmd.exe"))
         });
         await backend.RegisterProjectAsync(
             new ProjectRegistrationRequest(temporary.PathFor("repository"), ProjectAccessGrant.Full),

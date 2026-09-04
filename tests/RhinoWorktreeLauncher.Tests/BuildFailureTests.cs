@@ -82,7 +82,7 @@ public sealed class BuildFailureTests
             CatalogPath = temporary.PathFor("launcher/projects.json"),
             LogsDirectory = temporary.PathFor("launcher/logs"),
             LocksDirectory = temporary.PathFor("launcher/locks"),
-            RhinoExecutableResolver = _ => "fake-rhino.exe",
+            RhinoExecutableResolver = _ => RhinoInstallation.AtDefaultLocation("fake-rhino.exe"),
             ProcessSnapshotReader = Array.Empty<RunningProcess>
         });
 }

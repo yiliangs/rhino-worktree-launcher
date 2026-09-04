@@ -107,7 +107,7 @@ internal sealed class LaunchCoordinator
                 PluginId = artifacts.PluginId.ToString("D"),
                 PluginName = Path.GetFileNameWithoutExtension(artifacts.PluginPath),
                 PluginPath = Path.GetFullPath(artifacts.PluginPath),
-                RhinoExecutable = _options.RhinoExecutableResolver(context.RhinoVersion),
+                RhinoExecutable = _options.RhinoExecutableResolver(context.RhinoVersion).ExecutablePath,
                 RhinoRuntime = artifacts.RhinoRuntime,
                 WorkingDirectory = artifacts.WorktreePath,
                 LocksDirectory = _options.LocksDirectory,
