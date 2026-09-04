@@ -1112,7 +1112,7 @@
                             Click="OpenFolder_Click" />
 
                     <Button x:Name="LaunchButton"
-                            Width="132"
+                            Width="164"
                             Height="48"
                             Margin="0,0,8,0"
                             VerticalAlignment="Center"

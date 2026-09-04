@@ -52,6 +52,18 @@ public sealed class FooterLaunchModeTests
         Assert.Equal(8, buttons[3].Left - buttons[2].Right, precision: 0);
     }
 
+    // The pair offers one choice between two modes, so neither is the smaller option.
+    // Which one a user reaches for is said by the tier the button carries, never by making
+    // the other one harder to hit.
+    [Fact]
+    public void Neither_launch_mode_is_the_smaller_button()
+    {
+        Rect[] buttons = FooterButtons();
+
+        Assert.Equal(buttons[3].Width, buttons[2].Width, precision: 3);
+        Assert.Equal(buttons[3].Height, buttons[2].Height, precision: 3);
+    }
+
     // Three tiers of control at three different heights, so one baseline is what keeps the
     // footer a row rather than a staircase.
     [Fact]
